@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 
 interface Chat {
@@ -25,19 +25,34 @@ export default function ChatsPage() {
   const [history, setHistory] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchChats();
+    // Poll chat list every 10 seconds to detect new active chats
+    const interval = setInterval(fetchChats, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
     if (selectedChat) {
       fetchHistory(selectedChat.chat_id);
+      // Poll message history every 5 seconds for "real-time" updates
+      const interval = setInterval(() => fetchHistory(selectedChat.chat_id, true), 5000);
+      return () => clearInterval(interval);
     }
   }, [selectedChat]);
 
+  // Auto-scroll to bottom when history changes
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [history]);
+
   const fetchChats = async () => {
-    setLoading(true);
+    // Only show loading state on first load
+    if (chats.length === 0) setLoading(true);
     try {
       const res = await fetch('/api/db/chats');
       const data = await res.json();
@@ -51,8 +66,8 @@ export default function ChatsPage() {
     }
   };
 
-  const fetchHistory = async (chatId: string) => {
-    setHistoryLoading(true);
+  const fetchHistory = async (chatId: string, isPolling = false) => {
+    if (!isPolling) setHistoryLoading(true);
     try {
       const res = await fetch(`/api/db/history?chat_id=${chatId}`);
       const data = await res.json();
@@ -62,7 +77,7 @@ export default function ChatsPage() {
     } catch (error) {
       console.error('Error fetching history:', error);
     } finally {
-      setHistoryLoading(false);
+      if (!isPolling) setHistoryLoading(false);
     }
   };
 
@@ -100,8 +115,8 @@ export default function ChatsPage() {
 
       if (res.ok) {
         setNewMessage('');
-        // Refresh history to show the sent message if n8n syncs it back to DB
-        setTimeout(() => fetchHistory(selectedChat.chat_id), 1000);
+        // Immediately fetch history to show the message we just sent
+        fetchHistory(selectedChat.chat_id, true);
       } else {
         alert('Error al enviar el mensaje');
       }
@@ -177,7 +192,7 @@ export default function ChatsPage() {
                 </div>
               </div>
 
-              <div className="flex-1 p-6 overflow-y-auto flex flex-col gap-4">
+              <div ref={scrollRef} className="flex-1 p-6 overflow-y-auto flex flex-col gap-4">
                 {historyLoading ? (
                   <div className="flex-1 flex items-center justify-center text-neutral-500">Cargando historial...</div>
                 ) : history.length === 0 ? (
