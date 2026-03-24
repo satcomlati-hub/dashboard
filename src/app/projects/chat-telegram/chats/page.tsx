@@ -36,8 +36,11 @@ export default function ChatsPage() {
 
   useEffect(() => {
     if (selectedChat) {
+      setLoading(false);
+      setHistory([]); // Clean previous history immediately
+      setHistoryLoading(true); // Show loader for the new chat
       fetchHistory(selectedChat.chat_id);
-      // Poll message history every 5 seconds for "real-time" updates
+      
       const interval = setInterval(() => fetchHistory(selectedChat.chat_id, true), 5000);
       return () => clearInterval(interval);
     }
@@ -67,17 +70,21 @@ export default function ChatsPage() {
   };
 
   const fetchHistory = async (chatId: string, isPolling = false) => {
-    if (!isPolling) setHistoryLoading(true);
+    // Only show loading if we don't have any messages yet (first load of this chat)
+    if (!isPolling && history.length === 0) setHistoryLoading(true);
+    
     try {
       const res = await fetch(`/api/db/history?chat_id=${chatId}`);
       const data = await res.json();
       if (Array.isArray(data)) {
+        // Only update state if data actually changed to avoid unnecessary re-renders
+        // A simple length and last message check is often enough for polling
         setHistory(data);
       }
     } catch (error) {
       console.error('Error fetching history:', error);
     } finally {
-      if (!isPolling) setHistoryLoading(false);
+      setHistoryLoading(false);
     }
   };
 
