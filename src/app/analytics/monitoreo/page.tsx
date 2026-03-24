@@ -97,7 +97,7 @@ export default function MonitoreoSubpage() {
             <h3 className="text-sm font-bold text-neutral-400 uppercase tracking-[0.2em]">Visualización Temporal</h3>
             <span className="text-xs text-neutral-500 italic">Datos en tiempo real</span>
           </div>
-          <MonitoreoChart data={data} onPointClick={handleChartPointClick} />
+          <MonitoreoChart data={data} onPointClick={handleChartPointClick} selectedDate={selectedDateFilter} />
         </section>
 
         <section id="bitacora-table">
