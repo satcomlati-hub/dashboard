@@ -1,6 +1,5 @@
 import TopCards from '@/components/TopCards';
 import ActiveTools from '@/components/ActiveTools';
-import ThemeToggle from '@/components/ThemeToggle';
 
 export default function Home() {
   return (
@@ -18,7 +17,6 @@ export default function Home() {
             </span>
             <span className="text-sm font-medium text-neutral-600 dark:text-[#ababab]">Sistema Operativo</span>
           </div>
-          <ThemeToggle />
         </div>
       </header>
 

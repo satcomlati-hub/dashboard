@@ -16,7 +16,27 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" className="dark">
+    <html lang="es" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  const savedTheme = localStorage.getItem('satcom-theme');
+                  const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                  const theme = savedTheme || systemTheme;
+                  if (theme === 'dark') {
+                    document.documentElement.classList.add('dark');
+                  } else {
+                    document.documentElement.classList.remove('dark');
+                  }
+                } catch (e) {}
+              })();
+            `,
+          }}
+        />
+      </head>
       <body className={`${inter.className} bg-white dark:bg-[#0e0e0e] text-neutral-900 dark:text-white antialiased transition-colors duration-200`}>
         <div className="flex min-h-screen bg-[#f9f9f9] dark:bg-[#0e0e0e]">
           <Sidebar />

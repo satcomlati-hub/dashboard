@@ -2,22 +2,37 @@
 import { useState, useEffect } from 'react';
 
 export default function ThemeToggle() {
-  const [theme, setTheme] = useState('dark');
+  const [theme, setTheme] = useState<string | null>(null);
 
   useEffect(() => {
-    // Sync with root element on mount and theme change
+    // On mount, check localStorage or system preference
+    const savedTheme = localStorage.getItem('satcom-theme');
+    const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    const initialTheme = savedTheme || systemTheme;
+    
+    setTheme(initialTheme);
+  }, []);
+
+  useEffect(() => {
+    if (!theme) return;
+
+    // Sync with root element and localStorage
     const root = window.document.documentElement;
     if (theme === 'dark') {
       root.classList.add('dark');
     } else {
       root.classList.remove('dark');
     }
+    localStorage.setItem('satcom-theme', theme);
   }, [theme]);
+
+  // Don't render until theme is determined to avoid hydration mismatch/flicker
+  if (theme === null) return <div className="p-2 w-10 h-10" />;
 
   return (
     <button
       onClick={() => setTheme(prev => (prev === 'dark' ? 'light' : 'dark'))}
-      className="p-2 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-all border border-neutral-200 dark:border-neutral-700"
+      className="p-2 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-all border border-neutral-200 dark:border-neutral-700 flex items-center justify-center shrink-0"
       title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
     >
       {theme === 'dark' ? (
@@ -32,3 +47,4 @@ export default function ThemeToggle() {
     </button>
   );
 }
+

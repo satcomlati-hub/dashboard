@@ -1,5 +1,3 @@
-import ThemeToggle from '@/components/ThemeToggle';
-
 export default function Credentials() {
   return (
     <>
@@ -7,9 +5,6 @@ export default function Credentials() {
         <div>
           <h2 className="text-2xl font-bold text-neutral-900 dark:text-[#e5e5e5] tracking-tight">Credenciales</h2>
           <p className="text-sm text-neutral-500 dark:text-[#ababab] mt-1">Gestión de conexiones y secretos para n8n.</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <ThemeToggle />
         </div>
       </header>
 
