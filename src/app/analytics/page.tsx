@@ -1,3 +1,5 @@
+import MonitoreoWidget from '@/components/MonitoreoWidget';
+
 export default function AnalyticsPage() {
   return (
     <>
@@ -6,11 +8,8 @@ export default function AnalyticsPage() {
         <p className="text-sm text-neutral-500 dark:text-[#ababab] mt-1">Dashboards directos desde las bases de datos de Satcom.</p>
       </header>
 
-      <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-8 shadow-sm text-center">
-        <h3 className="text-lg font-medium text-neutral-900 dark:text-white mb-2">Próximamente</h3>
-        <p className="text-neutral-500 dark:text-neutral-400 max-w-md mx-auto">
-          Aquí agruparemos paneles estadísticos y vistas embebidas sin saturar la página principal.
-        </p>
+      <div className="flex flex-col gap-8">
+        <MonitoreoWidget />
       </div>
     </>
   );
