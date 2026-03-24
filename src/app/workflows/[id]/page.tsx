@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import LogViewer from '@/components/LogViewer';
 
 export default function WorkflowDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const searchParams = useSearchParams();
@@ -54,6 +55,13 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
             <h3 className="text-sm text-neutral-500 mb-1">Última Actualización</h3>
             <p className="text-lg font-bold dark:text-white">{new Date(data.updatedAt).toLocaleDateString()}</p>
           </div>
+        </div>
+
+        {/* Visor de Logs */}
+        <div className="mb-10">
+           <h2 className="text-xl font-bold dark:text-white mb-2">Monitor en Tiempo Real</h2>
+           <p className="text-sm text-neutral-500 mb-4">Muestra los logs enviados desde n8n vía Redis para este workflow.</p>
+           <LogViewer workflowId={id} />
         </div>
 
         <div>
