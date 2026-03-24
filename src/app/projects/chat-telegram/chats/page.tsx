@@ -54,8 +54,9 @@ export default function ChatsPage() {
   }, [history]);
 
   const fetchChats = async () => {
-    // Only show loading state on first load
-    if (chats.length === 0) setLoading(true);
+    const isFirstLoad = chats.length === 0;
+    if (isFirstLoad) setLoading(true);
+    
     try {
       const res = await fetch('/api/db/chats');
       const data = await res.json();
@@ -65,7 +66,7 @@ export default function ChatsPage() {
     } catch (error) {
       console.error('Error fetching chats:', error);
     } finally {
-      setLoading(false);
+      if (isFirstLoad) setLoading(false);
     }
   };
 
