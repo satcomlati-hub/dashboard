@@ -5,18 +5,16 @@ import Link from 'next/link';
 
 interface Chat {
   chat_id: string;
-  first_name: string;
-  last_name?: string;
-  username?: string;
-  last_message?: string;
+  nombre: string;
+  correo?: string;
+  empresa?: string;
   last_activity?: string;
   [key: string]: any;
 }
 
 interface Message {
-  message_id: number;
-  content: string;
-  sender_type: string;
+  rol: string;
+  texto: string;
   created_at: string;
   [key: string]: any;
 }
@@ -69,7 +67,7 @@ export default function ChatsPage() {
   };
 
   return (
-    <div className="h-[calc(100vh-140px)] flex flex-col">
+    <div className="h-[calc(100vh-140px)] flex flex-col pt-4">
       <header className="mb-4">
         <div className="flex items-center gap-2 mb-2">
           <Link href="/projects/chat-telegram" className="text-sm text-[#71BF44] hover:underline flex items-center gap-1">
@@ -100,18 +98,18 @@ export default function ChatsPage() {
                   }`}
                 >
                   <div className="flex justify-between items-start mb-1">
-                    <span className="font-bold text-neutral-900 dark:text-white">
-                      {chat.first_name} {chat.last_name || ''}
+                    <span className="font-bold text-neutral-900 dark:text-white uppercase">
+                      {chat.nombre}
                     </span>
-                    <span className="text-xs text-neutral-400">
+                    <span className="text-[10px] text-neutral-400">
                       {chat.last_activity ? new Date(chat.last_activity).toLocaleDateString() : ''}
                     </span>
                   </div>
-                  {chat.username && (
-                    <div className="text-xs text-[#71BF44] mb-1">@{chat.username}</div>
+                  {chat.empresa && (
+                    <div className="text-[10px] text-[#71BF44] mb-1 truncate">{chat.empresa}</div>
                   )}
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400 line-clamp-1 italic">
-                    {chat.last_message || 'Sin mensajes recientes'}
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-1 italic">
+                    {chat.correo || 'Sin correo registrado'}
                   </p>
                 </button>
               ))}
@@ -125,10 +123,10 @@ export default function ChatsPage() {
             <>
               <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-800/20 flex justify-between items-center">
                 <div>
-                  <h3 className="font-bold text-neutral-900 dark:text-white">
-                    {selectedChat.first_name} {selectedChat.last_name || ''}
+                  <h3 className="font-bold text-neutral-900 dark:text-white uppercase">
+                    {selectedChat.nombre}
                   </h3>
-                  <p className="text-xs text-neutral-500">Chat ID: {selectedChat.chat_id}</p>
+                  <p className="text-xs text-neutral-500">ID: {selectedChat.chat_id} • {selectedChat.correo}</p>
                 </div>
               </div>
 
@@ -139,7 +137,7 @@ export default function ChatsPage() {
                   <div className="flex-1 flex items-center justify-center text-neutral-500 italic">No hay mensajes en este chat.</div>
                 ) : (
                   history.map((msg, index) => {
-                    const isUser = msg.sender_type === 'user';
+                    const isUser = msg.rol === 'Usuario';
                     return (
                       <div
                         key={index}
@@ -149,7 +147,7 @@ export default function ChatsPage() {
                             : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 self-start rounded-tl-none'
                         }`}
                       >
-                        <p className="text-sm">{msg.content}</p>
+                        <p className="text-sm">{msg.texto}</p>
                         <div className={`text-[10px] mt-1 opacity-70 ${isUser ? 'text-right' : 'text-left'}`}>
                           {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </div>
