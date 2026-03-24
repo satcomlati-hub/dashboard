@@ -107,12 +107,6 @@ export default function MonitoreoChart({ data, onPointClick, selectedDate }: Mon
                 data={chartData} 
                 margin={{ top: 10, right: 0, left: -20, bottom: 0 }}
                 barCategoryGap={1}
-                // Precision fix: Tooltip uses the unique 'date' key
-                onClick={(e) => {
-                  if (e && e.activePayload && e.activePayload[0]) {
-                    handleBarClick(e.activePayload[0].payload);
-                  }
-                }}
               >
                 <defs>
                   <linearGradient id="barG" x1="0" y1="0" x2="0" y2="1">
@@ -150,6 +144,7 @@ export default function MonitoreoChart({ data, onPointClick, selectedDate }: Mon
                   radius={[4, 4, 0, 0]}
                   style={{ cursor: 'pointer' }}
                   animationDuration={1000}
+                  onClick={(data: any) => handleBarClick(data)}
                 >
                   {chartData.map((entry, index) => (
                     <Cell 
