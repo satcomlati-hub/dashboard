@@ -15,7 +15,7 @@ interface Chat {
 interface Message {
   rol: string;
   texto: string;
-  created_at: string;
+  fecha: string;
   [key: string]: any;
 }
 
@@ -66,6 +66,19 @@ export default function ChatsPage() {
     }
   };
 
+  const formatTime = (dateStr: string) => {
+    try {
+      // Handle Postgres timestamp format (YYYY-MM-DD HH:MM:SS.mmmmmm)
+      // Some browsers might need the format standardized
+      const isoStr = dateStr.replace(' ', 'T');
+      const date = new Date(isoStr);
+      if (isNaN(date.getTime())) return 'Hora no disp.';
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      return 'Hora no disp.';
+    }
+  };
+
   return (
     <div className="h-[calc(100vh-140px)] flex flex-col pt-4">
       <header className="mb-4">
@@ -98,11 +111,11 @@ export default function ChatsPage() {
                   }`}
                 >
                   <div className="flex justify-between items-start mb-1">
-                    <span className="font-bold text-neutral-900 dark:text-white uppercase">
+                    <span className="font-bold text-neutral-900 dark:text-white uppercase truncate">
                       {chat.nombre}
                     </span>
-                    <span className="text-[10px] text-neutral-400">
-                      {chat.last_activity ? new Date(chat.last_activity).toLocaleDateString() : ''}
+                    <span className="text-[10px] text-neutral-400 whitespace-nowrap ml-2">
+                      {chat.last_activity ? new Date(chat.last_activity.replace(' ', 'T')).toLocaleDateString() : ''}
                     </span>
                   </div>
                   {chat.empresa && (
@@ -118,7 +131,7 @@ export default function ChatsPage() {
         </div>
 
         {/* Chat History */}
-        <div className="flex-1 bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl flex flex-col shadow-sm overflow-hidden">
+        <div className="flex-1 bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl flex flex-col shadow-sm overflow-hidden text-neutral-900 dark:text-white">
           {selectedChat ? (
             <>
               <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-800/20 flex justify-between items-center">
@@ -126,7 +139,7 @@ export default function ChatsPage() {
                   <h3 className="font-bold text-neutral-900 dark:text-white uppercase">
                     {selectedChat.nombre}
                   </h3>
-                  <p className="text-xs text-neutral-500">ID: {selectedChat.chat_id} • {selectedChat.correo}</p>
+                  <p className="text-xs text-neutral-500 truncate">ID: {selectedChat.chat_id} • {selectedChat.correo}</p>
                 </div>
               </div>
 
@@ -147,9 +160,9 @@ export default function ChatsPage() {
                             : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 self-start rounded-tl-none'
                         }`}
                       >
-                        <p className="text-sm">{msg.texto}</p>
-                        <div className={`text-[10px] mt-1 opacity-70 ${isUser ? 'text-right' : 'text-left'}`}>
-                          {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        <p className="text-sm whitespace-pre-wrap">{msg.texto}</p>
+                        <div className={`text-[10px] mt-1 opacity-70 ${isUser ? 'text-[#e5ffda]' : 'text-neutral-500'}`}>
+                          {formatTime(msg.fecha)}
                         </div>
                       </div>
                     );
