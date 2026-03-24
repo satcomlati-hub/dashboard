@@ -11,13 +11,23 @@ interface Evento {
   detalle_evento: string;
 }
 
-export default function MonitoreoWidget() {
-  const [data, setData] = useState<Evento[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+interface MonitoreoWidgetProps {
+  initialData?: Evento[];
+  initialLoading?: boolean;
+  initialError?: string | null;
+}
+
+export default function MonitoreoWidget({ initialData, initialLoading = false, initialError = null }: MonitoreoWidgetProps) {
+  const [data, setData] = useState<Evento[]>(initialData || []);
+  const [loading, setLoading] = useState(initialData ? false : initialLoading);
+  const [error, setError] = useState<string | null>(initialError);
 
   useEffect(() => {
+    // Only fetch if data was not provided
+    if (initialData) return;
+
     const fetchData = async () => {
+      setLoading(true);
       try {
         const res = await fetch('/api/db/monitoreo');
         if (!res.ok) throw new Error('Error al obtener datos');
@@ -32,16 +42,28 @@ export default function MonitoreoWidget() {
     };
 
     fetchData();
-  }, []);
+  }, [initialData]);
+
+  // If initialData is provided via props, keep it in sync
+  useEffect(() => {
+    if (initialData) {
+      setData(initialData);
+      setLoading(false);
+    }
+  }, [initialData]);
+
+  useEffect(() => {
+    if (initialError) setError(initialError);
+  }, [initialError]);
 
   return (
     <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl shadow-sm overflow-hidden flex flex-col h-[500px]">
       <div className="p-5 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between sticky top-0 bg-white dark:bg-[#131313] z-10">
         <h3 className="text-lg font-medium text-neutral-900 dark:text-white flex items-center gap-2">
-          <Activity className="w-5 h-5 text-blue-500" />
-          Proyecto: Monitoreo
+          <Activity className="w-5 h-5 text-[#71BF44]" />
+          Bitácora de Eventos
         </h3>
-        <span className="text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 px-2.5 py-1 rounded-full">
+        <span className="text-xs font-medium bg-[#71BF44]/10 text-[#71BF44] dark:bg-[#71BF44]/20 px-2.5 py-1 rounded-full">
           {data.length} {data.length === 1 ? 'Evento' : 'Eventos'}
         </span>
       </div>
@@ -49,8 +71,8 @@ export default function MonitoreoWidget() {
       <div className="flex-1 overflow-auto p-0 relative">
         {loading ? (
           <div className="flex flex-col items-center justify-center h-full text-neutral-500 gap-3 absolute inset-0">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-            <p className="text-sm font-medium">Cargando eventos de monitoreo...</p>
+            <Loader2 className="w-8 h-8 animate-spin text-[#71BF44]" />
+            <p className="text-sm font-medium">Cargando eventos...</p>
           </div>
         ) : error ? (
           <div className="flex flex-col items-center justify-center h-full text-red-500 gap-3 p-6 text-center absolute inset-0">
