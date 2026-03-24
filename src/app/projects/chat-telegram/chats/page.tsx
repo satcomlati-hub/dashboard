@@ -66,16 +66,50 @@ export default function ChatsPage() {
     }
   };
 
-  const formatTime = (dateStr: string) => {
+  const formatDateTime = (dateStr: string) => {
     try {
-      // Handle Postgres timestamp format (YYYY-MM-DD HH:MM:SS.mmmmmm)
-      // Some browsers might need the format standardized
       const isoStr = dateStr.replace(' ', 'T');
       const date = new Date(isoStr);
-      if (isNaN(date.getTime())) return 'Hora no disp.';
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      if (isNaN(date.getTime())) return 'Fecha no disp.';
+      
+      const dayMonth = date.toLocaleDateString([], { day: '2-digit', month: '2-digit' });
+      const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return `${dayMonth} ${time}`;
     } catch (e) {
-      return 'Hora no disp.';
+      return 'Fecha no disp.';
+    }
+  };
+
+  const [newMessage, setNewMessage] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedChat || !newMessage.trim() || sending) return;
+
+    setSending(true);
+    try {
+      const res = await fetch('/api/db/send-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chatId: selectedChat.chat_id,
+          message: newMessage
+        })
+      });
+
+      if (res.ok) {
+        setNewMessage('');
+        // Refresh history to show the sent message if n8n syncs it back to DB
+        setTimeout(() => fetchHistory(selectedChat.chat_id), 1000);
+      } else {
+        alert('Error al enviar el mensaje');
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      alert('Error al enviar el mensaje');
+    } finally {
+      setSending(false);
     }
   };
 
@@ -157,18 +191,46 @@ export default function ChatsPage() {
                         className={`max-w-[80%] p-3 rounded-2xl ${
                           isUser
                             ? 'bg-[#71BF44] text-white self-end rounded-tr-none'
-                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 self-start rounded-tl-none'
+                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 self-start rounded-tl-none border border-neutral-200 dark:border-neutral-700'
                         }`}
                       >
                         <p className="text-sm whitespace-pre-wrap">{msg.texto}</p>
                         <div className={`text-[10px] mt-1 opacity-70 ${isUser ? 'text-[#e5ffda]' : 'text-neutral-500'}`}>
-                          {formatTime(msg.fecha)}
+                          {formatDateTime(msg.fecha)}
                         </div>
                       </div>
                     );
                   })
                 )}
               </div>
+
+              {/* Message Input */}
+              <form onSubmit={handleSendMessage} className="p-4 border-t border-neutral-200 dark:border-neutral-800 flex gap-2">
+                <input
+                  type="text"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder="Escribe un mensaje..."
+                  className="flex-1 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-[#71BF44] transition-colors"
+                  disabled={sending}
+                />
+                <button
+                  type="submit"
+                  disabled={sending || !newMessage.trim()}
+                  className="bg-[#71BF44] text-white rounded-lg px-4 py-2 hover:bg-[#62a53b] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {sending ? (
+                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                  )}
+                </button>
+              </form>
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-neutral-400 flex-col gap-3">
