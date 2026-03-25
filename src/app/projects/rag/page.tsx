@@ -3,6 +3,7 @@ import React from 'react';
 import Link from 'next/link';
 import LogViewer from '@/components/LogViewer';
 import IngestForm from '@/components/IngestForm';
+import RAGCollectionsTable from '@/components/RAGCollectionsTable';
 
 export default function RAGProjectPage() {
   const workflowId = '9SUpGm5FL4xSDkNN'; // ID de MAIN_registra_logs_rag
@@ -33,6 +34,7 @@ export default function RAGProjectPage() {
         </div>
       </header>
 
+      {/* Stats cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
          <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 shadow-sm">
             <h3 className="text-sm font-semibold text-neutral-500 mb-1 uppercase tracking-tight">Estado de Red</h3>
@@ -51,7 +53,8 @@ export default function RAGProjectPage() {
          </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-4">
+      {/* Ingesta + Logs */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-8">
         <div className="lg:col-span-5 flex flex-col gap-6">
           <IngestForm />
           
@@ -72,6 +75,11 @@ export default function RAGProjectPage() {
         <div className="lg:col-span-7 h-[calc(100vh-280px)] min-h-[600px]">
           <LogViewer workflowId={workflowId} />
         </div>
+      </div>
+
+      {/* Tabla de colecciones en la base de conocimiento */}
+      <div className="mb-8">
+        <RAGCollectionsTable />
       </div>
     </div>
   );
