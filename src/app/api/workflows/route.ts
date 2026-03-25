@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 
 const SARA_HOST = process.env.N8N_SARA_HOST;
@@ -9,7 +10,9 @@ const cleanHost = (url: string) => url.endsWith('/') ? url.slice(0, -1) : url;
 
 async function fetchWorkflows(host: string, jwt: string, source: string) {
     if (!host) return [];
-    const url = `${cleanHost(host)}/api/v1/workflows?limit=250&include=tags`;
+    
+    // Removing the tags URL parameter because n8n v1 returns tags by default and fails when invalid parameters are given
+    const url = `${cleanHost(host)}/api/v1/workflows?limit=250`;
     try {
         const res = await fetch(url, {
             headers: { 
