@@ -2,12 +2,13 @@
 import React from 'react';
 import Link from 'next/link';
 import LogViewer from '@/components/LogViewer';
+import IngestForm from '@/components/IngestForm';
 
 export default function RAGProjectPage() {
   const workflowId = '9SUpGm5FL4xSDkNN'; // ID de MAIN_registra_logs_rag
 
   return (
-    <div className="max-w-6xl mx-auto py-8 px-4">
+    <div className="max-w-7xl mx-auto py-8 px-4">
       <header className="mb-8 flex justify-between items-end">
         <div>
           <div className="flex items-center gap-3 mb-2">
@@ -50,18 +51,27 @@ export default function RAGProjectPage() {
          </div>
       </div>
 
-      <div className="space-y-4">
-        <h2 className="text-xl font-bold dark:text-white">Visor de Terminal RAG</h2>
-        <LogViewer workflowId={workflowId} />
-      </div>
-      
-      <div className="mt-12 p-6 rounded-2xl bg-[#71BF44]/5 border border-[#71BF44]/10">
-        <h3 className="text-lg font-bold text-[#71BF44] mb-2">Instrucciones de Ingesta</h3>
-        <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed">
-          Este monitor está escuchando los últimos eventos de carga. Los archivos son splitted, embebidos vía Gemini Pro y almacenados en la tabla 
-          <code className="mx-1 px-1.5 py-0.5 bg-neutral-200 dark:bg-neutral-800 rounded text-xs">vec_mysatcom</code>. 
-          Los logs se limpian automáticamente de Redis después de llegar al límite de la terminal.
-        </p>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-4">
+        <div className="lg:col-span-5 flex flex-col gap-6">
+          <IngestForm />
+          
+          <div className="p-6 rounded-2xl bg-[#71BF44]/5 border border-[#71BF44]/10 h-full">
+            <h3 className="text-lg font-bold text-[#71BF44] mb-2">Instrucciones de Ingesta</h3>
+            <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed mb-3">
+              1. Ingresa uno o más enlaces de los manuales de Zoho separados por coma.
+            </p>
+            <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed mb-3">
+              2. El sistema filtrará duplicados, procesará con PDF extraction u HTML scraper, dividirá en chunks, y calculará los embeddings.
+            </p>
+            <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed mb-0">
+              3. Los eventos de cada etapa se emitirán mediante el log-webhook y aparecerán en la ventana derecha en tiempo real.
+            </p>
+          </div>
+        </div>
+
+        <div className="lg:col-span-7 h-[calc(100vh-280px)] min-h-[600px]">
+          <LogViewer workflowId={workflowId} />
+        </div>
       </div>
     </div>
   );
