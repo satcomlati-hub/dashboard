@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import MonitoreoChart from '@/components/MonitoreoChart';
 import MonitoreoWidget from '@/components/MonitoreoWidget';
-import { ChevronLeft, BarChart2, FilterX, Calendar, Globe, Activity, TrendingUp } from 'lucide-react';
+import { ChevronLeft, BarChart2, FilterX, Calendar, Globe, Activity, TrendingUp, Clock, CalendarDays } from 'lucide-react';
 
 interface Evento {
   fecha_ecuador: string;
@@ -70,8 +70,50 @@ export default function MonitoreoSubpage() {
   }, [data, selectedCountry, startDate, endDate]);
 
   // Summary Metrics
-  const totalEvents = useMemo(() => {
-    return globalFilteredData.reduce((acc, curr) => acc + (Number(curr.num_eventos) || 0), 0);
+  const metricas = useMemo(() => {
+    const parseToDate = (dStr: string) => {
+      const parts = dStr.split(' ')[0].split('-'); // "DD-MM-YYYY"
+      if (parts.length === 3) {
+        return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+      }
+      return new Date(0); // fallback
+    };
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    // Start of week (Monday)
+    const dayOfWeek = today.getDay() || 7; 
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - dayOfWeek + 1);
+
+    // Start of month
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
+    let total = 0;
+    let mes = 0;
+    let semana = 0;
+    let hoy = 0;
+
+    globalFilteredData.forEach(item => {
+      const val = Number(item.num_eventos) || 0;
+      total += val;
+      
+      const itemDate = parseToDate(item.fecha_ecuador);
+      itemDate.setHours(0, 0, 0, 0);
+
+      if (itemDate.getTime() === today.getTime()) {
+        hoy += val;
+      }
+      if (itemDate >= startOfWeek) {
+        semana += val;
+      }
+      if (itemDate >= startOfMonth) {
+        mes += val;
+      }
+    });
+
+    return { total, mes, semana, hoy };
   }, [globalFilteredData]);
 
   const handleChartPointClick = useCallback((date: string) => {
@@ -122,19 +164,51 @@ export default function MonitoreoSubpage() {
         </div>
       </header>
 
-      {/* Summary Metrics & Global Filters */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-10">
-        <div className="lg:col-span-1 bg-[#71BF44]/5 border border-[#71BF44]/20 rounded-2xl p-6 flex items-center gap-4">
+      {/* Summary Metrics */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        <div className="bg-[#71BF44]/5 border border-[#71BF44]/20 rounded-2xl p-6 flex items-center gap-4 transition-transform hover:-translate-y-1">
           <div className="w-12 h-12 rounded-full bg-[#71BF44] flex items-center justify-center text-white shadow-lg">
             <TrendingUp className="w-6 h-6" />
           </div>
           <div>
             <p className="text-xs font-bold text-[#71BF44] uppercase tracking-wider">Total Eventos</p>
-            <h4 className="text-3xl font-black text-neutral-900 dark:text-white">{totalEvents.toLocaleString()}</h4>
+            <h4 className="text-2xl font-black text-neutral-900 dark:text-white">{metricas.total.toLocaleString()}</h4>
           </div>
         </div>
 
-        <div className="lg:col-span-3 bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 flex flex-wrap items-end gap-6 shadow-sm">
+        <div className="bg-blue-500/5 border border-blue-500/20 rounded-2xl p-6 flex items-center gap-4 transition-transform hover:-translate-y-1">
+          <div className="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center text-white shadow-lg">
+            <CalendarDays className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-blue-500 uppercase tracking-wider">Este Mes</p>
+            <h4 className="text-2xl font-black text-neutral-900 dark:text-white">{metricas.mes.toLocaleString()}</h4>
+          </div>
+        </div>
+
+        <div className="bg-purple-500/5 border border-purple-500/20 rounded-2xl p-6 flex items-center gap-4 transition-transform hover:-translate-y-1">
+          <div className="w-12 h-12 rounded-full bg-purple-500 flex items-center justify-center text-white shadow-lg">
+            <Activity className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-purple-500 uppercase tracking-wider">Esta Semana</p>
+            <h4 className="text-2xl font-black text-neutral-900 dark:text-white">{metricas.semana.toLocaleString()}</h4>
+          </div>
+        </div>
+
+        <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-6 flex items-center gap-4 transition-transform hover:-translate-y-1">
+          <div className="w-12 h-12 rounded-full bg-amber-500 flex items-center justify-center text-white shadow-lg">
+            <Clock className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-amber-500 uppercase tracking-wider">Hoy</p>
+            <h4 className="text-2xl font-black text-neutral-900 dark:text-white">{metricas.hoy.toLocaleString()}</h4>
+          </div>
+        </div>
+      </div>
+
+      {/* Global Filters */}
+      <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 flex flex-wrap items-end gap-6 shadow-sm mb-10 w-full">
           <div className="flex-1 min-w-[150px]">
             <label className="text-[10px] font-bold text-neutral-400 uppercase mb-2 block flex items-center gap-1.5">
               <Calendar className="w-3 h-3" /> Fecha Inicio
@@ -177,7 +251,6 @@ export default function MonitoreoSubpage() {
             <FilterX className="w-4 h-4" />
           </button>
         </div>
-      </div>
 
       <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
         <section>
