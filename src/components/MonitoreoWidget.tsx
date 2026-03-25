@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Activity, Clock, Globe, Key, FileText, Loader2, AlertCircle, Search, X, Filter } from 'lucide-react';
+import { Activity, Clock, Globe, Key, FileText, Loader2, AlertCircle, Search, X, Filter, Copy, Check } from 'lucide-react';
 
 interface Evento {
   fecha_ecuador: string;
@@ -29,6 +29,13 @@ export default function MonitoreoWidget({ initialData, initialLoading = false, i
   const [filterKey, setFilterKey] = useState('');
   const [filterPais, setFilterPais] = useState('');
   const [filterDetalle, setFilterDetalle] = useState('');
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+
+  const handleCopy = (text: string, id: number) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   useEffect(() => {
     if (initialData) {
@@ -200,7 +207,24 @@ export default function MonitoreoWidget({ initialData, initialLoading = false, i
                         {row.pais}
                       </span>
                     </td>
-                    <td className="px-4 py-3.5 text-sm text-neutral-600 dark:text-neutral-400 max-w-sm truncate" title={row.detalle_evento}>{row.detalle_evento}</td>
+                    <td className="px-4 py-3.5 text-sm text-neutral-600 dark:text-neutral-400 group/cell relative">
+                      <div className="flex items-center justify-between gap-3 group">
+                        <span className="truncate max-w-[400px]" title={row.detalle_evento}>
+                          {row.detalle_evento}
+                        </span>
+                        <button 
+                          onClick={() => handleCopy(row.detalle_evento, i)}
+                          className={`flex-shrink-0 p-1.5 rounded-md transition-all opacity-0 group-hover:opacity-100 ${
+                            copiedId === i 
+                              ? 'bg-[#71BF44]/20 text-[#71BF44] opacity-100' 
+                              : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-neutral-600'
+                          }`}
+                          title="Copiar detalle"
+                        >
+                          {copiedId === i ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
