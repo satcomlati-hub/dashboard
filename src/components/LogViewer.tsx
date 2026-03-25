@@ -1,6 +1,6 @@
 'use client';
-import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, CheckCircle, AlertTriangle, Info, Terminal, RefreshCw, XCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Loader2, CheckCircle, AlertTriangle, Info, Terminal, RefreshCw, XCircle, BrainCircuit, FileText, Database, Sparkles, Search } from 'lucide-react';
 
 interface Log {
   message: string;
@@ -30,7 +30,7 @@ export default function LogViewer({ workflowId }: { workflowId: string }) {
 
   useEffect(() => {
     fetchLogs();
-    const interval = setInterval(fetchLogs, 5000); // Polling cada 5s
+    const interval = setInterval(fetchLogs, 5000);
     return () => clearInterval(interval);
   }, [workflowId, isPaused]);
 
@@ -40,115 +40,132 @@ export default function LogViewer({ workflowId }: { workflowId: string }) {
     }
   }, [logs]);
 
+  // Formateador de mensajes para el usuario final
+  const formatMessage = (msg: string) => {
+    // 1. Limpiar URLs largas por el nombre del artículo si es posible
+    if (msg.includes('https://')) {
+       const parts = msg.split('/');
+       const lastPart = parts[parts.length - 1].split('?')[0];
+       msg = msg.replace(/https:\/\/\S+/g, `[${lastPart || 'Documento'}]`);
+    }
+    // 2. Limpiar nombres de archivos temporales
+    msg = msg.replace(/zoho_temp_\w+\.pdf/g, 'Documento PDF');
+    // 3. Quitar emojis duplicados si ya los pone el visor
+    msg = msg.replace(/^[📖💾✅📊▶️⚙️⏳📈]\s*/, '');
+    
+    return msg;
+  };
+
+  // Determinar el estado actual del "Agente"
+  const currentStatus = useMemo(() => {
+    if (logs.length === 0) return { label: 'Esperando instrucciones...', icon: <BrainCircuit className="w-5 h-5" />, color: 'text-neutral-400' };
+    
+    const lastMsg = logs[logs.length - 1].message;
+    if (lastMsg.includes('Procesando artículo')) return { label: 'Estudiando nuevos manuales...', icon: <Search className="w-5 h-5 animate-pulse" />, color: 'text-[#71BF44]' };
+    if (lastMsg.includes('Descargando')) return { label: 'Recuperando información de Zoho...', icon: <FileText className="w-5 h-5 animate-bounce" />, color: 'text-blue-500' };
+    if (lastMsg.includes('Embeddings') || lastMsg.includes('vectores')) return { label: 'Generando conocimientos vectoriales...', icon: <Sparkles className="w-5 h-5 animate-spin" />, color: 'text-purple-500' };
+    if (lastMsg.includes('Insertando') || lastMsg.includes('exitosamente')) return { label: 'Guardando en memoria a largo plazo...', icon: <Database className="w-5 h-5" />, color: 'text-[#71BF44]' };
+    
+    return { label: 'Analizando información...', icon: <BrainCircuit className="w-5 h-5 animate-pulse" />, color: 'text-[#71BF44]' };
+  }, [logs]);
+
   const clearLogs = async () => {
     await fetch(`/api/logs/${workflowId}`, { method: 'DELETE' });
     setLogs([]);
   };
 
-  const getIconForLevel = (level: string) => {
+  const getIconForLevel = (level: string, message: string) => {
+    if (message.includes('✅')) return <CheckCircle className="w-5 h-5 text-[#71BF44]" />;
+    if (message.includes('📊') || message.includes('Procesando artículo')) return <FileText className="w-5 h-5 text-blue-500" />;
+    if (message.includes('⚙️') || message.includes('embeddings')) return <Sparkles className="w-5 h-5 text-purple-500" />;
+    
     switch (level.toLowerCase()) {
       case 'success': return <CheckCircle className="w-5 h-5 text-[#71BF44]" />;
       case 'error': return <XCircle className="w-5 h-5 text-red-500" />;
       case 'warning': return <AlertTriangle className="w-5 h-5 text-yellow-500" />;
-      default: return <Info className="w-5 h-5 text-[#71BF44]/50" />;
-    }
-  };
-
-  const getBorderColor = (level: string) => {
-    switch (level.toLowerCase()) {
-      case 'success': return 'border-l-[#71BF44]';
-      case 'error': return 'border-l-red-500';
-      case 'warning': return 'border-l-yellow-500';
-      default: return 'border-l-neutral-300 dark:border-l-neutral-700';
-    }
-  };
-
-  const getBgColor = (level: string) => {
-    switch (level.toLowerCase()) {
-      case 'success': return 'bg-[#71BF44]/5 dark:bg-[#71BF44]/10';
-      case 'error': return 'bg-red-500/5 dark:bg-red-500/10';
-      case 'warning': return 'bg-yellow-500/5 dark:bg-yellow-500/10';
-      default: return 'bg-neutral-50 dark:bg-neutral-800/20';
+      default: return <div className="w-2 h-2 rounded-full bg-neutral-300 dark:bg-neutral-600 m-1.5" />;
     }
   };
 
   return (
-    <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden shadow-sm flex flex-col h-full">
-      <div className="bg-neutral-50 dark:bg-[#1A1A1A] border-b border-neutral-200 dark:border-neutral-800 px-5 py-4 flex justify-between items-center shrink-0">
-        <div className="flex items-center gap-3">
-           <div className="bg-neutral-200 dark:bg-neutral-800 p-2 rounded-lg">
-             <Terminal className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
+    <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-3xl overflow-hidden shadow-xl flex flex-col h-full ring-1 ring-black/5 dark:ring-white/5">
+      {/* Cabecera con el Agente de IA */}
+      <div className="bg-neutral-50 dark:bg-[#1A1A1A] border-b border-neutral-200 dark:border-neutral-800 px-6 py-5 shrink-0">
+        <div className="flex items-center justify-between gap-4">
+           <div className="flex items-center gap-4">
+              <div className={`p-3 rounded-2xl bg-white dark:bg-[#131313] shadow-inner border border-neutral-200 dark:border-neutral-800 ${currentStatus.color}`}>
+                {currentStatus.icon}
+              </div>
+              <div>
+                <h3 className="text-base font-bold dark:text-white flex items-center gap-2">
+                  SARA Knowledge Agent
+                  <span className="px-2 py-0.5 rounded-full bg-[#71BF44]/10 text-[#71BF44] text-[10px] font-bold uppercase tracking-wider">Activo</span>
+                </h3>
+                <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mt-0.5">
+                  {currentStatus.label}
+                </p>
+              </div>
            </div>
-           <div>
-             <h3 className="text-sm font-bold dark:text-white">Progreso de Ingesta SARA</h3>
-             <p className="text-xs tracking-tight text-neutral-500 dark:text-neutral-500 flex items-center gap-1.5 mt-0.5 font-medium">
-                {isPaused ? (
-                  <span className="text-yellow-500 flex items-center gap-1">Suspendido</span>
-                ) : (
-                  <>
-                    <span className="relative flex h-2 w-2">
-                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#71BF44] opacity-75"></span>
-                       <span className="relative inline-flex rounded-full h-2 w-2 bg-[#71BF44]"></span>
-                    </span>
-                    Monitoreando logs...
-                  </>
-                )}
-             </p>
+           
+           <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setIsPaused(!isPaused)} 
+                className={`p-2.5 rounded-xl border transition-all ${isPaused ? 'border-yellow-500/30 text-yellow-600 bg-yellow-50 dark:bg-yellow-500/10' : 'border-neutral-200 dark:border-neutral-700 text-neutral-400 hover:text-[#71BF44] hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
+              >
+                <RefreshCw className={`w-4 h-4 ${isPaused ? '' : 'animate-[spin_4s_linear_infinite]'}`} />
+              </button>
+              <button 
+                onClick={clearLogs} 
+                className="text-xs font-bold px-4 py-2.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all border border-transparent"
+              >
+                Limpiar Historial
+              </button>
            </div>
-        </div>
-        <div className="flex items-center gap-2">
-           <button 
-             onClick={() => setIsPaused(!isPaused)} 
-             title={isPaused ? 'Reanudar actualización' : 'Pausar actualización'}
-             className={`p-2 rounded-lg border transition-all ${isPaused ? 'border-yellow-500/30 text-yellow-600 bg-yellow-50 dark:bg-yellow-500/10' : 'border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:text-[#71BF44] hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
-           >
-             <RefreshCw className={`w-4 h-4 ${isPaused ? '' : 'animate-[spin_4s_linear_infinite]'}`} />
-           </button>
-           <button 
-             onClick={clearLogs} 
-             className="text-xs font-bold px-3 py-2 rounded-lg bg-neutral-100 dark:bg-neutral-800 border border-transparent text-neutral-600 dark:text-neutral-400 hover:text-red-500 hover:border-red-500/30 hover:bg-white dark:hover:bg-[#1A1A1A] transition-all"
-           >
-             Limpiar Historial
-           </button>
         </div>
       </div>
       
+      {/* Timeline de Logs */}
       <div 
         ref={scrollRef}
-        className="p-6 h-[500px] overflow-y-auto scroll-smooth relative"
+        className="p-6 h-[500px] overflow-y-auto scroll-smooth flex-1 relative bg-[#FAFAFA] dark:bg-[#0D0D0D]/50"
       >
         {logs.length === 0 ? (
            <div className="h-full flex flex-col items-center justify-center text-neutral-500">
-             <div className="w-16 h-16 mb-4 rounded-full bg-neutral-100 dark:bg-[#1A1A1A] flex items-center justify-center border border-neutral-200 dark:border-neutral-800">
-                <Loader2 className="w-8 h-8 animate-spin opacity-50" />
+             <div className="relative mb-6">
+                <div className="absolute inset-0 bg-[#71BF44]/20 blur-2xl rounded-full"></div>
+                <div className="relative w-20 h-20 rounded-3xl bg-white dark:bg-[#1A1A1A] flex items-center justify-center border border-neutral-200 dark:border-neutral-800 shadow-xl">
+                   <BrainCircuit className="w-10 h-10 text-[#71BF44] opacity-50" />
+                </div>
              </div>
-             <p className="font-semibold text-neutral-700 dark:text-neutral-300">En espera de eventos</p>
-             <p className="text-sm mt-1 mb-8 max-w-[280px] text-center opacity-70">
-                Inicia una ingesta o webhook para ver el estado en tiempo real.
+             <p className="font-bold text-neutral-800 dark:text-neutral-200 text-lg">Cerebro en reposo</p>
+             <p className="text-sm mt-1 max-w-[280px] text-center opacity-60">
+                Inicia una ingesta para despertar al agente y procesar nuevos manuales.
              </p>
            </div>
         ) : (
-           <div className="space-y-4">
+           <div className="space-y-6 relative ml-2">
+              {/* Línea lateral del Timeline */}
+              <div className="absolute left-[11px] top-4 bottom-4 w-0.5 bg-neutral-200 dark:bg-neutral-800" />
+              
               {logs.map((log, index) => (
-                <div key={index} className="flex gap-4">
-                  <div className="flex flex-col items-center justify-start py-1">
-                    <div className="bg-white dark:bg-[#131313] p-0.5 rounded-full z-10 shadow-sm border border-neutral-100 dark:border-neutral-800">
-                      {getIconForLevel(log.level)}
+                <div key={index} className="flex gap-6 relative group">
+                  <div className="relative z-10 flex flex-col items-center py-1">
+                    <div className="bg-white dark:bg-[#131313] p-1.5 rounded-xl shadow-md ring-1 ring-black/5 dark:ring-white/10 group-hover:scale-110 transition-transform">
+                      {getIconForLevel(log.level, log.message)}
                     </div>
-                    {/* Línea conectora */}
-                    {index !== logs.length - 1 && (
-                      <div className="w-px h-full bg-neutral-200 dark:bg-neutral-800 mt-1 mb-1" />
-                    )}
                   </div>
-                  <div className={`flex-1 border-l-4 rounded-r-xl border-t border-b border-r border-t-neutral-100 border-b-neutral-100 border-r-neutral-100 dark:border-t-neutral-800 dark:border-b-neutral-800 dark:border-r-neutral-800 p-4 shadow-sm mb-1 ${getBorderColor(log.level)} ${getBgColor(log.level)}`}>
-                     <div className="flex items-start justify-between">
-                       <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                          {log.message}
-                       </p>
-                       <span className="text-[10px] uppercase font-bold text-neutral-400 mt-1 shrink-0 bg-white dark:bg-black/20 px-1.5 py-0.5 rounded border border-neutral-100 dark:border-neutral-800">
+                  
+                  <div className="flex-1 pb-1">
+                    <div className="flex items-center justify-between mb-1">
+                       <span className="text-[10px] font-bold text-neutral-400 dark:text-neutral-600 uppercase tracking-widest bg-white dark:bg-[#1A1A1A] px-2 py-0.5 rounded-full border border-neutral-100 dark:border-neutral-800">
                           {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                        </span>
-                     </div>
+                    </div>
+                    <div className={`p-4 rounded-2xl border transition-all shadow-sm ${log.level === 'success' ? 'bg-[#71BF44]/5 border-[#71BF44]/20' : 'bg-white dark:bg-[#1A1A1A] border-neutral-100 dark:border-neutral-800'} group-hover:shadow-md group-hover:border-neutral-300 dark:group-hover:border-neutral-600`}>
+                       <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200 leading-relaxed">
+                          {formatMessage(log.message)}
+                       </p>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -158,4 +175,5 @@ export default function LogViewer({ workflowId }: { workflowId: string }) {
     </div>
   );
 }
+
 
