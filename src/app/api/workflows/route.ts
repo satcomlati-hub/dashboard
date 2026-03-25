@@ -9,7 +9,7 @@ const cleanHost = (url: string) => url.endsWith('/') ? url.slice(0, -1) : url;
 
 async function fetchWorkflows(host: string, jwt: string, source: string) {
     if (!host) return [];
-    const url = `${cleanHost(host)}/api/v1/workflows?limit=250`;
+    const url = `${cleanHost(host)}/api/v1/workflows?limit=250&include=tags`;
     try {
         const res = await fetch(url, {
             headers: { 
@@ -40,8 +40,14 @@ export async function GET() {
             fetchWorkflows(PRIMARY_HOST!, PRIMARY_JWT!, 'Satcom (Primary)')
         ]);
 
+        // Filter out 'Pruebas' workflows from all sources
+        const filterPruebas = (w: any) => !w.tags?.some((tag: any) => tag.name.trim() === 'Pruebas');
+        
+        const filteredSara = saraWorkflows.filter(filterPruebas);
+        const filteredPrimary = primaryWorkflows.filter(filterPruebas);
+
         return NextResponse.json({
-            data: [...saraWorkflows, ...primaryWorkflows]
+            data: [...filteredSara, ...filteredPrimary]
         });
     } catch (error) {
         return NextResponse.json({ error: 'Failed to fetch workflows' }, { status: 500 });

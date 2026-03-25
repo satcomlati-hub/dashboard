@@ -8,6 +8,7 @@ interface Workflow {
   active: boolean;
   source: string;
   updatedAt: string;
+  tags?: { name: string }[];
 }
 
 export default function WorkflowsPage() {
@@ -28,7 +29,11 @@ export default function WorkflowsPage() {
   const filtered = workflows.filter(w => {
     const matchesSearch = w.name.toLowerCase().includes(search.toLowerCase());
     const matchesSource = filterSource === 'all' || w.source === filterSource;
-    return matchesSearch && matchesSource;
+    
+    // Consistent 'Pruebas' filter for all sources
+    const isPruebas = w.tags?.some(tag => tag.name.trim() === 'Pruebas');
+    
+    return matchesSearch && matchesSource && !isPruebas;
   });
 
   return (
