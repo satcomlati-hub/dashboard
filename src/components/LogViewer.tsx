@@ -163,16 +163,30 @@ export default function LogViewer({ workflowId }: { workflowId: string }) {
             <div className="absolute left-[11px] top-4 bottom-4 w-0.5 bg-neutral-200 dark:bg-neutral-800" />
 
             {logs.map((log, index) => {
-              const zohoInfo = extractZohoInfo(log.message);
-              const cleanMsg = formatMessage(log.message);
-              const isSuccess = log.level === 'success';
+              // Si el mensaje es un string JSON, lo parseamos
+              let displayMsg = log.message;
+              let displayLevel = log.level;
+
+              if (typeof log.message === 'string' && log.message.trim().startsWith('{')) {
+                try {
+                  const parsed = JSON.parse(log.message);
+                  if (parsed.message) displayMsg = parsed.message;
+                  if (parsed.level) displayLevel = parsed.level;
+                } catch (e) {
+                  // Si falla el parseo, usamos el mensaje original
+                }
+              }
+
+              const zohoInfo = extractZohoInfo(displayMsg);
+              const cleanMsg = formatMessage(displayMsg);
+              const isSuccess = displayLevel === 'success';
 
               return (
                 <div key={index} className="flex gap-5 relative group">
                   {/* Ícono del nivel */}
                   <div className="relative z-10 flex flex-col items-center py-1 shrink-0">
                     <div className="bg-white dark:bg-[#131313] p-1.5 rounded-xl shadow-md ring-1 ring-black/5 dark:ring-white/10 group-hover:scale-110 transition-transform">
-                      {getIconForLevel(log.level, log.message)}
+                      {getIconForLevel(displayLevel, displayMsg)}
                     </div>
                   </div>
 
