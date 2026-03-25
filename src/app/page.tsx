@@ -4,13 +4,13 @@ import ActiveTools from '@/components/ActiveTools';
 export default function Home() {
   return (
     <>
-      <header className="flex justify-between items-center mb-8">
+      <header className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-8 gap-4">
         <div>
           <h2 className="text-2xl font-bold text-neutral-900 dark:text-[#e5e5e5] tracking-tight">Inicio</h2>
           <p className="text-sm text-neutral-500 dark:text-[#ababab] mt-1">Monitoreo general de instancias n8n y herramientas activas.</p>
         </div>
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 mr-4">
+          <div className="flex items-center gap-2 sm:mr-4">
             <span className="flex h-2 w-2 relative">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#71BF44] opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-[#71BF44]"></span>

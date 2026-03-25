@@ -78,12 +78,12 @@ export default function MonitoreoChart({ data, onPointClick, selectedDate }: Mon
   };
 
   return (
-    <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-3xl shadow-xl p-8 mb-8 h-[450px] relative group overflow-hidden">
+    <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-3xl shadow-xl p-4 lg:p-8 mb-8 h-[350px] lg:h-[450px] relative group overflow-hidden">
       {/* Subtle background glow */}
       <div className="absolute -top-24 -right-24 w-96 h-96 bg-[#71BF44]/5 rounded-full blur-3xl transition-opacity group-hover:opacity-100 opacity-50" />
       
       <div className="relative z-10 flex flex-col h-full">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 lg:mb-8 gap-4">
           <div>
             <h3 className="text-lg font-bold text-neutral-900 dark:text-white mb-1">Actividad Técnica</h3>
             <p className="text-sm text-neutral-500 dark:text-neutral-400">Volumen de eventos por punto de control.</p>

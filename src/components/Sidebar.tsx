@@ -3,7 +3,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import ThemeToggle from './ThemeToggle';
 
-export default function Sidebar() {
+interface SidebarProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
 
   const navItems = [
@@ -18,14 +23,42 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside className="w-64 flex-shrink-0 border-r border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#0e0e0e] min-h-screen p-6 sticky top-0 h-screen flex flex-col justify-between">
-      <div>
-        <div className="flex items-center gap-3 mb-10">
-          <div className="w-8 h-8 rounded bg-[#71BF44] flex items-center justify-center flex-shrink-0">
-            <span className="text-white font-bold text-sm">S</span>
+    <>
+      {/* Overlay para móviles */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm"
+          onClick={onClose}
+        />
+      )}
+
+      <aside className={`
+        fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-[#0e0e0e] border-r border-neutral-200 dark:border-neutral-800 
+        transition-transform duration-300 ease-in-out transform
+        ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+        lg:translate-x-0 lg:static lg:block lg:flex-shrink-0
+        min-h-screen p-6 flex flex-col justify-between
+      `}>
+        <div>
+          <div className="flex items-center justify-between mb-10">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded bg-[#71BF44] flex items-center justify-center flex-shrink-0">
+                <span className="text-white font-bold text-sm">S</span>
+              </div>
+              <h1 className="text-xl font-bold tracking-tight text-neutral-900 dark:text-white">Satcom</h1>
+            </div>
+            
+            {/* Botón de cerrar en móvil */}
+            <button 
+              onClick={onClose}
+              className="lg:hidden p-2 text-neutral-500 hover:text-neutral-900 dark:hover:text-white transition-colors"
+              aria-label="Cerrar menú"
+            >
+              <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
-          <h1 className="text-xl font-bold tracking-tight text-neutral-900 dark:text-white">Satcom</h1>
-        </div>
 
         <nav className="flex flex-col gap-2">
           {navItems.map((item) => {
@@ -54,7 +87,8 @@ export default function Sidebar() {
         <span className="text-xs font-medium text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">Apariencia</span>
         <ThemeToggle />
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
 

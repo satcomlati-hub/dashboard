@@ -67,9 +67,9 @@ export default function MonitoreoWidget({ initialData, initialLoading = false, i
   }, [data, selectedDate, filterFecha, filterKey, filterPais, filterDetalle]);
 
   return (
-    <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl shadow-sm overflow-hidden flex flex-col h-[600px]">
-      <div className="p-5 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between sticky top-0 bg-white dark:bg-[#131313] z-10 transition-colors">
-        <div className="flex items-center gap-3">
+    <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl shadow-sm overflow-hidden flex flex-col h-[600px] max-h-[80vh] lg:max-h-none lg:h-[600px]">
+      <div className="p-4 lg:p-5 border-b border-neutral-200 dark:border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between sticky top-0 bg-white dark:bg-[#131313] z-10 transition-colors gap-4">
+        <div className="flex flex-wrap items-center gap-2 lg:gap-3">
           <h3 className="text-lg font-medium text-neutral-900 dark:text-white flex items-center gap-2">
             <Activity className="w-5 h-5 text-[#71BF44]" />
             Bitácora de Eventos
@@ -89,7 +89,7 @@ export default function MonitoreoWidget({ initialData, initialLoading = false, i
             </div>
           )}
         </div>
-        <span className="text-xs font-medium bg-[#71BF44]/10 text-[#71BF44] dark:bg-[#71BF44]/20 px-2.5 py-1 rounded-full">
+        <span className="text-xs font-medium bg-[#71BF44]/10 text-[#71BF44] dark:bg-[#71BF44]/20 px-2.5 py-1 rounded-full w-fit">
           {filteredData.length} / {data.length} Eventos
         </span>
       </div>
