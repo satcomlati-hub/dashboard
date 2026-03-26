@@ -7,7 +7,7 @@ export async function GET() {
   try {
     const query = `
       SELECT 
-          TO_CHAR(fecha_evento) AS fecha_ecuador, 
+          (fecha_evento) AS fecha_ecuador, 
           key, 
           num_eventos, 
           pais, 
