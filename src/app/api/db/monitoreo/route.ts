@@ -7,7 +7,7 @@ export async function GET() {
   try {
     const query = `
       SELECT 
-          TO_CHAR(created_at - interval '5 hours', 'DD-MM-YYYY HH24:MI:SS') AS fecha_ecuador, 
+          TO_CHAR(fecha_evento) AS fecha_ecuador, 
           key, 
           num_eventos, 
           pais, 
