@@ -138,13 +138,15 @@ export default function MonitoreoChart({ data, onPointClick, selectedDate }: Mon
                   tickLine={false} 
                   tick={{ fill: '#999', fontSize: 10, fontWeight: 500 }}
                   interval={Math.max(Math.floor(chartData.length / 10), 0)}
-                  // Format label to show only time
+                  // Format label to show date and time
                   tickFormatter={(val) => {
                     const d = new Date(val);
                     if (!isNaN(d.getTime())) {
+                      const day = String(d.getDate()).padStart(2, '0');
+                      const month = String(d.getMonth() + 1).padStart(2, '0');
                       const h = String(d.getHours()).padStart(2, '0');
                       const m = String(d.getMinutes()).padStart(2, '0');
-                      return `${h}:${m}`;
+                      return `${day}/${month} ${h}:${m}`;
                     }
                     return val.split(' ')[1]?.substring(0, 5) || val;
                   }}
