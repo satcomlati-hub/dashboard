@@ -61,15 +61,28 @@ const Activity = ({ className }: { className?: string }) => (
 );
 
 export default function MonitoreoChart({ data, onPointClick, selectedDate }: MonitoreoChartProps) {
-  // CRITICAL: We use 'date' (full timestamp) as the dataKey to ensure uniqueness.
-  // Using HH:MM as the key causes Recharts to group different dates together incorrectly.
-  const chartData = [...data].reverse().map(item => ({
-    timeLabel: item.fecha_ecuador.split(' ')[1]?.substring(0, 5) || '',
-    date: item.fecha_ecuador, // Full unique key
-    eventos: Number(item.num_eventos) || 0,
-    pais: item.pais,
-    key: item.key,
-  }));
+  const chartData = [...data].reverse().map(item => {
+    const d = new Date(item.fecha_ecuador);
+    let timeLabel = '';
+    
+    if (!isNaN(d.getTime())) {
+      // Format as HH:mm
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      timeLabel = `${hours}:${minutes}`;
+    } else {
+      // Fallback for DD-MM-YYYY HH:mm:ss
+      timeLabel = item.fecha_ecuador.split(' ')[1]?.substring(0, 5) || item.fecha_ecuador;
+    }
+
+    return {
+      timeLabel,
+      date: item.fecha_ecuador, // Full unique key
+      eventos: Number(item.num_eventos) || 0,
+      pais: item.pais,
+      key: item.key,
+    };
+  });
 
   const handleBarClick = (barData: any) => {
     if (onPointClick && barData && barData.date) {
@@ -125,8 +138,16 @@ export default function MonitoreoChart({ data, onPointClick, selectedDate }: Mon
                   tickLine={false} 
                   tick={{ fill: '#999', fontSize: 10, fontWeight: 500 }}
                   interval={Math.max(Math.floor(chartData.length / 10), 0)}
-                  // Format label to show only time, but index is full date
-                  tickFormatter={(val) => val.split(' ')[1]?.substring(0, 5) || val}
+                  // Format label to show only time
+                  tickFormatter={(val) => {
+                    const d = new Date(val);
+                    if (!isNaN(d.getTime())) {
+                      const h = String(d.getHours()).padStart(2, '0');
+                      const m = String(d.getMinutes()).padStart(2, '0');
+                      return `${h}:${m}`;
+                    }
+                    return val.split(' ')[1]?.substring(0, 5) || val;
+                  }}
                 />
                 <YAxis 
                   axisLine={false} 

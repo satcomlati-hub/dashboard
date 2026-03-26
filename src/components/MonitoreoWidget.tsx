@@ -199,7 +199,21 @@ export default function MonitoreoWidget({ initialData, initialLoading = false, i
               ) : (
                 filteredData.map((row, i) => (
                   <tr key={i} className={`hover:bg-neutral-50 dark:hover:bg-neutral-800/20 transition-colors ${selectedDate && row.fecha_ecuador === selectedDate ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}>
-                    <td className="px-4 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 font-mono tracking-tighter">{row.fecha_ecuador}</td>
+                    <td className="px-4 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 font-mono tracking-tighter">
+                      {(() => {
+                        const d = new Date(row.fecha_ecuador);
+                        if (!isNaN(d.getTime())) {
+                          const dd = String(d.getDate()).padStart(2, '0');
+                          const mm = String(d.getMonth() + 1).padStart(2, '0');
+                          const yyyy = d.getFullYear();
+                          const hh = String(d.getHours()).padStart(2, '0');
+                          const min = String(d.getMinutes()).padStart(2, '0');
+                          const ss = String(d.getSeconds()).padStart(2, '0');
+                          return `${dd}-${mm}-${yyyy} ${hh}:${min}:${ss}`;
+                        }
+                        return row.fecha_ecuador;
+                      })()}
+                    </td>
                     <td className="px-4 py-3.5 text-sm font-semibold text-neutral-900 dark:text-white">{row.key}</td>
                     <td className="px-4 py-3.5 text-sm text-[#71BF44] font-bold text-right">{row.num_eventos}</td>
                     <td className="px-4 py-3.5 text-sm">

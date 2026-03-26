@@ -56,12 +56,23 @@ export default function MonitoreoSubpage() {
     return data.filter(item => {
       if (selectedCountry !== 'Todos' && item.pais !== selectedCountry) return false;
 
-      const parseDate = (dStr: string) => {
+      const parseToYYYYMMDD = (dStr: string) => {
+        if (!dStr) return '';
+        const d = new Date(dStr);
+        if (!isNaN(d.getTime())) {
+          return d.toISOString().split('T')[0];
+        }
+        
+        // Fallback for DD-MM-YYYY format
         const parts = dStr.split(' ')[0].split('-');
-        return `${parts[2]}-${parts[1]}-${parts[0]}`;
+        if (parts.length === 3) {
+          if (parts[0].length === 4) return `${parts[0]}-${parts[1]}-${parts[2]}`; // YYYY-MM-DD
+          return `${parts[2]}-${parts[1]}-${parts[0]}`; // DD-MM-YYYY -> YYYY-MM-DD
+        }
+        return '';
       };
 
-      const itemDate = parseDate(item.fecha_ecuador);
+      const itemDate = parseToYYYYMMDD(item.fecha_ecuador);
       if (startDate && itemDate < startDate) return false;
       if (endDate && itemDate > endDate) return false;
 
@@ -72,8 +83,16 @@ export default function MonitoreoSubpage() {
   // Summary Metrics — always computed from ALL raw data so counters always show global totals
   const metricas = useMemo(() => {
     const parseToDate = (dStr: string) => {
+      if (!dStr) return new Date(0);
+      const d = new Date(dStr);
+      if (!isNaN(d.getTime())) return d;
+
+      // Fallback for DD-MM-YYYY HH:mm:ss format
       const parts = dStr.split(' ')[0].split('-');
       if (parts.length === 3) {
+        if (parts[0].length === 4) {
+          return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        }
         return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
       }
       return new Date(0);
@@ -97,9 +116,10 @@ export default function MonitoreoSubpage() {
       const itemDate = parseToDate(item.fecha_ecuador);
       itemDate.setHours(0, 0, 0, 0);
 
-      if (itemDate.getTime() === today.getTime()) hoy += val;
-      if (itemDate >= startOfWeek) semana += val;
-      if (itemDate >= startOfMonth) mes += val;
+      const itemTime = itemDate.getTime();
+      if (itemTime === today.getTime()) hoy += val;
+      if (itemTime >= startOfWeek.getTime()) semana += val;
+      if (itemTime >= startOfMonth.getTime()) mes += val;
     });
 
     return { total, mes, semana, hoy };
