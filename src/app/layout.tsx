@@ -37,7 +37,10 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className={`${inter.className} bg-white dark:bg-[#0e0e0e] text-neutral-900 dark:text-white antialiased transition-colors duration-200`}>
+      <body 
+        className={`${inter.className} bg-white dark:bg-[#0e0e0e] text-neutral-900 dark:text-white antialiased transition-colors duration-200`}
+        suppressHydrationWarning
+      >
         <NavigationWrapper>
           {children}
         </NavigationWrapper>
