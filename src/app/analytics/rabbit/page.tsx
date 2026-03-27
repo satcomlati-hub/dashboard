@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Server, ExternalLink, Clock, RefreshCw, Inbox, Users, Gauge, AlertTriangle, Info, XCircle } from 'lucide-react';
 
@@ -66,8 +66,9 @@ export default function MonitoreoRabbitPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedEnv, setSelectedEnv] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [countdown, setCountdown] = useState(300); // 5 minutes in seconds
 
-  const fetchData = async (isRefresh = false) => {
+  const fetchData = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
@@ -76,15 +77,32 @@ export default function MonitoreoRabbitPage() {
       const json: AmbienteRabbit[] = await res.json();
       setData(json);
       setError(null);
+      setCountdown(300); // Reset countdown on successful fetch
     } catch (err: any) {
       setError(err.message || 'Error desconocido');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Auto-refresh countdown effect
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          fetchData(true);
+          return 300;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [fetchData]);
 
   const selectedData = data.find(d => d.Ambiente === selectedEnv);
 
@@ -93,6 +111,12 @@ export default function MonitoreoRabbitPage() {
       const d = new Date(iso);
       return d.toLocaleString('es-EC', { dateStyle: 'medium', timeStyle: 'medium' });
     } catch { return iso; }
+  };
+
+  const formatCountdown = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   const totalColas = data.reduce((acc, d) => acc + d.Colas.length, 0);
@@ -120,14 +144,20 @@ export default function MonitoreoRabbitPage() {
             </div>
           </div>
 
-          <button
-            onClick={() => fetchData(true)}
-            disabled={refreshing}
-            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-[#111] text-xs font-bold text-[#71BF44] border border-[#71BF44]/30 rounded-lg shadow-sm hover:bg-[#71BF44]/5 transition-all disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            {refreshing ? 'Actualizando…' : 'Actualizar'}
-          </button>
+          <div className="flex items-center gap-4">
+            <div className="hidden sm:flex flex-col items-end">
+              <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Próxima actualización en</span>
+              <span className="text-sm font-mono font-bold text-[#71BF44]">{formatCountdown(countdown)}</span>
+            </div>
+            <button
+              onClick={() => fetchData(true)}
+              disabled={refreshing}
+              className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-[#111] text-xs font-bold text-[#71BF44] border border-[#71BF44]/30 rounded-lg shadow-sm hover:bg-[#71BF44]/5 transition-all disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              {refreshing ? 'Actualizando…' : 'Actualizar'}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -205,11 +235,17 @@ export default function MonitoreoRabbitPage() {
                 {/* Ambiente name */}
                 <h3 className="text-lg font-extrabold text-neutral-900 dark:text-white mb-1 tracking-tight">{env.Ambiente}</h3>
 
-                {/* URL */}
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate mb-3 flex items-center gap-1">
-                  <ExternalLink className="w-3 h-3 flex-shrink-0" />
-                  {env.Url}
-                </p>
+                {/* URL - Clickable Link */}
+                <a
+                  href={env.Url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-xs text-neutral-500 dark:text-neutral-400 truncate mb-3 flex items-center gap-1 hover:text-[#71BF44] transition-colors group/link"
+                >
+                  <ExternalLink className="w-3 h-3 flex-shrink-0 group-hover/link:scale-110 transition-transform" />
+                  <span className="truncate underline-offset-2 group-hover/link:underline">{env.Url}</span>
+                </a>
 
                 {/* Footer info */}
                 <div className="flex items-center justify-between pt-3 border-t border-neutral-200/50 dark:border-neutral-700/50">
@@ -229,7 +265,7 @@ export default function MonitoreoRabbitPage() {
 
       {/* Detail Panel */}
       {selectedData && (
-        <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <section id="detail-panel" className="animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-bold text-neutral-400 uppercase tracking-[0.2em]">
               Detalle de Colas — {selectedData.Ambiente}
