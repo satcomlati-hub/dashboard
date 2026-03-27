@@ -2,6 +2,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
+const POLL_INTERVAL = 30_000; // 30 segundos
+
 interface Workflow {
   id: string;
   name: string;
@@ -14,13 +16,19 @@ export default function ActiveTools() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/workflows')
-      .then(res => res.json())
-      .then(data => {
-        setWorkflows((data.data || []).slice(0, 8)); // Show only first 8
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    const load = () => {
+      fetch('/api/workflows')
+        .then(res => res.json())
+        .then(data => {
+          setWorkflows((data.data || []).slice(0, 8));
+          setLoading(false);
+        })
+        .catch(() => setLoading(false));
+    };
+
+    load();
+    const interval = setInterval(load, POLL_INTERVAL);
+    return () => clearInterval(interval);
   }, []);
 
   return (

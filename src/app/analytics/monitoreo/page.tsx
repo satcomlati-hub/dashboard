@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import MonitoreoChart from '@/components/MonitoreoChart';
 import MonitoreoWidget from '@/components/MonitoreoWidget';
-import { ChevronLeft, BarChart2, FilterX, Calendar, Globe, Activity, TrendingUp, Clock, CalendarDays } from 'lucide-react';
+import { ChevronLeft, BarChart2, FilterX, Calendar, Globe, Activity, TrendingUp, Clock, CalendarDays, RefreshCw } from 'lucide-react';
+
+const POLL_INTERVAL = 60_000; // 60 segundos
 
 interface Evento {
   fecha_ecuador: string;
@@ -18,6 +20,9 @@ export default function MonitoreoSubpage() {
   const [data, setData] = useState<Evento[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Global Filters
   const [startDate, setStartDate] = useState('');
@@ -28,22 +33,31 @@ export default function MonitoreoSubpage() {
   // Active counter for highlight
   const [activeCounter, setActiveCounter] = useState<'total' | 'mes' | 'semana' | 'hoy' | null>(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const res = await fetch('/api/db/monitoreo');
-        if (!res.ok) throw new Error('Error al obtener datos de monitoreo');
-        const json = await res.json();
-        if (json.error) throw new Error(json.error);
-        setData(json.data || []);
-      } catch (err: any) {
-        setError(err.message || 'Error desconocido');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
+  const fetchData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    try {
+      const res = await fetch('/api/db/monitoreo');
+      if (!res.ok) throw new Error('Error al obtener datos de monitoreo');
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      setData(json.data || []);
+      setLastUpdated(new Date());
+      setError(null);
+    } catch (err: any) {
+      setError(err.message || 'Error desconocido');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchData();
+    intervalRef.current = setInterval(() => fetchData(true), POLL_INTERVAL);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [fetchData]);
 
   // Countries for filter
   const countries = useMemo(() => {
@@ -211,6 +225,19 @@ export default function MonitoreoSubpage() {
           </div>
 
           <div className="flex items-center gap-3">
+            {lastUpdated && (
+              <span className="text-xs text-neutral-400 hidden sm:block">
+                Actualizado: {lastUpdated.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+            )}
+            <button
+              onClick={() => fetchData(true)}
+              disabled={refreshing}
+              className="p-2 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-50"
+              title="Actualizar ahora"
+            >
+              <RefreshCw className={`w-4 h-4 text-neutral-500 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
             <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-[#111] text-xs font-bold text-[#71BF44] border border-[#71BF44]/30 rounded-lg shadow-sm">
               <span className="flex h-2 w-2 relative">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#71BF44] opacity-75"></span>

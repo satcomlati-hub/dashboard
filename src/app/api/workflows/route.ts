@@ -5,6 +5,7 @@ const SARA_HOST = process.env.N8N_SARA_HOST;
 const SARA_JWT = process.env.N8N_SARA_JWT;
 const PRIMARY_HOST = process.env.N8N_PRIMARY_HOST;
 const PRIMARY_JWT = process.env.N8N_PRIMARY_JWT;
+const N8N_WORKFLOW_LIMIT = parseInt(process.env.N8N_WORKFLOW_LIMIT || '250', 10);
 
 const cleanHost = (url: string) => url.endsWith('/') ? url.slice(0, -1) : url;
 
@@ -12,7 +13,7 @@ async function fetchWorkflows(host: string, jwt: string, source: string) {
     if (!host) return [];
     
     // Removing the tags URL parameter because n8n v1 returns tags by default and fails when invalid parameters are given
-    const url = `${cleanHost(host)}/api/v1/workflows?limit=250`;
+    const url = `${cleanHost(host)}/api/v1/workflows?limit=${N8N_WORKFLOW_LIMIT}`;
     try {
         const res = await fetch(url, {
             headers: { 
