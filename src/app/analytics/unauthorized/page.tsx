@@ -17,7 +17,9 @@ import {
   MapPin, 
   X,
   AlertCircle,
-  BarChart3
+  BarChart3,
+  TrendingUp,
+  Table as TableIcon
 } from 'lucide-react';
 
 interface Voucher {
@@ -70,6 +72,10 @@ export default function UnauthorizedVouchersPage() {
     search: '',
   });
 
+  const hasActiveFilters = useMemo(() => {
+    return Object.values(filters).some(v => v !== '');
+  }, [filters]);
+
   const fetchData = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) setRefreshing(true);
@@ -94,7 +100,6 @@ export default function UnauthorizedVouchersPage() {
               console.error('Error parsing voucher data string:', e);
             }
           } else if (item.ambiente) {
-            // Already a voucher object (fallback for previous assumption)
             flattenedVouchers.push(item);
           }
         });
@@ -102,7 +107,7 @@ export default function UnauthorizedVouchersPage() {
       
       setData(flattenedVouchers);
       setError(null);
-      setCountdown(1800); // Reset to 30 minutes
+      setCountdown(1800);
     } catch (err: any) {
       setError(err.message || 'Error desconocido');
     } finally {
@@ -115,7 +120,6 @@ export default function UnauthorizedVouchersPage() {
     fetchData();
   }, [fetchData]);
 
-  // Auto-refresh countdown
   useEffect(() => {
     const timer = setInterval(() => {
       setCountdown((prev) => {
@@ -168,18 +172,31 @@ export default function UnauthorizedVouchersPage() {
   };
 
   const stats = useMemo(() => {
-    const byAmbiente = data.reduce((acc, d) => {
-      acc[d.ambiente] = (acc[d.ambiente] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-
     const byPais = data.reduce((acc, d) => {
       acc[d.co_pais] = (acc[d.co_pais] || 0) + 1;
       return acc;
     }, {} as Record<number, number>);
 
-    return { byAmbiente, byPais };
+    // Group by date for timeline
+    const byDate = data.reduce((acc, d) => {
+      const date = formatDate(d.co_fecha_emision);
+      acc[date] = (acc[date] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    // Sort dates
+    const sortedDates = Object.entries(byDate).sort((a, b) => {
+      const dateA = a[0].split('/').reverse().join('-');
+      const dateB = b[0].split('/').reverse().join('-');
+      return dateA.localeCompare(dateB);
+    }).slice(-15); // Show last 15 days active
+
+    return { byPais, sortedDates };
   }, [data]);
+
+  const maxDateCount = useMemo(() => {
+    return Math.max(...stats.sortedDates.map(d => d[1]), 1);
+  }, [stats.sortedDates]);
 
   return (
     <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 pb-20">
@@ -220,42 +237,83 @@ export default function UnauthorizedVouchersPage() {
         </div>
       </header>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-amber-500/10 rounded-lg">
-              <AlertCircle className="w-5 h-5 text-amber-500" />
-            </div>
-            <span className="text-[10px] font-bold text-neutral-400 uppercase">Total</span>
+      {/* Country Stats Cards */}
+      <div className="mb-8">
+        <div className="flex items-center gap-2 mb-4">
+           <Globe className="w-4 h-4 text-[#71BF44]" />
+           <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Distribución por País</span>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4">
+          <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 shadow-sm border-l-4 border-l-[#71BF44]">
+            <span className="text-[10px] font-bold text-neutral-400 uppercase block mb-1">TOTAL</span>
+            <h4 className="text-xl font-black text-neutral-900 dark:text-white">{data.length.toLocaleString()}</h4>
           </div>
-          <h4 className="text-2xl font-black text-neutral-900 dark:text-white">{data.length.toLocaleString()}</h4>
-          <p className="text-xs text-neutral-500 mt-1">Vouchers detectados</p>
+          {Object.entries(stats.byPais).map(([code, count]) => (
+            <button 
+              key={code} 
+              onClick={() => setFilters(f => ({ ...f, co_pais: f.co_pais === code ? '' : code }))}
+              className={`bg-white dark:bg-[#131313] border rounded-2xl p-4 shadow-sm transition-all hover:-translate-y-1 ${filters.co_pais === code ? 'border-[#71BF44] ring-1 ring-[#71BF44]/20 bg-[#71BF44]/5' : 'border-neutral-200 dark:border-neutral-800'}`}
+            >
+              <span className="text-[10px] font-bold text-neutral-400 uppercase block mb-1 truncate">{PAIS_MAP[Number(code)] || code}</span>
+              <h4 className="text-xl font-black text-neutral-900 dark:text-white">{count.toLocaleString()}</h4>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+        {/* Timeline Chart */}
+        <div className="lg:col-span-2 bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-[#71BF44]" />
+              <h3 className="text-sm font-bold text-neutral-900 dark:text-white uppercase tracking-wider">Histórico de Emisión</h3>
+            </div>
+            <span className="text-[10px] text-neutral-400 font-medium italic">Últimos días activos</span>
+          </div>
+          
+          <div className="h-48 flex items-end gap-2 sm:gap-4 px-2">
+            {stats.sortedDates.map(([date, count]) => (
+              <div key={date} className="flex-1 flex flex-col items-center gap-2 group relative">
+                <div 
+                  className="w-full bg-[#71BF44]/20 border border-[#71BF44]/10 rounded-t-lg transition-all group-hover:bg-[#71BF44] group-hover:scale-105 cursor-pointer"
+                  style={{ height: `${(count / maxDateCount) * 100}%` }}
+                >
+                   <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-neutral-900 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10 shadow-lg">
+                     {count} comprobantes
+                   </div>
+                </div>
+                <div className="text-[8px] font-bold text-neutral-400 rotate-45 origin-left mt-2 whitespace-nowrap hidden sm:block">
+                  {date}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {Object.entries(stats.byAmbiente).slice(0, 3).map(([amb, count]) => (
-          <div key={amb} className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-blue-500/10 rounded-lg">
-                <BarChart3 className="w-5 h-5 text-blue-500" />
-              </div>
-              <span className="text-[10px] font-bold text-neutral-400 uppercase">{amb}</span>
+        {/* Quick Filter Info */}
+        <div className="bg-[#71BF44]/5 border border-[#71BF44]/20 rounded-2xl p-6 flex flex-col justify-center text-center">
+            <div className="w-16 h-16 bg-[#71BF44]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <FileWarning className="w-8 h-8 text-[#71BF44]" />
             </div>
-            <h4 className="text-2xl font-black text-neutral-900 dark:text-white">{count.toLocaleString()}</h4>
-            <p className="text-xs text-neutral-500 mt-1">Ambiente {amb}</p>
-          </div>
-        ))}
+            <h3 className="text-lg font-bold text-neutral-900 dark:text-white mb-2">Análisis de Errores</h3>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed max-w-[250px] mx-auto">
+              Utilice los filtros para analizar causas comunes por país o establecimiento. 
+              <br/><br/>
+              <b>Tip:</b> Los datos se agrupan automáticamente para facilitar el diagnóstico masivo.
+            </p>
+        </div>
       </div>
 
       {/* Filters Bar */}
       <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 mb-6 shadow-sm">
         <div className="flex items-center gap-2 mb-4 border-b border-neutral-100 dark:border-neutral-800 pb-3">
           <Filter className="w-4 h-4 text-[#71BF44]" />
-          <span className="text-xs font-bold text-neutral-900 dark:text-white uppercase tracking-wider">Filtros</span>
-          {Object.values(filters).some(v => v !== '') && (
+          <span className="text-xs font-bold text-neutral-900 dark:text-white uppercase tracking-wider">Panel de Filtros</span>
+          {hasActiveFilters && (
             <button 
               onClick={() => setFilters({ ambiente: '', co_pais: '', co_nemonico: '', co_codigo_tipo_documento: '', co_establecimiento: '', co_punto_emision: '', search: '' })}
-              className="ml-auto text-[10px] text-red-500 hover:underline flex items-center gap-1"
+              className="ml-auto text-[10px] text-red-500 hover:underline flex items-center gap-1 font-bold"
             >
               <X className="w-3 h-3" /> Limpiar filtros
             </button>
@@ -322,7 +380,7 @@ export default function UnauthorizedVouchersPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-neutral-400 uppercase">PTO. EMISION</label>
+            <label className="text-[10px] font-bold text-neutral-400 uppercase">Pto. Emisión</label>
             <input 
               type="text"
               placeholder="001"
@@ -363,11 +421,33 @@ export default function UnauthorizedVouchersPage() {
           <p className="text-sm text-neutral-500 dark:text-neutral-400">{error}</p>
           <button onClick={() => fetchData()} className="mt-4 px-6 py-2 bg-red-500 text-white rounded-xl text-sm font-bold hover:bg-red-600 transition-colors">Reintentar</button>
         </div>
-      ) : (
-        <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden shadow-sm">
-          <div className="p-4 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-            <span className="text-xs font-bold text-neutral-500">Mostrando {filteredData.length} resultados</span>
+      ) : !hasActiveFilters ? (
+        <div className="bg-white dark:bg-[#131313] border-2 border-dashed border-neutral-200 dark:border-neutral-800 rounded-3xl p-20 text-center">
+          <div className="w-20 h-20 bg-neutral-50 dark:bg-neutral-900 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Filter className="w-10 h-10 text-neutral-300" />
           </div>
+          <h3 className="text-xl font-bold text-neutral-900 dark:text-white mb-2">Seleccione un filtro para ver el detalle</h3>
+          <p className="text-sm text-neutral-500 max-w-md mx-auto leading-relaxed">
+            Para optimizar el rendimiento, debe seleccionar al menos un criterio de búsqueda (ej: País o Ambiente) para visualizar el listado de comprobantes.
+          </p>
+          <div className="mt-8 flex items-center justify-center gap-4 text-xs font-bold text-neutral-400 uppercase tracking-widest">
+             <span className="flex items-center gap-2 px-3 py-1 bg-neutral-50 dark:bg-neutral-900 rounded-full">1. Elige un País</span>
+             <span className="text-neutral-300">→</span>
+             <span className="flex items-center gap-2 px-3 py-1 bg-neutral-50 dark:bg-neutral-900 rounded-full">2. Ver Detalle</span>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="p-4 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TableIcon className="w-4 h-4 text-[#71BF44]" />
+              <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Listado de Comprobantes</span>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 bg-[#71BF44]/10 text-[#71BF44] rounded-full">
+              {filteredData.length.toLocaleString()} resultados
+            </span>
+          </div>
+          
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
