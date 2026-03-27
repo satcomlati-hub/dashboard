@@ -78,8 +78,29 @@ export default function UnauthorizedVouchersPage() {
       const res = await fetch('https://sara.mysatcomla.com/webhook/MonitoreoNoAutorizados');
       if (!res.ok) throw new Error('Error al obtener datos de comprobantes');
       
-      const json: Voucher[] = await res.json();
-      setData(json);
+      const json: any = await res.json();
+      
+      // Handle the nested structure: [{ data: "[...]" }, { data: "[...]" }]
+      let flattenedVouchers: Voucher[] = [];
+      if (Array.isArray(json)) {
+        json.forEach(item => {
+          if (item.data && typeof item.data === 'string') {
+            try {
+              const parsed = JSON.parse(item.data);
+              if (Array.isArray(parsed)) {
+                flattenedVouchers = [...flattenedVouchers, ...parsed];
+              }
+            } catch (e) {
+              console.error('Error parsing voucher data string:', e);
+            }
+          } else if (item.ambiente) {
+            // Already a voucher object (fallback for previous assumption)
+            flattenedVouchers.push(item);
+          }
+        });
+      }
+      
+      setData(flattenedVouchers);
       setError(null);
       setCountdown(1800); // Reset to 30 minutes
     } catch (err: any) {
