@@ -438,7 +438,7 @@ export default function UnauthorizedVouchersPage() {
             <table className="w-full text-sm">
                <thead>
                   <tr className="bg-neutral-50 dark:bg-[#0c0c0c] border-b border-neutral-200 dark:border-neutral-800">
-                     <th className="px-6 py-6 min-w-[300px]">
+                     <th className="px-6 py-4 min-w-[300px]">
                         <div className="space-y-4">
                            <button onClick={() => toggleSort('co_num_comprobante')} className="flex items-center gap-2 text-[10px] font-black text-neutral-400 uppercase tracking-widest hover:text-[#71BF44] transition-colors group">
                               Comprobante
@@ -511,18 +511,18 @@ export default function UnauthorizedVouchersPage() {
                       if ('type' in item && item.type === 'header') {
                         const isExp = expandedGroups.has(item.label);
                         return (
-                          <tr key={`h-${item.label}`} className="bg-neutral-50 dark:bg-black/80 sticky top-0 z-20 transition-all hover:bg-neutral-100 dark:hover:bg-[#111]">
-                             <td colSpan={5} className="px-6 py-2.5 cursor-pointer" onClick={() => toggleGroup(item.label)}>
+                          <tr key={`h-${item.label}`} className="bg-neutral-100 dark:bg-black/90 sticky top-0 z-20 transition-all hover:bg-neutral-200 dark:hover:bg-[#111] border-l-4 border-l-[#71BF44]">
+                             <td colSpan={5} className="px-6 py-3 cursor-pointer" onClick={() => toggleGroup(item.label)}>
                                 <div className="flex items-center justify-between">
                                    <div className="flex items-center gap-3">
-                                      <div className={`p-1.5 rounded-lg ${isExp ? 'bg-[#71BF44] text-white' : 'bg-neutral-800 text-neutral-500'}`}>
+                                      <div className={`p-1.5 rounded-lg ${isExp ? 'bg-[#71BF44] text-white' : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'}`}>
                                          {isExp ? <ChevronDown className="w-3 h-3"/> : <ChevronRight className="w-3 h-3"/>}
                                       </div>
-                                      <span className="text-[10px] font-black text-white uppercase tracking-widest">{item.label}</span>
-                                      <span className="text-[10px] font-bold text-neutral-500">[{item.count}]</span>
+                                      <span className="text-[11px] font-black text-neutral-900 dark:text-white uppercase tracking-[0.1em]">{item.label}</span>
+                                      <span className="text-[11px] font-bold text-neutral-400">({item.count})</span>
                                    </div>
-                                   <div className="h-0.5 flex-1 mx-6 bg-[#71BF44]/5"></div>
-                                   <span className="text-[9px] font-black text-neutral-600 uppercase tracking-tighter">{isExp ? 'CONTRAER' : 'EXPANDIR'}</span>
+                                   <div className="h-0.5 flex-1 mx-6 bg-[#71BF44]/10"></div>
+                                   <span className="text-[9px] font-black text-neutral-500 uppercase tracking-tighter">{isExp ? 'CONTRAER' : 'EXPANDIR'}</span>
                                 </div>
                              </td>
                           </tr>
