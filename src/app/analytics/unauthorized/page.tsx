@@ -304,40 +304,42 @@ export default function UnauthorizedVouchersPage() {
   return (
     <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 pb-20">
       {/* Header */}
-      <header className="mb-8 py-6 border-b border-neutral-100 dark:border-neutral-800">
-        <div className="flex items-center gap-2 mb-4">
+      <header className="mb-12 py-8 border-b border-neutral-100 dark:border-neutral-800">
+        <div className="flex items-center gap-2 mb-6">
           <Link href="/analytics" className="text-sm text-[#71BF44] hover:underline flex items-center gap-1 font-semibold transition-all group">
             <ChevronLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-            Analytics
+            Regresar a Analytics
           </Link>
         </div>
-
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
-             <div className="w-14 h-14 rounded-[20px] bg-[#71BF44]/10 flex items-center justify-center shadow-inner ring-1 ring-[#71BF44]/20">
-                <FileWarning className="w-8 h-8 text-[#71BF44]" />
-             </div>
-             <div>
-                <h2 className="text-3xl font-black text-neutral-900 dark:text-white tracking-tight">Comprobantes No Autorizados</h2>
-                <div className="flex items-center gap-3 mt-1">
-                   <span className="text-xs font-bold text-neutral-400 uppercase flex items-center gap-1">
-                      <RefreshCw className="w-3 h-3" /> {formatCountdown(countdown)}
-                   </span>
-                   <span className="w-1 h-1 rounded-full bg-neutral-300"></span>
-                   <span className="text-[10px] font-black text-[#71BF44] uppercase tracking-widest">Live Monitor</span>
+        
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
+          <div className="flex items-center gap-6">
+            <div className="p-4 bg-white dark:bg-[#111] border border-[#71BF44]/20 rounded-2xl shadow-lg shadow-[#71BF44]/5 flex items-center justify-center">
+              <FileWarning className="w-8 h-8 text-[#71BF44]" />
+            </div>
+            <div>
+              <h1 className="text-4xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none mb-2">
+                Comprobantes No Autorizados <span className="text-[#71BF44] opacity-50 text-sm ml-2 font-black">(Refinado)</span>
+              </h1>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <RefreshCw className={`w-3.5 h-3.5 text-[#71BF44] ${refreshing ? 'animate-spin' : ''}`} />
+                  <span className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">{formatCountdown(countdown)}</span>
                 </div>
-             </div>
+                <div className="w-1.5 h-1.5 rounded-full bg-[#71BF44] animate-pulse"></div>
+                <span className="text-[10px] font-black text-[#71BF44] uppercase tracking-[0.2em]">Live Monitor</span>
+              </div>
+            </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => fetchData(true)}
-              className="flex items-center gap-2 px-5 py-2.5 bg-neutral-900 dark:bg-white text-white dark:text-black rounded-xl text-xs font-black shadow-lg shadow-[#71BF44]/10 hover:bg-[#71BF44] dark:hover:bg-[#71BF44] dark:hover:text-white transition-all"
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-              Sincronizar
-            </button>
-          </div>
+          <button 
+            onClick={() => fetchData(true)}
+            disabled={refreshing}
+            className="bg-neutral-900 border border-neutral-800 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all hover:bg-black hover:border-[#71BF44] flex items-center gap-3 shadow-2xl active:scale-95"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Sincronizar Datos
+          </button>
         </div>
       </header>
 
@@ -397,16 +399,21 @@ export default function UnauthorizedVouchersPage() {
       <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[24px] p-6 mb-8 shadow-sm">
          <div className="flex items-center gap-2 mb-8">
             <TrendingUp className="w-4 h-4 text-[#71BF44]" />
-            <h3 className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">Trayectoria Temporal de Ingreso (co_hora_in)</h3>
+            <h3 className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">Volumen de Ingreso por Fecha (co_hora_in)</h3>
          </div>
-         <div className="h-40 flex items-end gap-3 sm:gap-6 px-4">
+         <div className="h-48 flex items-end gap-3 sm:gap-6 px-4 border-b border-neutral-100 dark:border-neutral-800/10">
             {stats.sortedDates.map(([date, count]) => (
-              <div key={date} className="flex-1 flex flex-col items-center gap-2 group relative">
+              <div key={date} className="flex-1 flex flex-col items-center gap-2 group relative h-full justify-end">
+                 <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-neutral-900 text-white text-[10px] font-black px-2 py-1 rounded-md pointer-events-none z-10 whitespace-nowrap">
+                   {count} comprobantes
+                 </div>
                  <div 
-                   className="w-full bg-[#71BF44]/10 border-t-2 border-[#71BF44] rounded-t-sm transition-all group-hover:bg-[#71BF44]/30"
+                   className="w-full bg-[#71BF44]/40 border-t-4 border-[#71BF44] rounded-t-xl transition-all group-hover:bg-[#71BF44]/60 shadow-[0_0_20px_rgba(113,191,68,0.1)]"
                    style={{ height: `${(count / maxDateCount) * 100}%` }}
                  />
-                 <div className="text-[8px] font-bold text-neutral-500 rotate-45 origin-left mt-2 whitespace-nowrap">{date.split('-').reverse().join('/')}</div>
+                 <div className="text-[8px] font-black text-neutral-500 rotate-45 origin-left mt-4 mb-2 whitespace-nowrap uppercase tracking-tighter">
+                   {date.split('-').reverse().join('/')}
+                 </div>
               </div>
             ))}
          </div>
