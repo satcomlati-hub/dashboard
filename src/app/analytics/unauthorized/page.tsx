@@ -215,15 +215,20 @@ export default function UnauthorizedVouchersPage() {
 
   const displayItems = useMemo(() => {
     const flat: (Voucher | { type: 'header'; label: string; count: number })[] = [];
-    groupedData.forEach(group => {
+    if (!anyFilterActive) return [];
+    
+    for (const group of groupedData) {
       if (groupBy !== 'none') {
         flat.push({ type: 'header', label: group.key, count: group.vouchers.length });
-        if (!expandedGroups.has(group.key)) return;
+        if (expandedGroups.has(group.key)) {
+          flat.push(...group.vouchers);
+        }
+      } else {
+        flat.push(...group.vouchers);
       }
-      flat.push(...group.vouchers);
-    });
+    }
     return flat;
-  }, [groupedData, groupBy, expandedGroups]);
+  }, [groupedData, groupBy, expandedGroups, anyFilterActive]);
 
   const totalPages = Math.ceil(displayItems.length / pageSize);
   const paginatedItems = useMemo(() => {
@@ -511,18 +516,18 @@ export default function UnauthorizedVouchersPage() {
                       if ('type' in item && item.type === 'header') {
                         const isExp = expandedGroups.has(item.label);
                         return (
-                          <tr key={`h-${item.label}`} className="bg-neutral-100 dark:bg-black/90 sticky top-0 z-20 transition-all hover:bg-neutral-200 dark:hover:bg-[#111] border-l-4 border-l-[#71BF44]">
-                             <td colSpan={5} className="px-6 py-3 cursor-pointer" onClick={() => toggleGroup(item.label)}>
+                          <tr key={`h-${item.label}`} className="bg-neutral-800 dark:bg-black/90 z-20 transition-all hover:bg-neutral-700 border-l-4 border-l-[#71BF44]">
+                             <td colSpan={5} className="px-6 py-4 cursor-pointer" onClick={() => toggleGroup(item.label)}>
                                 <div className="flex items-center justify-between">
                                    <div className="flex items-center gap-3">
-                                      <div className={`p-1.5 rounded-lg ${isExp ? 'bg-[#71BF44] text-white' : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'}`}>
+                                      <div className={`p-1.5 rounded-lg ${isExp ? 'bg-[#71BF44] text-white' : 'bg-neutral-700 text-neutral-400'}`}>
                                          {isExp ? <ChevronDown className="w-3 h-3"/> : <ChevronRight className="w-3 h-3"/>}
                                       </div>
-                                      <span className="text-[11px] font-black text-neutral-900 dark:text-white uppercase tracking-[0.1em]">{item.label}</span>
-                                      <span className="text-[11px] font-bold text-neutral-400">({item.count})</span>
+                                      <span className="text-xs font-black text-white uppercase tracking-[0.1em]">{item.label}</span>
+                                      <span className="text-xs font-bold text-[#71BF44]">({item.count})</span>
                                    </div>
-                                   <div className="h-0.5 flex-1 mx-6 bg-[#71BF44]/10"></div>
-                                   <span className="text-[9px] font-black text-neutral-500 uppercase tracking-tighter">{isExp ? 'CONTRAER' : 'EXPANDIR'}</span>
+                                   <div className="h-[1px] flex-1 mx-6 bg-white/5"></div>
+                                   <span className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">{isExp ? 'OCULTAR DETALLE' : 'VER DETALLE'}</span>
                                 </div>
                              </td>
                           </tr>
@@ -531,9 +536,10 @@ export default function UnauthorizedVouchersPage() {
                       
                       const v = item as Voucher;
                       const ID = v.Column1 || (v as any).co_id_comprobante;
+                      const isGrouped = groupBy !== 'none';
                       return (
-                        <tr key={ID} className="group hover:bg-[#71BF44]/5 transition-all">
-                           <td className="px-6 py-6 transition-all group-hover:pl-8">
+                        <tr key={ID} className={`group transition-all ${isGrouped ? 'bg-[#71BF44]/[0.02] hover:bg-[#71BF44]/10' : 'hover:bg-[#71BF44]/5'}`}>
+                           <td className={`px-6 py-6 transition-all ${isGrouped ? 'pl-10' : 'group-hover:pl-8'}`}>
                               <div className="flex flex-col">
                                  <a 
                                   href={`https://www5.mysatcomla.com/Facturacion/Comprobantes/DetalleReporte?idComprobante=${ID}`}
