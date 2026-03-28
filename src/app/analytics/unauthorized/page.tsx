@@ -380,14 +380,6 @@ export default function UnauthorizedVouchersPage() {
                  <span className="text-[10px] font-bold text-neutral-500 uppercase">En Vista</span>
                  <span className="text-xl font-black text-[#71BF44]">{filteredData.length.toLocaleString()}</span>
               </div>
-              <button 
-                onClick={handleCopy}
-                disabled={filteredData.length === 0}
-                className={`w-full py-3 mt-4 rounded-xl text-[10px] font-black uppercase transition-all flex items-center justify-center gap-2 ${copied ? 'bg-green-600 text-white' : 'bg-[#71BF44] text-white hover:bg-[#5fa338] shadow-lg shadow-[#71BF44]/20'}`}
-              >
-                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                {copied ? 'Copiado!' : 'Exportar Lista IDs'}
-              </button>
            </div>
         </div>
       </div>
@@ -434,6 +426,15 @@ export default function UnauthorizedVouchersPage() {
                ))}
             </div>
          </div>
+
+         <button 
+           onClick={handleCopy}
+           disabled={filteredData.length === 0}
+           className={`px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase transition-all flex items-center gap-2 shadow-xl ${copied ? 'bg-green-600 text-white' : 'bg-[#71BF44] text-white hover:bg-[#5fa338] shadow-lg shadow-[#71BF44]/20'}`}
+         >
+           {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+           {copied ? 'Copiado!' : 'Exportar Lista IDs'}
+         </button>
 
          {/* Pagination Controls */}
          {totalPages > 1 && (
