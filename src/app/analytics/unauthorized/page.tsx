@@ -195,7 +195,10 @@ export default function UnauthorizedVouchersPage() {
     return result;
   }, [data, filters, sortField, sortOrder]);
 
+  const anyFilterActive = useMemo(() => Object.values(filters).some(v => v !== ''), [filters]);
+
   const groupedData = useMemo(() => {
+    if (!anyFilterActive) return [];
     if (groupBy === 'none') return [{ key: 'Todos', vouchers: filteredData }];
     const groups: Record<string, Voucher[]> = {};
     filteredData.forEach(v => {
@@ -327,16 +330,24 @@ export default function UnauthorizedVouchersPage() {
               </div>
            </div>
            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
-              {Object.entries(stats.byPais).map(([code, count]) => (
-                <div key={code} className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 shadow-sm relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 w-16 h-16 bg-[#71BF44]/5 rounded-bl-[40px] -mr-4 -mt-4 transition-all group-hover:scale-110"></div>
-                  <span className="text-[9px] font-black text-neutral-400 uppercase block mb-1 truncate">{PAIS_MAP[Number(code)] || code}</span>
-                  <div className="text-2xl font-black text-neutral-900 dark:text-white mb-1">{count}</div>
-                  <div className="w-full h-1 bg-neutral-100 dark:bg-neutral-800 rounded-full mt-2 overflow-hidden">
-                     <div className="h-full bg-[#71BF44]" style={{ width: `${(count / data.length) * 100}%` }}></div>
-                  </div>
-                </div>
-              ))}
+              {Object.entries(stats.byPais).map(([code, count]) => {
+                const countryName = PAIS_MAP[Number(code)] || code;
+                const isActive = filters.co_pais === countryName;
+                return (
+                  <button 
+                   key={code} 
+                   onClick={() => { setFilters(f => ({ ...f, co_pais: isActive ? '' : countryName })); setCurrentPage(1); }}
+                   className={`bg-white dark:bg-[#111] border rounded-2xl p-4 shadow-sm relative overflow-hidden group transition-all text-left ${isActive ? 'border-[#71BF44] ring-2 ring-[#71BF44]/20' : 'border-neutral-200 dark:border-neutral-800 border-neutral-200 dark:border-neutral-800 hover:border-[#71BF44]/50'}`}
+                  >
+                    <div className={`absolute top-0 right-0 w-16 h-16 rounded-bl-[40px] -mr-4 -mt-4 transition-all group-hover:scale-110 ${isActive ? 'bg-[#71BF44]/20' : 'bg-[#71BF44]/5'}`}></div>
+                    <span className="text-[9px] font-black text-neutral-400 uppercase block mb-1 truncate">{countryName}</span>
+                    <div className={`text-2xl font-black mb-1 ${isActive ? 'text-[#71BF44]' : 'text-neutral-900 dark:text-white'}`}>{count}</div>
+                    <div className="w-full h-1 bg-neutral-100 dark:bg-neutral-800 rounded-full mt-2 overflow-hidden">
+                       <div className="h-full bg-[#71BF44]" style={{ width: `${(count / data.length) * 100}%` }}></div>
+                    </div>
+                  </button>
+                );
+              })}
            </div>
         </div>
 
@@ -486,7 +497,14 @@ export default function UnauthorizedVouchersPage() {
                   </tr>
                </thead>
                <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/10">
-                  {paginatedItems.length === 0 ? (
+                  {!anyFilterActive ? (
+                    <tr><td colSpan={5} className="py-24 text-center">
+                       <div className="flex flex-col items-center gap-4 animate-pulse">
+                          <Filter className="w-12 h-12 text-neutral-700" />
+                          <div className="text-neutral-500 font-black uppercase tracking-[0.2em]">Seleccione un País o aplique un filtro para visualizar datos</div>
+                       </div>
+                    </td></tr>
+                  ) : paginatedItems.length === 0 ? (
                     <tr><td colSpan={5} className="py-24 text-center text-neutral-400 font-black uppercase tracking-[0.5em] opacity-20 text-3xl">Sin Registros</td></tr>
                   ) : (
                     paginatedItems.map((item, i) => {
