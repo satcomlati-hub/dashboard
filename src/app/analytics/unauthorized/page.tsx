@@ -258,18 +258,21 @@ export default function UnauthorizedVouchersPage() {
       return acc;
     }, {} as Record<number, number>);
 
-    const byTime = data.reduce((acc, d) => {
-      const date = new Date(d.co_hora_in).toLocaleDateString('es-EC');
-      acc[date] = (acc[date] || 0) + 1;
+    const byTime = filteredData.reduce((acc, d) => {
+      const field = d.co_hora_in;
+      if (!field || typeof field !== 'string') return acc;
+      const datePart = field.split('T')[0];
+      if (!datePart) return acc;
+      acc[datePart] = (acc[datePart] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
     const sortedDates = Object.entries(byTime).sort((a, b) => {
-      return new Date(a[0]).getTime() - new Date(b[0]).getTime();
+      return a[0].localeCompare(b[0]);
     }).slice(-15);
 
     return { byPais, sortedDates };
-  }, [data]);
+  }, [data, filteredData]);
 
   const maxDateCount = useMemo(() => Math.max(...stats.sortedDates.map(d => d[1]), 1), [stats.sortedDates]);
 
@@ -403,7 +406,7 @@ export default function UnauthorizedVouchersPage() {
                    className="w-full bg-[#71BF44]/10 border-t-2 border-[#71BF44] rounded-t-sm transition-all group-hover:bg-[#71BF44]/30"
                    style={{ height: `${(count / maxDateCount) * 100}%` }}
                  />
-                 <div className="text-[8px] font-bold text-neutral-500 rotate-45 origin-left mt-2 whitespace-nowrap">{date}</div>
+                 <div className="text-[8px] font-bold text-neutral-500 rotate-45 origin-left mt-2 whitespace-nowrap">{date.split('-').reverse().join('/')}</div>
               </div>
             ))}
          </div>
