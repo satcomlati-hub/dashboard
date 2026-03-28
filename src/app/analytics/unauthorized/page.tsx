@@ -87,7 +87,7 @@ export default function UnauthorizedVouchersPage() {
   const pageSize = 200;
   const [sortField, setSortField] = useState<SortField>('co_hora_in');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
-  const [groupBy, setGroupBy] = useState<'none' | 'co_nemonico' | 'reprocesos' | 'co_detalle' | 'DescripcionEstatus' | 'DescripcionTipoDocumento'>('none');
+  const [groupBy, setGroupBy] = useState<'none' | 'co_nemonico' | 'DescripcionTipoDocumento' | 'DescripcionEstatus' | 'co_detalle'>('none');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   // Global but hidden from top UI (driven by column filters)
@@ -201,14 +201,13 @@ export default function UnauthorizedVouchersPage() {
     filteredData.forEach(v => {
       let key = 'Sin Categoría';
       if (groupBy === 'co_nemonico') key = v.co_nemonico;
-      else if (groupBy === 'reprocesos') key = (v.co_numero_reprocesos || 0) > 0 ? 'Con Reprocesos' : 'Sin Reprocesos';
       else if (groupBy === 'co_detalle') key = v.co_detalle || 'Sin Detalle';
       else if (groupBy === 'DescripcionEstatus') key = v.DescripcionEstatus || 'Sin Estado';
       else if (groupBy === 'DescripcionTipoDocumento') key = v.DescripcionTipoDocumento || 'Sin Tipo Documento';
       if (!groups[key]) groups[key] = [];
       groups[key].push(v);
     });
-    return Object.entries(groups).map(([key, vouchers]) => ({ key, vouchers })).sort((a, b) => a.key.localeCompare(b.key));
+    return Object.entries(groups).map(([key, vouchers]) => ({ key, vouchers })).sort((a, b) => b.vouchers.length - a.vouchers.length);
   }, [filteredData, groupBy]);
 
   const displayItems = useMemo(() => {
@@ -267,6 +266,12 @@ export default function UnauthorizedVouchersPage() {
     if (next.has(key)) next.delete(key);
     else next.add(key);
     setExpandedGroups(next);
+  };
+
+  const formatCountdown = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -389,10 +394,9 @@ export default function UnauthorizedVouchersPage() {
                {[
                  { id: 'none', label: 'Lista Plana' },
                  { id: 'co_nemonico', label: 'Nemónico' },
-                 { id: 'reprocesos', label: 'Reprocesos' },
-                 { id: 'co_detalle', label: 'Motivo' },
+                 { id: 'DescripcionTipoDocumento', label: 'Documento' },
                  { id: 'DescripcionEstatus', label: 'Estado' },
-                 { id: 'DescripcionTipoDocumento', label: 'Documento' }
+                 { id: 'co_detalle', label: 'Motivo' }
                ].map(opt => (
                  <button
                   key={opt.id}
