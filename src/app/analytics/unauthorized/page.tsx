@@ -129,7 +129,13 @@ export default function UnauthorizedVouchersPage() {
         });
       }
       
-      setData(flattened);
+      const uniqueMap = new Map();
+      flattened.forEach(v => {
+        const id = v.Column1 || (v as any).co_id_comprobante;
+        if (id && !uniqueMap.has(id)) uniqueMap.set(id, v);
+      });
+      
+      setData(Array.from(uniqueMap.values()));
       setError(null);
       setCountdown(1800);
       setExpandedGroups(new Set());
@@ -203,10 +209,10 @@ export default function UnauthorizedVouchersPage() {
     const groups: Record<string, Voucher[]> = {};
     filteredData.forEach(v => {
       let key = 'Sin Categoría';
-      if (groupBy === 'co_nemonico') key = v.co_nemonico;
-      else if (groupBy === 'co_detalle') key = v.co_detalle || 'Sin Detalle';
-      else if (groupBy === 'DescripcionEstatus') key = v.DescripcionEstatus || 'Sin Estado';
-      else if (groupBy === 'DescripcionTipoDocumento') key = v.DescripcionTipoDocumento || 'Sin Tipo Documento';
+      if (groupBy === 'co_nemonico') key = (v.co_nemonico || '').trim();
+      else if (groupBy === 'co_detalle') key = (v.co_detalle || '').trim() || 'Sin Detalle';
+      else if (groupBy === 'DescripcionEstatus') key = (v.DescripcionEstatus || '').trim() || 'Sin Estado';
+      else if (groupBy === 'DescripcionTipoDocumento') key = (v.DescripcionTipoDocumento || '').trim() || 'Sin Tipo Documento';
       if (!groups[key]) groups[key] = [];
       groups[key].push(v);
     });
@@ -214,21 +220,25 @@ export default function UnauthorizedVouchersPage() {
   }, [filteredData, groupBy]);
 
   const displayItems = useMemo(() => {
-    const flat: (Voucher | { type: 'header'; label: string; count: number })[] = [];
     if (!anyFilterActive) return [];
     
-    for (const group of groupedData) {
-      if (groupBy !== 'none') {
+    const flat: (Voucher | { type: 'header'; label: string; count: number })[] = [];
+    
+    if (groupBy === 'none') {
+      // In flat mode, just show all vouchers
+      flat.push(...filteredData);
+    } else {
+      // In grouped mode, show headers and expanded items
+      for (const group of groupedData) {
         flat.push({ type: 'header', label: group.key, count: group.vouchers.length });
         if (expandedGroups.has(group.key)) {
           flat.push(...group.vouchers);
         }
-      } else {
-        flat.push(...group.vouchers);
       }
     }
+    
     return flat;
-  }, [groupedData, groupBy, expandedGroups, anyFilterActive]);
+  }, [filteredData, groupedData, groupBy, expandedGroups, anyFilterActive]);
 
   const totalPages = Math.ceil(displayItems.length / pageSize);
   const paginatedItems = useMemo(() => {
