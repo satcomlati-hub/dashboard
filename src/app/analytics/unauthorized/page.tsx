@@ -81,6 +81,7 @@ export default function UnauthorizedVouchersPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [countdown, setCountdown] = useState(1800);
   const [copied, setCopied] = useState(false);
+  const [groupCopied, setGroupCopied] = useState<string | null>(null);
 
   // Layout states
   const [currentPage, setCurrentPage] = useState(1);
@@ -222,7 +223,7 @@ export default function UnauthorizedVouchersPage() {
   const displayItems = useMemo(() => {
     if (!anyFilterActive) return [];
     
-    const flat: (Voucher | { type: 'header'; label: string; count: number })[] = [];
+    const flat: (Voucher | { type: 'header'; label: string; count: number; vouchers: Voucher[] })[] = [];
     
     if (groupBy === 'none') {
       // In flat mode, just show all vouchers
@@ -230,7 +231,12 @@ export default function UnauthorizedVouchersPage() {
     } else {
       // In grouped mode, show headers and expanded items
       for (const group of groupedData) {
-        flat.push({ type: 'header', label: group.key, count: group.vouchers.length });
+        flat.push({ 
+          type: 'header', 
+          label: group.key, 
+          count: group.vouchers.length,
+          vouchers: group.vouchers
+        });
         if (expandedGroups.has(group.key)) {
           flat.push(...group.vouchers);
         }
@@ -427,15 +433,6 @@ export default function UnauthorizedVouchersPage() {
             </div>
          </div>
 
-         <button 
-           onClick={handleCopy}
-           disabled={filteredData.length === 0}
-           className={`px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase transition-all flex items-center gap-2 shadow-xl ${copied ? 'bg-green-600 text-white' : 'bg-[#71BF44] text-white hover:bg-[#5fa338] shadow-lg shadow-[#71BF44]/20'}`}
-         >
-           {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-           {copied ? 'Copiado!' : 'Exportar Lista IDs'}
-         </button>
-
          {/* Pagination Controls */}
          {totalPages > 1 && (
             <div className="flex items-center gap-4 bg-[#111] border border-neutral-800 px-4 py-2 rounded-2xl">
@@ -537,9 +534,25 @@ export default function UnauthorizedVouchersPage() {
                                       <span className="text-xs font-black text-white uppercase tracking-[0.1em]">{item.label}</span>
                                       <span className="text-xs font-bold text-[#71BF44]">({item.count})</span>
                                    </div>
-                                   <div className="h-[1px] flex-1 mx-6 bg-white/5"></div>
-                                   <span className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">{isExp ? 'OCULTAR DETALLE' : 'VER DETALLE'}</span>
-                                </div>
+                                    <div className="flex items-center gap-4 mr-4">
+                                       <button
+                                          onClick={(e) => {
+                                             e.stopPropagation();
+                                             const vouchers = (item as any).vouchers;
+                                             const ids = vouchers.map((v: any) => v.Column1 || v.co_id_comprobante).join('\n');
+                                             navigator.clipboard.writeText(ids);
+                                             setGroupCopied(item.label);
+                                             setTimeout(() => setGroupCopied(null), 2000);
+                                          }}
+                                          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all border ${groupCopied === item.label ? 'bg-green-600 text-white border-green-500' : 'bg-white/5 text-neutral-400 border-white/10 hover:bg-[#71BF44] hover:text-white hover:border-[#71BF44] shadow-lg shadow-black/20'}`}
+                                          title="Copiar IDs de este grupo"
+                                       >
+                                          {groupCopied === item.label ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                          <span>{groupCopied === item.label ? 'Copiado!' : 'Exportar IDs'}</span>
+                                       </button>
+                                       <span className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">{isExp ? 'OCULTAR DETALLE' : 'VER DETALLE'}</span>
+                                    </div>
+                                 </div>
                              </td>
                           </tr>
                         );
