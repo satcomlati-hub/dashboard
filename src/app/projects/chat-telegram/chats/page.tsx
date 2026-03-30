@@ -29,9 +29,6 @@ export default function ChatsPage() {
 
   useEffect(() => {
     fetchChats();
-    // Poll chat list every 10 seconds to detect new active chats
-    const interval = setInterval(fetchChats, 10000);
-    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -40,9 +37,6 @@ export default function ChatsPage() {
       setHistory([]); // Clean previous history immediately
       setHistoryLoading(true); // Show loader for the new chat
       fetchHistory(selectedChat.chat_id);
-      
-      const interval = setInterval(() => fetchHistory(selectedChat.chat_id, true), 5000);
-      return () => clearInterval(interval);
     }
   }, [selectedChat]);
 
