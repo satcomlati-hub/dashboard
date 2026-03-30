@@ -249,6 +249,20 @@ export default function MonitoreoSubpage() {
         </div>
       </header>
 
+      {/* Error Banner */}
+      {error && (
+        <div className="mb-6 flex items-start gap-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-2xl px-5 py-4 text-sm text-red-700 dark:text-red-400">
+          <span className="mt-0.5 shrink-0">⚠</span>
+          <div>
+            <p className="font-semibold">Error al cargar los datos</p>
+            <p className="text-xs mt-0.5 opacity-80">{error}</p>
+          </div>
+          <button onClick={() => fetchData(true)} className="ml-auto shrink-0 text-xs font-semibold underline underline-offset-2 hover:no-underline">
+            Reintentar
+          </button>
+        </div>
+      )}
+
       {/* Summary Metrics — clickable to filter */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
 
@@ -267,7 +281,11 @@ export default function MonitoreoSubpage() {
           </div>
           <div>
             <p className="text-xs font-bold text-[#71BF44] uppercase tracking-wider">Total Eventos</p>
-            <h4 className="text-2xl font-black text-neutral-900 dark:text-white">{metricas.total.toLocaleString()}</h4>
+            {loading ? (
+              <div className="h-8 w-16 bg-neutral-200 dark:bg-neutral-700 rounded-lg animate-pulse mt-1" />
+            ) : (
+              <h4 className="text-2xl font-black text-neutral-900 dark:text-white">{metricas.total.toLocaleString()}</h4>
+            )}
             <p className="text-[10px] text-neutral-400 mt-0.5">Clic para ver todos</p>
           </div>
         </button>
@@ -287,7 +305,11 @@ export default function MonitoreoSubpage() {
           </div>
           <div>
             <p className="text-xs font-bold text-blue-500 uppercase tracking-wider">Este Mes</p>
-            <h4 className="text-2xl font-black text-neutral-900 dark:text-white">{metricas.mes.toLocaleString()}</h4>
+            {loading ? (
+              <div className="h-8 w-16 bg-neutral-200 dark:bg-neutral-700 rounded-lg animate-pulse mt-1" />
+            ) : (
+              <h4 className="text-2xl font-black text-neutral-900 dark:text-white">{metricas.mes.toLocaleString()}</h4>
+            )}
             <p className="text-[10px] text-neutral-400 mt-0.5">Clic para filtrar</p>
           </div>
         </button>
@@ -307,7 +329,11 @@ export default function MonitoreoSubpage() {
           </div>
           <div>
             <p className="text-xs font-bold text-purple-500 uppercase tracking-wider">Esta Semana</p>
-            <h4 className="text-2xl font-black text-neutral-900 dark:text-white">{metricas.semana.toLocaleString()}</h4>
+            {loading ? (
+              <div className="h-8 w-16 bg-neutral-200 dark:bg-neutral-700 rounded-lg animate-pulse mt-1" />
+            ) : (
+              <h4 className="text-2xl font-black text-neutral-900 dark:text-white">{metricas.semana.toLocaleString()}</h4>
+            )}
             <p className="text-[10px] text-neutral-400 mt-0.5">Clic para filtrar</p>
           </div>
         </button>
@@ -327,7 +353,11 @@ export default function MonitoreoSubpage() {
           </div>
           <div>
             <p className="text-xs font-bold text-amber-500 uppercase tracking-wider">Hoy</p>
-            <h4 className="text-2xl font-black text-neutral-900 dark:text-white">{metricas.hoy.toLocaleString()}</h4>
+            {loading ? (
+              <div className="h-8 w-16 bg-neutral-200 dark:bg-neutral-700 rounded-lg animate-pulse mt-1" />
+            ) : (
+              <h4 className="text-2xl font-black text-neutral-900 dark:text-white">{metricas.hoy.toLocaleString()}</h4>
+            )}
             <p className="text-[10px] text-neutral-400 mt-0.5">Clic para filtrar</p>
           </div>
         </button>
