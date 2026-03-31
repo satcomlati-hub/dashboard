@@ -82,7 +82,7 @@ type SortOrder = 'asc' | 'desc';
 
 export default function UnauthorizedVouchersPage() {
   const [data, setData] = useState<Voucher[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [countdown, setCountdown] = useState(1800);
