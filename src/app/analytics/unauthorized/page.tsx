@@ -58,7 +58,7 @@ interface Voucher {
 const AMBIENTE_DOMAINS: Record<string, string> = {
   'V5': 'https://www5.mysatcomla.com',
   'Panama': 'https://app.mysatcomla.com',
-  'Colombia': 'https://colombia.mysatcomla.com',
+  'Colombia-AWS': 'https://colombia.mysatcomla.com',
 };
 
 const PAIS_MAP: Record<number, string> = {
@@ -312,6 +312,30 @@ export default function UnauthorizedVouchersPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleMassReprocess = async (ambiente: string, ids: string) => {
+    try {
+      setLoading(true);
+      const res = await fetch('https://sara.mysatcomla.com/webhook-test/ReprocesoMasivo', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          Ambiente: ambiente,
+          Data: ids
+        })
+      });
+
+      if (!res.ok) throw new Error('Error al procesar la solicitud');
+      
+      alert('Reproceso masivo iniciado correctamente');
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const toggleSort = (field: SortField) => {
     if (sortField === field) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     else { setSortField(field); setSortOrder('asc'); }
@@ -332,6 +356,21 @@ export default function UnauthorizedVouchersPage() {
 
   return (
     <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 pb-20">
+      {/* Loading Overlay */}
+      {loading && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm transition-all">
+          <div className="flex flex-col items-center gap-6 p-10 bg-white dark:bg-[#0c0c0c] border border-[#71BF44]/20 rounded-[40px] shadow-2xl shadow-[#71BF44]/10 animate-in zoom-in duration-300">
+            <div className="relative">
+              <RefreshCw className="w-16 h-16 text-[#71BF44] animate-spin" />
+              <div className="absolute inset-0 blur-2xl bg-[#71BF44]/20 animate-pulse"></div>
+            </div>
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-[#71BF44] font-black uppercase tracking-[0.3em] text-xs">Procesando</span>
+              <span className="text-neutral-500 font-bold text-[10px] uppercase tracking-widest">Satcom Analytics</span>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <header className="mb-12 py-8 border-b border-neutral-100 dark:border-neutral-800">
         <div className="flex items-center gap-2 mb-6">
@@ -474,7 +513,7 @@ export default function UnauthorizedVouchersPage() {
             <Globe className="w-4 h-4 text-[#71BF44]" />
             <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">Ambiente:</span>
             <div className="flex gap-2">
-               {['V5', 'Panama', 'Colombia'].map(amb => (
+               {['V5', 'Panama', 'Colombia-AWS'].map(amb => (
                  <button
                   key={amb}
                   onClick={() => { 
@@ -634,23 +673,36 @@ export default function UnauthorizedVouchersPage() {
                                       <span className="text-xs font-bold text-[#71BF44]">({item.count})</span>
                                    </div>
                                     <div className="flex items-center gap-4 mr-4">
-                                       <button
-                                          onClick={(e) => {
-                                             e.stopPropagation();
-                                             const vouchers = (item as any).vouchers;
-                                             const ids = vouchers.map((v: any) => v.Column1 || v.co_id_comprobante).join('\n');
-                                             navigator.clipboard.writeText(ids);
-                                             setGroupCopied(item.label);
-                                             setTimeout(() => setGroupCopied(null), 2000);
-                                          }}
-                                          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all border ${groupCopied === item.label ? 'bg-green-600 text-white border-green-500' : 'bg-white/5 text-neutral-400 border-white/10 hover:bg-[#71BF44] hover:text-white hover:border-[#71BF44] shadow-lg shadow-black/20'}`}
-                                          title="Copiar IDs de este grupo"
-                                       >
-                                          {groupCopied === item.label ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                                          <span>{groupCopied === item.label ? 'Copiado!' : 'Exportar IDs'}</span>
-                                       </button>
-                                       <span className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">{isExp ? 'OCULTAR DETALLE' : 'VER DETALLE'}</span>
-                                    </div>
+                                        <button
+                                           onClick={(e) => {
+                                              e.stopPropagation();
+                                              const vouchers = (item as any).vouchers;
+                                              const ids = vouchers.map((v: any) => v.Column1 || v.co_id_comprobante).join('\n');
+                                              handleMassReprocess(selectedAmbiente, ids);
+                                           }}
+                                           className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all border bg-white/5 text-neutral-400 border-white/10 hover:bg-[#71BF44] hover:text-white hover:border-[#71BF44] shadow-lg shadow-black/20"
+                                           title="Reprocesar todos los comprobantes de este grupo"
+                                        >
+                                           <RefreshCw className="w-3 h-3" />
+                                           <span>Reproceso Masivo</span>
+                                        </button>
+                                        <button
+                                           onClick={(e) => {
+                                              e.stopPropagation();
+                                              const vouchers = (item as any).vouchers;
+                                              const ids = vouchers.map((v: any) => v.Column1 || v.co_id_comprobante).join('\n');
+                                              navigator.clipboard.writeText(ids);
+                                              setGroupCopied(item.label);
+                                              setTimeout(() => setGroupCopied(null), 2000);
+                                           }}
+                                           className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all border ${groupCopied === item.label ? 'bg-green-600 text-white border-green-500' : 'bg-white/5 text-neutral-400 border-white/10 hover:bg-[#71BF44] hover:text-white hover:border-[#71BF44] shadow-lg shadow-black/20'}`}
+                                           title="Copiar IDs de este grupo"
+                                        >
+                                           {groupCopied === item.label ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                           <span>{groupCopied === item.label ? 'Copiado!' : 'Exportar IDs'}</span>
+                                        </button>
+                                        <span className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">{isExp ? 'OCULTAR DETALLE' : 'VER DETALLE'}</span>
+                                     </div>
                                  </div>
                              </td>
                           </tr>
