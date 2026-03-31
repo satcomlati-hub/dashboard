@@ -217,7 +217,7 @@ export default function UnauthorizedVouchersPage() {
     });
 
     return result;
-  }, [data, filters, sortField, sortOrder]);
+  }, [data, filters, sortField, sortOrder, selectedDate]);
 
   const anyFilterActive = useMemo(() => Object.values(filters).some(v => v !== ''), [filters]);
 
@@ -275,7 +275,19 @@ export default function UnauthorizedVouchersPage() {
       return acc;
     }, {} as Record<number, number>);
 
-    const byTime = filteredData.reduce((acc, d) => {
+    const byTime = data.filter(item => {
+      return (
+        (!filters.co_num_comprobante || item.co_num_comprobante.toLowerCase().includes(filters.co_num_comprobante.toLowerCase())) &&
+        (!filters.co_detalle || item.co_detalle.toLowerCase().includes(filters.co_detalle.toLowerCase())) &&
+        (!filters.co_nemonico || item.co_nemonico.toLowerCase().includes(filters.co_nemonico.toLowerCase())) &&
+        (!filters.co_pais || (PAIS_MAP[item.co_pais] || item.co_pais.toString()).toLowerCase().includes(filters.co_pais.toLowerCase())) &&
+        (!filters.ambiente || item.ambiente.toLowerCase().includes(filters.ambiente.toLowerCase())) &&
+        (!filters.DescripcionEstatus || item.DescripcionEstatus.toLowerCase().includes(filters.DescripcionEstatus.toLowerCase())) &&
+        (!filters.DescripcionTipoDocumento || item.DescripcionTipoDocumento.toLowerCase().includes(filters.DescripcionTipoDocumento.toLowerCase())) &&
+        (!filters.co_establecimiento || item.co_establecimiento.toLowerCase().includes(filters.co_establecimiento.toLowerCase())) &&
+        (!filters.co_punto_emision || item.co_punto_emision.toLowerCase().includes(filters.co_punto_emision.toLowerCase()))
+      );
+    }).reduce((acc, d) => {
       const field = d.co_hora_in;
       if (!field || typeof field !== 'string') return acc;
       const datePart = field.split('T')[0];
