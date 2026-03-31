@@ -55,6 +55,12 @@ interface Voucher {
   DescripcionTipoDocumento: string;
 }
 
+const AMBIENTE_DOMAINS: Record<string, string> = {
+  'V5': 'https://www5.mysatcomla.com',
+  'Panama': 'https://app.mysatcomla.com',
+  'Colombia': 'https://colombia.mysatcomla.com',
+};
+
 const PAIS_MAP: Record<number, string> = {
   593: 'Ecuador',
   57: 'Colombia',
@@ -88,7 +94,10 @@ export default function UnauthorizedVouchersPage() {
   const pageSize = 200;
   const [sortField, setSortField] = useState<SortField>('co_hora_in');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [selectedAmbiente, setSelectedAmbiente] = useState<string>('');
+  const [selectedDate, setSelectedDate] = useState<string>('');
   const [groupBy, setGroupBy] = useState<'none' | 'co_nemonico' | 'DescripcionTipoDocumento' | 'DescripcionEstatus' | 'co_detalle'>('none');
+
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   // Global but hidden from top UI (driven by column filters)
@@ -104,12 +113,16 @@ export default function UnauthorizedVouchersPage() {
     co_punto_emision: '',
   });
 
-  const fetchData = useCallback(async (isRefresh = false) => {
+  const fetchData = useCallback(async (isRefresh = false, ambienteOverride?: string) => {
+    const ambiente = ambienteOverride || selectedAmbiente;
+    if (!ambiente) return;
+
     try {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       
-      const res = await fetch('https://sara.mysatcomla.com/webhook/MonitoreoNoAutorizados');
+      const res = await fetch(`https://sara.mysatcomla.com/webhook/MonitoreoNoAutorizados?Ambiente=${ambiente}`);
+
       if (!res.ok) throw new Error('Error al obtener datos');
       
       const json: any = await res.json();
@@ -149,8 +162,10 @@ export default function UnauthorizedVouchersPage() {
   }, []);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (selectedAmbiente) {
+      fetchData();
+    }
+  }, [selectedAmbiente, fetchData]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -183,9 +198,11 @@ export default function UnauthorizedVouchersPage() {
         (!filters.DescripcionEstatus || item.DescripcionEstatus.toLowerCase().includes(filters.DescripcionEstatus.toLowerCase())) &&
         (!filters.DescripcionTipoDocumento || item.DescripcionTipoDocumento.toLowerCase().includes(filters.DescripcionTipoDocumento.toLowerCase())) &&
         (!filters.co_establecimiento || item.co_establecimiento.toLowerCase().includes(filters.co_establecimiento.toLowerCase())) &&
-        (!filters.co_punto_emision || item.co_punto_emision.toLowerCase().includes(filters.co_punto_emision.toLowerCase()))
+        (!filters.co_punto_emision || item.co_punto_emision.toLowerCase().includes(filters.co_punto_emision.toLowerCase())) &&
+        (!selectedDate || (item.co_hora_in && item.co_hora_in.split('T')[0] === selectedDate))
       );
     });
+
 
     result.sort((a, b) => {
       let valA: any = a[sortField as keyof Voucher] ?? '';
@@ -342,82 +359,101 @@ export default function UnauthorizedVouchersPage() {
           </button>
         </div>
       </header>
+      {selectedAmbiente && (
+        <>
+          <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 mb-8">
+            <div className="xl:col-span-3">
+               <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2 font-black text-[10px] text-neutral-400 uppercase tracking-widest">
+                     <Globe className="w-4 h-4 text-[#71BF44]" /> Resumen por Localidad
+                  </div>
+                  <div className="flex items-center gap-1.5 px-3 py-1 bg-[#131313] rounded-lg border border-neutral-800">
+                     <span className="text-[9px] font-black text-neutral-500 uppercase tracking-tighter">Última Act:</span>
+                     <span className="text-[10px] font-mono font-bold text-[#71BF44]">{lastUpdate}</span>
+                  </div>
+               </div>
+               <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
+                  {Object.entries(stats.byPais).map(([code, count]) => {
+                    const countryName = PAIS_MAP[Number(code)] || code;
+                    const isActive = filters.co_pais === countryName;
+                    return (
+                      <button 
+                       key={code} 
+                       onClick={() => { setFilters(f => ({ ...f, co_pais: isActive ? '' : countryName })); setCurrentPage(1); }}
+                       className={`bg-white dark:bg-[#111] border rounded-2xl p-4 shadow-sm relative overflow-hidden group transition-all text-left ${isActive ? 'border-[#71BF44] ring-2 ring-[#71BF44]/20' : 'border-neutral-200 dark:border-neutral-800 border-neutral-200 dark:border-neutral-800 hover:border-[#71BF44]/50'}`}
+                      >
+                        <div className={`absolute top-0 right-0 w-16 h-16 rounded-bl-[40px] -mr-4 -mt-4 transition-all group-hover:scale-110 ${isActive ? 'bg-[#71BF44]/20' : 'bg-[#71BF44]/5'}`}></div>
+                        <span className="text-[9px] font-black text-neutral-400 uppercase block mb-1 truncate">{countryName}</span>
+                        <div className={`text-2xl font-black mb-1 ${isActive ? 'text-[#71BF44]' : 'text-neutral-900 dark:text-white'}`}>{count}</div>
+                        <div className="w-full h-1 bg-neutral-100 dark:bg-neutral-800 rounded-full mt-2 overflow-hidden">
+                           <div className="h-full bg-[#71BF44]" style={{ width: `${(count / data.length) * 100}%` }}></div>
+                        </div>
+                      </button>
+                    );
+                  })}
+               </div>
+            </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 mb-8">
-        <div className="xl:col-span-3">
-           <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2 font-black text-[10px] text-neutral-400 uppercase tracking-widest">
-                 <Globe className="w-4 h-4 text-[#71BF44]" /> Resumen por Localidad
-              </div>
-              <div className="flex items-center gap-1.5 px-3 py-1 bg-[#131313] rounded-lg border border-neutral-800">
-                 <span className="text-[9px] font-black text-neutral-500 uppercase tracking-tighter">Última Act:</span>
-                 <span className="text-[10px] font-mono font-bold text-[#71BF44]">{lastUpdate}</span>
-              </div>
-           </div>
-           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
-              {Object.entries(stats.byPais).map(([code, count]) => {
-                const countryName = PAIS_MAP[Number(code)] || code;
-                const isActive = filters.co_pais === countryName;
-                return (
+            <div className="bg-[#111] border border-neutral-800 rounded-[24px] p-6 flex flex-col justify-center border-t-2 border-t-[#71BF44]">
+               <div className="flex items-center gap-2 mb-4">
+                  <Activity className="w-5 h-5 text-[#71BF44]" />
+                  <h3 className="text-sm font-black text-white uppercase tracking-widest">Consolidado</h3>
+               </div>
+               <div className="space-y-4">
+                  <div className="flex items-end justify-between">
+                     <span className="text-[10px] font-bold text-neutral-500 uppercase">Total Entidad</span>
+                     <span className="text-2xl font-black text-white">{data.length.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-end justify-between">
+                     <span className="text-[10px] font-bold text-neutral-500 uppercase">En Vista</span>
+                     <span className="text-xl font-black text-[#71BF44]">{filteredData.length.toLocaleString()}</span>
+                  </div>
+               </div>
+            </div>
+          </div>
+
+          {/* Timeline Chart */}
+          <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[24px] p-6 mb-8 shadow-sm">
+             <div className="flex items-center gap-2 mb-8">
+              <div className="flex items-center justify-between gap-4 w-full">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-[#71BF44]" />
+                  <h3 className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">Volumen de Ingreso por Fecha (co_hora_in)</h3>
+                </div>
+                {selectedDate && (
                   <button 
-                   key={code} 
-                   onClick={() => { setFilters(f => ({ ...f, co_pais: isActive ? '' : countryName })); setCurrentPage(1); }}
-                   className={`bg-white dark:bg-[#111] border rounded-2xl p-4 shadow-sm relative overflow-hidden group transition-all text-left ${isActive ? 'border-[#71BF44] ring-2 ring-[#71BF44]/20' : 'border-neutral-200 dark:border-neutral-800 border-neutral-200 dark:border-neutral-800 hover:border-[#71BF44]/50'}`}
+                    onClick={() => setSelectedDate('')}
+                    className="flex items-center gap-2 px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-lg text-[9px] font-black text-red-500 uppercase tracking-widest hover:bg-red-500/20 transition-all"
                   >
-                    <div className={`absolute top-0 right-0 w-16 h-16 rounded-bl-[40px] -mr-4 -mt-4 transition-all group-hover:scale-110 ${isActive ? 'bg-[#71BF44]/20' : 'bg-[#71BF44]/5'}`}></div>
-                    <span className="text-[9px] font-black text-neutral-400 uppercase block mb-1 truncate">{countryName}</span>
-                    <div className={`text-2xl font-black mb-1 ${isActive ? 'text-[#71BF44]' : 'text-neutral-900 dark:text-white'}`}>{count}</div>
-                    <div className="w-full h-1 bg-neutral-100 dark:bg-neutral-800 rounded-full mt-2 overflow-hidden">
-                       <div className="h-full bg-[#71BF44]" style={{ width: `${(count / data.length) * 100}%` }}></div>
-                    </div>
+                    <X className="w-3 h-3" /> Limpiar Filtro Fecha: {selectedDate.split('-').reverse().join('/')}
                   </button>
-                );
-              })}
-           </div>
-        </div>
-
-        <div className="bg-[#111] border border-neutral-800 rounded-[24px] p-6 flex flex-col justify-center border-t-2 border-t-[#71BF44]">
-           <div className="flex items-center gap-2 mb-4">
-              <Activity className="w-5 h-5 text-[#71BF44]" />
-              <h3 className="text-sm font-black text-white uppercase tracking-widest">Consolidado</h3>
-           </div>
-           <div className="space-y-4">
-              <div className="flex items-end justify-between">
-                 <span className="text-[10px] font-bold text-neutral-500 uppercase">Total Entidad</span>
-                 <span className="text-2xl font-black text-white">{data.length.toLocaleString()}</span>
+                )}
               </div>
-              <div className="flex items-end justify-between">
-                 <span className="text-[10px] font-bold text-neutral-500 uppercase">En Vista</span>
-                 <span className="text-xl font-black text-[#71BF44]">{filteredData.length.toLocaleString()}</span>
-              </div>
-           </div>
-        </div>
-      </div>
-
-      {/* Timeline Chart */}
-      <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[24px] p-6 mb-8 shadow-sm">
-         <div className="flex items-center gap-2 mb-8">
-            <TrendingUp className="w-4 h-4 text-[#71BF44]" />
-            <h3 className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">Volumen de Ingreso por Fecha (co_hora_in)</h3>
-         </div>
-         <div className="h-48 flex items-end gap-3 sm:gap-6 px-4 border-b border-neutral-100 dark:border-neutral-800/10">
-            {stats.sortedDates.map(([date, count]) => (
-              <div key={date} className="flex-1 flex flex-col items-center gap-2 group relative h-full justify-end">
-                 <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-neutral-900 text-white text-[10px] font-black px-2 py-1 rounded-md pointer-events-none z-10 whitespace-nowrap">
-                   {count} comprobantes
-                 </div>
-                 <div 
-                   className="w-full bg-[#71BF44]/40 border-t-4 border-[#71BF44] rounded-t-xl transition-all group-hover:bg-[#71BF44]/60 shadow-[0_0_20px_rgba(113,191,68,0.1)]"
-                   style={{ height: `${(count / maxDateCount) * 100}%` }}
-                 />
-                 <div className="text-[8px] font-black text-neutral-500 rotate-45 origin-left mt-4 mb-2 whitespace-nowrap uppercase tracking-tighter">
-                   {date.split('-').reverse().join('/')}
-                 </div>
-              </div>
-            ))}
-         </div>
-      </div>
+            </div>
+             <div className="h-48 flex items-end gap-3 sm:gap-6 px-4 border-b border-neutral-100 dark:border-neutral-800/10">
+                {stats.sortedDates.map(([date, count]) => (
+                  <button 
+                    key={date} 
+                    onClick={() => setSelectedDate(selectedDate === date ? '' : date)}
+                    className="flex-1 flex flex-col items-center gap-2 group relative h-full justify-end outline-none"
+                  >
+                     <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-neutral-900 text-white text-[10px] font-black px-2 py-1 rounded-md pointer-events-none z-10 whitespace-nowrap">
+                       {count} comprobantes
+                     </div>
+                     <div 
+                       className={`w-full border-t-4 rounded-t-xl transition-all shadow-[0_0_20px_rgba(113,191,68,0.1)] ${selectedDate === date ? 'bg-[#71BF44] border-[#71BF44] h-full shadow-[#71BF44]/30' : 'bg-[#71BF44]/40 border-[#71BF44]/60 group-hover:bg-[#71BF44]/60'}`}
+                       style={{ height: selectedDate === date ? '100%' : `${(count / maxDateCount) * 100}%` }}
+                     />
+                     <div className={`text-[8px] font-black rotate-45 origin-left mt-4 mb-2 whitespace-nowrap uppercase tracking-tighter ${selectedDate === date ? 'text-[#71BF44]' : 'text-neutral-500'}`}>
+    
+                       {date.split('-').reverse().join('/')}
+                     </div>
+                  </button>
+                ))}
+             </div>
+          </div>
+        </>
+      )}
 
       {/* Group Selector "Ver por" */}
       <div className="flex flex-wrap items-center gap-6 mb-6">
@@ -427,10 +463,10 @@ export default function UnauthorizedVouchersPage() {
             <div className="flex gap-2">
                {[
                  { id: 'none', label: 'Lista Plana' },
-                 { id: 'co_nemonico', label: 'Nemónico' },
-                 { id: 'DescripcionTipoDocumento', label: 'Documento' },
                  { id: 'DescripcionEstatus', label: 'Estado' },
-                 { id: 'co_detalle', label: 'Motivo' }
+                 { id: 'co_detalle', label: 'Motivo' },
+                 { id: 'co_nemonico', label: 'Nemónico' },
+                 { id: 'DescripcionTipoDocumento', label: 'Documento' }
                ].map(opt => (
                  <button
                   key={opt.id}
@@ -442,6 +478,39 @@ export default function UnauthorizedVouchersPage() {
                ))}
             </div>
          </div>
+
+         {/* Environment Selector */}
+         <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-6 py-2.5 rounded-2xl shadow-xl">
+            <Globe className="w-4 h-4 text-[#71BF44]" />
+            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">Ambiente:</span>
+            <div className="flex gap-2">
+               {['V5', 'Panama', 'Colombia'].map(amb => (
+                 <button
+                  key={amb}
+                  onClick={() => { 
+                    setSelectedAmbiente(amb); 
+                    setCurrentPage(1); 
+                    setData([]); 
+                    setFilters({
+                      co_num_comprobante: '',
+                      co_detalle: '',
+                      co_nemonico: '',
+                      co_pais: '',
+                      ambiente: '',
+                      DescripcionEstatus: '',
+                      DescripcionTipoDocumento: '',
+                      co_establecimiento: '',
+                      co_punto_emision: '',
+                    });
+                  }}
+                  className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all ${selectedAmbiente === amb ? 'bg-[#71BF44] text-white' : 'text-neutral-500 hover:text-white hover:bg-neutral-800'}`}
+                 >
+                   {amb}
+                 </button>
+               ))}
+            </div>
+         </div>
+
 
          {/* Pagination Controls */}
          {totalPages > 1 && (
@@ -520,7 +589,14 @@ export default function UnauthorizedVouchersPage() {
                   </tr>
                </thead>
                <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/10">
-                  {!anyFilterActive ? (
+                  {!selectedAmbiente ? (
+                    <tr><td colSpan={5} className="py-24 text-center">
+                       <div className="flex flex-col items-center gap-4 animate-pulse">
+                          <Globe className="w-12 h-12 text-[#71BF44]" />
+                          <div className="text-[#71BF44] font-black uppercase tracking-[0.2em]">Seleccione un Ambiente para cargar los datos</div>
+                       </div>
+                    </td></tr>
+                  ) : !anyFilterActive ? (
                     <tr><td colSpan={5} className="py-24 text-center">
                        <div className="flex flex-col items-center gap-4 animate-pulse">
                           <Filter className="w-12 h-12 text-neutral-700" />
@@ -576,8 +652,9 @@ export default function UnauthorizedVouchersPage() {
                            <td className={`px-6 py-6 transition-all ${isGrouped ? 'pl-10' : 'group-hover:pl-8'}`}>
                               <div className="flex flex-col">
                                  <a 
-                                  href={`https://www5.mysatcomla.com/Facturacion/Comprobantes/DetalleReporte?idComprobante=${ID}`}
+                                  href={`${AMBIENTE_DOMAINS[selectedAmbiente] || 'https://www5.mysatcomla.com'}/Facturacion/Comprobantes/DetalleReporte?idComprobante=${ID}`}
                                   target="_blank"
+
                                   rel="noopener noreferrer"
                                   className="text-[10px] font-black text-[#71BF44] hover:underline mb-1 flex items-center gap-1 group/link"
                                  >
