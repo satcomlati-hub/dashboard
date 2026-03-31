@@ -58,7 +58,13 @@ interface Voucher {
 const AMBIENTE_DOMAINS: Record<string, string> = {
   'V5': 'https://www5.mysatcomla.com',
   'Panama': 'https://app.mysatcomla.com',
-  'Colombia-AWS': 'https://colombia.mysatcomla.com',
+  'Colombia': 'https://colombia.mysatcomla.com',
+};
+
+const AMBIENTE_LABELS: Record<string, string> = {
+  'V5': 'V5',
+  'Panama': 'Panm.',
+  'Colombia': 'Colombia-AWS',
 };
 
 const PAIS_MAP: Record<number, string> = {
@@ -315,7 +321,7 @@ export default function UnauthorizedVouchersPage() {
   const handleMassReprocess = async (ambiente: string, ids: string) => {
     try {
       setLoading(true);
-      const res = await fetch('https://sara.mysatcomla.com/webhook-test/ReprocesoMasivo', {
+      const res = await fetch('https://sara.mysatcomla.com/webhook/ReprocesoMasivo', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -509,11 +515,11 @@ export default function UnauthorizedVouchersPage() {
       {/* Filters Area */}
       <div className="flex flex-wrap items-center gap-6 mb-6">
          {/* Environment Selector (Now First) */}
-         <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-6 py-2.5 rounded-2xl shadow-xl">
+          <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-6 py-2.5 rounded-2xl shadow-xl">
             <Globe className="w-4 h-4 text-[#71BF44]" />
             <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">Ambiente:</span>
             <div className="flex gap-2">
-               {['V5', 'Panama', 'Colombia-AWS'].map(amb => (
+               {['V5', 'Panama', 'Colombia'].map(amb => (
                  <button
                   key={amb}
                   onClick={() => { 
@@ -534,11 +540,11 @@ export default function UnauthorizedVouchersPage() {
                   }}
                   className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all ${selectedAmbiente === amb ? 'bg-[#71BF44] text-white' : 'text-neutral-500 hover:text-white hover:bg-neutral-800'}`}
                  >
-                   {amb}
+                   {AMBIENTE_LABELS[amb] || amb}
                  </button>
                ))}
             </div>
-         </div>
+          </div>
 
          {/* Group Selector "Agrupar" (Now Second) */}
          <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-6 py-2.5 rounded-2xl shadow-xl">
