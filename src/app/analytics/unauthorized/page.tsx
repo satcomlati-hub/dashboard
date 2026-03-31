@@ -159,7 +159,7 @@ export default function UnauthorizedVouchersPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [selectedAmbiente]);
 
   useEffect(() => {
     if (selectedAmbiente) {
@@ -455,31 +455,9 @@ export default function UnauthorizedVouchersPage() {
         </>
       )}
 
-      {/* Group Selector "Ver por" */}
+      {/* Filters Area */}
       <div className="flex flex-wrap items-center gap-6 mb-6">
-         <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-6 py-2.5 rounded-2xl shadow-xl">
-            <Layers className="w-4 h-4 text-[#71BF44]" />
-            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">Ver por:</span>
-            <div className="flex gap-2">
-               {[
-                 { id: 'none', label: 'Lista Plana' },
-                 { id: 'DescripcionEstatus', label: 'Estado' },
-                 { id: 'co_detalle', label: 'Motivo' },
-                 { id: 'co_nemonico', label: 'Nemónico' },
-                 { id: 'DescripcionTipoDocumento', label: 'Documento' }
-               ].map(opt => (
-                 <button
-                  key={opt.id}
-                  onClick={() => { setGroupBy(opt.id as any); setCurrentPage(1); setExpandedGroups(new Set()); }}
-                  className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all ${groupBy === opt.id ? 'bg-[#71BF44] text-white' : 'text-neutral-500 hover:text-white hover:bg-neutral-800'}`}
-                 >
-                   {opt.label}
-                 </button>
-               ))}
-            </div>
-         </div>
-
-         {/* Environment Selector */}
+         {/* Environment Selector (Now First) */}
          <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-6 py-2.5 rounded-2xl shadow-xl">
             <Globe className="w-4 h-4 text-[#71BF44]" />
             <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">Ambiente:</span>
@@ -506,6 +484,29 @@ export default function UnauthorizedVouchersPage() {
                   className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all ${selectedAmbiente === amb ? 'bg-[#71BF44] text-white' : 'text-neutral-500 hover:text-white hover:bg-neutral-800'}`}
                  >
                    {amb}
+                 </button>
+               ))}
+            </div>
+         </div>
+
+         {/* Group Selector "Agrupar" (Now Second) */}
+         <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-6 py-2.5 rounded-2xl shadow-xl">
+            <Layers className="w-4 h-4 text-[#71BF44]" />
+            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">Agrupar:</span>
+            <div className="flex gap-2">
+               {[
+                 { id: 'none', label: 'Lista Plana' },
+                 { id: 'DescripcionEstatus', label: 'Estado' },
+                 { id: 'co_detalle', label: 'Motivo' },
+                 { id: 'co_nemonico', label: 'Nemónico' },
+                 { id: 'DescripcionTipoDocumento', label: 'Documento' }
+               ].map(opt => (
+                 <button
+                  key={opt.id}
+                  onClick={() => { setGroupBy(opt.id as any); setCurrentPage(1); setExpandedGroups(new Set()); }}
+                  className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all ${groupBy === opt.id ? 'bg-[#71BF44] text-white' : 'text-neutral-500 hover:text-white hover:bg-neutral-800'}`}
+                 >
+                   {opt.label}
                  </button>
                ))}
             </div>
