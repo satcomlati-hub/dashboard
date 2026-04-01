@@ -1,12 +1,13 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { BookOpen, ChevronDown, ChevronRight, ExternalLink, RefreshCw, BookMarked, FileText } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { BookOpen, ChevronDown, ChevronRight, ExternalLink, RefreshCw, BookMarked, FileText, Globe, Lock } from 'lucide-react';
 
 interface Articulo {
   articulo: string;
   source_url: string;
   created_at: string;
   created_by: string | null;
+  is_public: boolean;
 }
 
 interface ManualGroup {
@@ -32,8 +33,11 @@ export default function RAGCollectionsTable() {
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [updating, setUpdating] = useState<Set<string>>(new Set());
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const res = await fetch('/api/db/rag-collections');
       if (!res.ok) throw new Error('Error al cargar colecciones');
@@ -41,7 +45,6 @@ export default function RAGCollectionsTable() {
       setData(json.data || []);
       setLastUpdated(new Date());
       setError(null);
-      // Expandir todos por defecto si es la primera carga
       if (json.data?.length > 0) {
         setExpanded(prev => {
           if (prev.size === 0) {
@@ -50,18 +53,18 @@ export default function RAGCollectionsTable() {
           return prev;
         });
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error desconocido');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchData]);
 
   const toggleManual = (manual: string) => {
     setExpanded(prev => {
@@ -72,7 +75,59 @@ export default function RAGCollectionsTable() {
     });
   };
 
+  const togglePublic = async (source_url: string, current: boolean) => {
+    // Actualización optimista
+    setData(prev => prev.map(group => ({
+      ...group,
+      articulos: group.articulos.map(art =>
+        art.source_url === source_url ? { ...art, is_public: !current } : art
+      ),
+    })));
+    setUpdating(prev => new Set(prev).add(source_url));
+
+    try {
+      const res = await fetch('/api/db/rag-collections', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source_url, is_public: !current }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      // Revertir si falla
+      setData(prev => prev.map(group => ({
+        ...group,
+        articulos: group.articulos.map(art =>
+          art.source_url === source_url ? { ...art, is_public: current } : art
+        ),
+      })));
+    } finally {
+      setUpdating(prev => {
+        const next = new Set(prev);
+        next.delete(source_url);
+        return next;
+      });
+    }
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const res = await fetch('/api/db/sync-public', { method: 'POST' });
+      if (!res.ok) throw new Error('Error al sincronizar');
+      const json = await res.json();
+      setSyncMsg(`${json.synced} chunk${json.synced !== 1 ? 's' : ''} sincronizados`);
+      setTimeout(() => setSyncMsg(null), 4000);
+    } catch {
+      setSyncMsg('Error al sincronizar');
+      setTimeout(() => setSyncMsg(null), 4000);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const totalArticulos = data.reduce((sum, m) => sum + m.total, 0);
+  const totalPublicos = data.reduce((sum, m) => sum + m.articulos.filter(a => a.is_public).length, 0);
 
   return (
     <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-3xl overflow-hidden shadow-xl ring-1 ring-black/5 dark:ring-white/5">
@@ -84,7 +139,7 @@ export default function RAGCollectionsTable() {
               <BookMarked className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold dark:text-white flex items-center gap-2">
+              <h3 className="text-base font-bold dark:text-white flex items-center gap-2 flex-wrap">
                 Base de Conocimiento
                 <span className="px-2 py-0.5 rounded-full bg-[#71BF44]/10 text-[#71BF44] text-[10px] font-bold uppercase tracking-wider">
                   {data.length} manual{data.length !== 1 ? 'es' : ''}
@@ -92,6 +147,12 @@ export default function RAGCollectionsTable() {
                 <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500 text-[10px] font-bold uppercase tracking-wider">
                   {totalArticulos} artículo{totalArticulos !== 1 ? 's' : ''}
                 </span>
+                {totalPublicos > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-sky-400/10 text-sky-400 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                    <Globe className="w-2.5 h-2.5" />
+                    {totalPublicos} público{totalPublicos !== 1 ? 's' : ''}
+                  </span>
+                )}
               </h3>
               <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
                 Manuales y artículos procesados en Supabase
@@ -103,13 +164,28 @@ export default function RAGCollectionsTable() {
               </p>
             </div>
           </div>
-          <button
-            onClick={fetchData}
-            className="p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-neutral-400 hover:text-[#71BF44] hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-all"
-            title="Actualizar"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
+          <div className="flex items-center gap-2">
+            {syncMsg && (
+              <span className="text-[11px] text-sky-400 font-medium px-2 py-1 rounded-lg bg-sky-400/10">
+                {syncMsg}
+              </span>
+            )}
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-neutral-400 hover:text-sky-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-all disabled:opacity-50"
+              title="Sincronizar base pública"
+            >
+              <Globe className={`w-4 h-4 ${syncing ? 'animate-pulse' : ''}`} />
+            </button>
+            <button
+              onClick={fetchData}
+              className="p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-neutral-400 hover:text-[#71BF44] hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-all"
+              title="Actualizar"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -161,38 +237,63 @@ export default function RAGCollectionsTable() {
                     <div className="divide-y divide-neutral-100 dark:divide-neutral-800/80">
                       {/* Cabecera de tabla */}
                       <div className="grid grid-cols-12 px-4 py-2 bg-white dark:bg-[#131313]">
-                        <span className="col-span-5 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Artículo</span>
-                        <span className="col-span-4 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Fecha de Ingesta</span>
-                        <span className="col-span-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest text-right">Fuente</span>
+                        <span className="col-span-4 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Artículo</span>
+                        <span className="col-span-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Fecha de Ingesta</span>
+                        <span className="col-span-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Visibilidad</span>
+                        <span className="col-span-2 text-[10px] font-bold text-neutral-400 uppercase tracking-widest text-right">Fuente</span>
                       </div>
-                      {group.articulos.map((art) => (
-                        <div
-                          key={art.articulo}
-                          className="grid grid-cols-12 px-4 py-2.5 bg-white dark:bg-[#131313] hover:bg-neutral-50 dark:hover:bg-[#1A1A1A] transition-colors items-center group"
-                        >
-                          <div className="col-span-5 flex items-center gap-2">
-                            <FileText className="w-3.5 h-3.5 text-neutral-300 dark:text-neutral-600 shrink-0" />
-                            <span className="text-sm text-neutral-700 dark:text-neutral-300 font-medium truncate">
-                              {art.articulo}
-                            </span>
+                      {group.articulos.map((art) => {
+                        const isUpdating = updating.has(art.source_url);
+                        return (
+                          <div
+                            key={art.articulo}
+                            className="grid grid-cols-12 px-4 py-2.5 bg-white dark:bg-[#131313] hover:bg-neutral-50 dark:hover:bg-[#1A1A1A] transition-colors items-center group"
+                          >
+                            <div className="col-span-4 flex items-center gap-2">
+                              <FileText className="w-3.5 h-3.5 text-neutral-300 dark:text-neutral-600 shrink-0" />
+                              <span className="text-sm text-neutral-700 dark:text-neutral-300 font-medium truncate">
+                                {art.articulo}
+                              </span>
+                            </div>
+                            <div className="col-span-3 text-xs text-neutral-500 dark:text-neutral-400">
+                              {formatFecha(art.created_at)}
+                            </div>
+                            <div className="col-span-3">
+                              <button
+                                onClick={() => togglePublic(art.source_url, art.is_public)}
+                                disabled={isUpdating}
+                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all disabled:opacity-60 ${
+                                  art.is_public
+                                    ? 'bg-sky-400/15 text-sky-400 hover:bg-sky-400/25'
+                                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                                }`}
+                                title={art.is_public ? 'Hacer privado' : 'Hacer público'}
+                              >
+                                {isUpdating ? (
+                                  <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                                ) : art.is_public ? (
+                                  <Globe className="w-2.5 h-2.5" />
+                                ) : (
+                                  <Lock className="w-2.5 h-2.5" />
+                                )}
+                                {art.is_public ? 'Público' : 'Privado'}
+                              </button>
+                            </div>
+                            <div className="col-span-2 flex justify-end">
+                              <a
+                                href={art.source_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-[10px] font-medium text-neutral-400 hover:text-[#71BF44] transition-colors opacity-0 group-hover:opacity-100"
+                                title="Ver fuente"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                                Ver
+                              </a>
+                            </div>
                           </div>
-                          <div className="col-span-4 text-xs text-neutral-500 dark:text-neutral-400">
-                            {formatFecha(art.created_at)}
-                          </div>
-                          <div className="col-span-3 flex justify-end">
-                            <a
-                              href={art.source_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-1 text-[10px] font-medium text-neutral-400 hover:text-[#71BF44] transition-colors opacity-0 group-hover:opacity-100"
-                              title="Ver fuente"
-                            >
-                              <ExternalLink className="w-3 h-3" />
-                              Ver
-                            </a>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

@@ -1,17 +1,18 @@
 import pool from '@/lib/db';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
     const query = `
-      SELECT 
+      SELECT
         manual,
         articulo,
         source_url,
         created_at,
-        created_by
+        created_by,
+        is_public
       FROM mm_collections_v2
       WHERE manual IS NOT NULL
       ORDER BY manual ASC, articulo ASC;
@@ -20,7 +21,7 @@ export async function GET() {
     const result = await pool.query(query);
 
     // Agrupar por manual
-    const grouped: Record<string, { articulos: Array<{ articulo: string; source_url: string; created_at: string; created_by: string | null }> }> = {};
+    const grouped: Record<string, { articulos: Array<{ articulo: string; source_url: string; created_at: string; created_by: string | null; is_public: boolean }> }> = {};
 
     for (const row of result.rows) {
       if (!grouped[row.manual]) {
@@ -31,6 +32,7 @@ export async function GET() {
         source_url: row.source_url,
         created_at: row.created_at,
         created_by: row.created_by,
+        is_public: row.is_public ?? false,
       });
     }
 
@@ -44,5 +46,26 @@ export async function GET() {
   } catch (error) {
     console.error('Error fetching RAG collections:', error);
     return NextResponse.json({ error: 'Failed to fetch RAG collections' }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { source_url, is_public } = body;
+
+    if (typeof source_url !== 'string' || typeof is_public !== 'boolean') {
+      return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 });
+    }
+
+    await pool.query(
+      'UPDATE mm_collections_v2 SET is_public = $1 WHERE source_url = $2',
+      [is_public, source_url]
+    );
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error updating is_public:', error);
+    return NextResponse.json({ error: 'Failed to update visibility' }, { status: 500 });
   }
 }
