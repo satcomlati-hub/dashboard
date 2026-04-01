@@ -34,6 +34,7 @@ export default function RAGCollectionsTable() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [updating, setUpdating] = useState<Set<string>>(new Set());
+  const [updatingManual, setUpdatingManual] = useState<Set<string>>(new Set());
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
@@ -106,6 +107,33 @@ export default function RAGCollectionsTable() {
         next.delete(source_url);
         return next;
       });
+    }
+  };
+
+  const toggleManualPublic = async (manual: string, allPublic: boolean, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newValue = !allPublic;
+    setData(prev => prev.map(group =>
+      group.manual === manual
+        ? { ...group, articulos: group.articulos.map(art => ({ ...art, is_public: newValue })) }
+        : group
+    ));
+    setUpdatingManual(prev => new Set(prev).add(manual));
+    try {
+      const res = await fetch('/api/db/rag-collections', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ manual, is_public: newValue }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setData(prev => prev.map(group =>
+        group.manual === manual
+          ? { ...group, articulos: group.articulos.map(art => ({ ...art, is_public: allPublic })) }
+          : group
+      ));
+    } finally {
+      setUpdatingManual(prev => { const next = new Set(prev); next.delete(manual); return next; });
     }
   };
 
@@ -210,12 +238,14 @@ export default function RAGCollectionsTable() {
           <div className="space-y-2">
             {data.map((group) => {
               const isOpen = expanded.has(group.manual);
+              const allPublic = group.articulos.length > 0 && group.articulos.every(a => a.is_public);
+              const isManualUpdating = updatingManual.has(group.manual);
               return (
                 <div key={group.manual} className="border border-neutral-100 dark:border-neutral-800 rounded-2xl overflow-hidden">
                   {/* Manual header (acordeón) */}
-                  <button
+                  <div
                     onClick={() => toggleManual(group.manual)}
-                    className="w-full flex items-center justify-between px-4 py-3 bg-neutral-50 dark:bg-[#1A1A1A] hover:bg-neutral-100 dark:hover:bg-[#222] transition-colors"
+                    className="w-full flex items-center justify-between px-4 py-3 bg-neutral-50 dark:bg-[#1A1A1A] hover:bg-neutral-100 dark:hover:bg-[#222] transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
                       <div className="p-1.5 rounded-lg bg-[#71BF44]/10">
@@ -226,11 +256,29 @@ export default function RAGCollectionsTable() {
                         {group.total} art.
                       </span>
                     </div>
-                    {isOpen
-                      ? <ChevronDown className="w-4 h-4 text-neutral-400 shrink-0" />
-                      : <ChevronRight className="w-4 h-4 text-neutral-400 shrink-0" />
-                    }
-                  </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => toggleManualPublic(group.manual, allPublic, e)}
+                        disabled={isManualUpdating}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all disabled:opacity-60 ${
+                          allPublic
+                            ? 'bg-sky-400/15 text-sky-400 hover:bg-sky-400/25'
+                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                        }`}
+                        title={allPublic ? 'Hacer todo privado' : 'Hacer todo público'}
+                      >
+                        {isManualUpdating
+                          ? <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                          : allPublic ? <Globe className="w-2.5 h-2.5" /> : <Lock className="w-2.5 h-2.5" />
+                        }
+                        {allPublic ? 'Todo público' : 'Todo privado'}
+                      </button>
+                      {isOpen
+                        ? <ChevronDown className="w-4 h-4 text-neutral-400 shrink-0" />
+                        : <ChevronRight className="w-4 h-4 text-neutral-400 shrink-0" />
+                      }
+                    </div>
+                  </div>
 
                   {/* Artículos */}
                   {isOpen && (

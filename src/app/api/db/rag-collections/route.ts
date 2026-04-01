@@ -52,16 +52,27 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json();
-    const { source_url, is_public } = body;
+    const { source_url, manual, is_public } = body;
 
-    if (typeof source_url !== 'string' || typeof is_public !== 'boolean') {
+    if (typeof is_public !== 'boolean') {
       return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 });
     }
 
-    await pool.query(
-      'UPDATE mm_collections_v2 SET is_public = $1 WHERE source_url = $2',
-      [is_public, source_url]
-    );
+    if (typeof manual === 'string') {
+      // Bulk update: todos los artículos del manual
+      await pool.query(
+        'UPDATE mm_collections_v2 SET is_public = $1 WHERE manual = $2',
+        [is_public, manual]
+      );
+    } else if (typeof source_url === 'string') {
+      // Update individual por artículo
+      await pool.query(
+        'UPDATE mm_collections_v2 SET is_public = $1 WHERE source_url = $2',
+        [is_public, source_url]
+      );
+    } else {
+      return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 });
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
