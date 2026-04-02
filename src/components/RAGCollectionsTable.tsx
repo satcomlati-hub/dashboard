@@ -39,6 +39,7 @@ export default function RAGCollectionsTable() {
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
   const [deletingManual, setDeletingManual] = useState<Set<string>>(new Set());
+  const [searchTerm, setSearchTerm] = useState('');
 
   const fetchData = useCallback(async () => {
     try {
@@ -201,6 +202,18 @@ export default function RAGCollectionsTable() {
   const totalArticulos = data.reduce((sum, m) => sum + m.total, 0);
   const totalPublicos = data.reduce((sum, m) => sum + m.articulos.filter(a => a.is_public).length, 0);
 
+  const filteredData = data.filter(group => {
+    const manualMatches = group.manual.toLowerCase().includes(searchTerm.toLowerCase());
+    const articleMatches = group.articulos.some(art => art.articulo.toLowerCase().includes(searchTerm.toLowerCase()));
+    return manualMatches || articleMatches;
+  }).map(group => {
+    if (group.manual.toLowerCase().includes(searchTerm.toLowerCase())) return group;
+    return {
+      ...group,
+      articulos: group.articulos.filter(art => art.articulo.toLowerCase().includes(searchTerm.toLowerCase()))
+    };
+  });
+
   return (
     <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-3xl overflow-hidden shadow-xl ring-1 ring-black/5 dark:ring-white/5">
       {/* Header */}
@@ -236,6 +249,20 @@ export default function RAGCollectionsTable() {
               </p>
             </div>
           </div>
+          
+          <div className="flex-1 max-w-xs relative group">
+            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-400 group-focus-within:text-[#71BF44] transition-colors">
+              <BookMarked className="w-4 h-4" />
+            </div>
+            <input
+              type="text"
+              placeholder="Buscar manual o artículo..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-700 rounded-2xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#71BF44]/30 focus:border-[#71BF44] dark:text-white transition-all shadow-sm"
+            />
+          </div>
+
           <div className="flex items-center gap-2">
             {syncMsg && (
               <span className="text-[11px] text-sky-400 font-medium px-2 py-1 rounded-lg bg-sky-400/10">
@@ -272,15 +299,15 @@ export default function RAGCollectionsTable() {
           <div className="flex items-center justify-center py-8 text-red-500 text-sm">
             ⚠️ {error}
           </div>
-        ) : data.length === 0 ? (
+        ) : filteredData.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 text-neutral-500 gap-3">
             <BookOpen className="w-10 h-10 opacity-30" />
-            <p className="font-medium">No hay manuales procesados aún.</p>
-            <p className="text-xs opacity-60">Inicia una ingesta para poblar la base de conocimiento.</p>
+            <p className="font-medium">No se encontraron resultados.</p>
+            <p className="text-xs opacity-60">{searchTerm ? 'Prueba con otro término o limpia la búsqueda.' : 'Inicia una ingesta para poblar la base de conocimiento.'}</p>
           </div>
         ) : (
           <div className="space-y-2">
-            {data.map((group) => {
+            {filteredData.map((group) => {
               const isOpen = expanded.has(group.manual);
               const allPublic = group.articulos.length > 0 && group.articulos.every(a => a.is_public);
               const isManualUpdating = updatingManual.has(group.manual);

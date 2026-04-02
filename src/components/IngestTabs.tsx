@@ -2,7 +2,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import {
   Send, Link as LinkIcon, Mail, Loader2, CheckCircle, AlertCircle,
-  Upload, FileText, X, FileUp, Globe
+  Upload, FileText, X, FileUp, Globe, BookMarked, Plus
 } from 'lucide-react';
 
 type Tab = 'zoho' | 'pdf';
@@ -20,10 +20,15 @@ export default function IngestTabs() {
   // ─── PDF state ───
   const [file, setFile] = useState<File | null>(null);
   const [pdfUser, setPdfUser] = useState('');
+  const [manual, setManual] = useState('Ecuador');
+  const [customManual, setCustomManual] = useState('');
+  const [articuloName, setArticuloName] = useState('');
   const [pdfStatus, setPdfStatus] = useState<Status>('idle');
   const [pdfError, setPdfError] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const MANUAL_OPTIONS = ['Ecuador', 'Colombia', 'Panamá', 'Symphony', 'Opera'];
 
   // ─── Zoho validation ───
   const ZOHO_LEARN_DOMAINS = [
@@ -158,9 +163,25 @@ export default function IngestTabs() {
     setPdfError('');
 
     try {
+      const finalManual = manual === 'custom' ? customManual : manual;
+      
+      if (!finalManual.trim()) {
+        setPdfStatus('error');
+        setPdfError('Por favor selecciona o ingresa un manual.');
+        return;
+      }
+
+      if (!articuloName.trim()) {
+        setPdfStatus('error');
+        setPdfError('Por favor ingresa el nombre del artículo.');
+        return;
+      }
+
       const formData = new FormData();
       formData.append('data', file, file.name);
       formData.append('user', pdfUser.trim());
+      formData.append('manual', finalManual.trim());
+      formData.append('articulo', articuloName.trim());
 
       const res = await fetch('https://sara.mysatcomla.com/webhook/ingesta-documentos', {
         method: 'POST',
@@ -172,6 +193,8 @@ export default function IngestTabs() {
       setPdfStatus('success');
       setFile(null);
       setPdfUser('');
+      setArticuloName('');
+      setCustomManual('');
       if (inputRef.current) inputRef.current.value = '';
       setTimeout(() => setPdfStatus('idle'), 4000);
     } catch (error: any) {
@@ -338,6 +361,59 @@ export default function IngestTabs() {
                   <p className="text-xs text-neutral-500">Solo archivos .pdf</p>
                 </div>
               )}
+            </div>
+
+            {/* Manual Selection */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-2 flex items-center gap-2">
+                  <BookMarked className="w-4 h-4 text-neutral-400" />
+                  Manual
+                </label>
+                <select
+                  value={manual}
+                  onChange={(e) => setManual(e.target.value)}
+                  className="w-full bg-neutral-50 dark:bg-[#0A0A0A] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#71BF44]/50 dark:text-white transition-all appearance-none cursor-pointer"
+                >
+                  {MANUAL_OPTIONS.map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                  <option value="custom">+ Agregar más...</option>
+                </select>
+              </div>
+
+              {manual === 'custom' && (
+                <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                  <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-2 flex items-center gap-2">
+                    <Plus className="w-4 h-4 text-[#71BF44]" />
+                    Nombre del nuevo manual
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={customManual}
+                    onChange={(e) => setCustomManual(e.target.value)}
+                    placeholder="Eje: Manual de Logística"
+                    className="w-full bg-neutral-50 dark:bg-[#0A0A0A] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#71BF44]/50 dark:text-white transition-all"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Article Name field */}
+            <div>
+              <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-2 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-neutral-400" />
+                Nombre del artículo
+              </label>
+              <input
+                type="text"
+                required
+                value={articuloName}
+                onChange={(e) => setArticuloName(e.target.value)}
+                placeholder="Eje: Guía de instalación rápida"
+                className="w-full bg-neutral-50 dark:bg-[#0A0A0A] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#71BF44]/50 dark:text-white transition-all"
+              />
             </div>
 
             {/* Email field */}
