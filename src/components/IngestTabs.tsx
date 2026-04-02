@@ -2,7 +2,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import {
   Send, Link as LinkIcon, Mail, Loader2, CheckCircle, AlertCircle,
-  Upload, FileText, X, User, FileUp, Globe
+  Upload, FileText, X, FileUp, Globe
 } from 'lucide-react';
 
 type Tab = 'zoho' | 'pdf';
@@ -148,13 +148,19 @@ export default function IngestTabs() {
     e.preventDefault();
     if (!file) return;
 
+    if (!pdfUser.trim() || !pdfUser.includes('@')) {
+      setPdfStatus('error');
+      setPdfError('Ingresa un correo electrónico válido.');
+      return;
+    }
+
     setPdfStatus('loading');
     setPdfError('');
 
     try {
       const formData = new FormData();
       formData.append('data', file, file.name);
-      formData.append('user', pdfUser || 'dashboard');
+      formData.append('user', pdfUser.trim());
 
       const res = await fetch('https://sara.mysatcomla.com/webhook/ingesta-documentos', {
         method: 'POST',
@@ -334,17 +340,18 @@ export default function IngestTabs() {
               )}
             </div>
 
-            {/* User field */}
+            {/* Email field */}
             <div>
               <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-2 flex items-center gap-2">
-                <User className="w-4 h-4 text-neutral-400" />
-                Usuario (opcional)
+                <Mail className="w-4 h-4 text-neutral-400" />
+                Correo del responsable
               </label>
               <input
-                type="text"
+                type="email"
+                required
                 value={pdfUser}
                 onChange={(e) => setPdfUser(e.target.value)}
-                placeholder="tu.nombre@satcomla.com"
+                placeholder="tu.correo@satcomla.com"
                 className="w-full bg-neutral-50 dark:bg-[#0A0A0A] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#71BF44]/50 dark:text-white transition-all"
               />
             </div>
@@ -353,7 +360,7 @@ export default function IngestTabs() {
               <StatusBanner status={pdfStatus} error={pdfError} successMsg="El PDF se ha enviado correctamente a SARA para procesamiento." />
               <button
                 type="submit"
-                disabled={pdfStatus === 'loading' || !file}
+                disabled={pdfStatus === 'loading' || !file || !pdfUser.trim()}
                 className="w-full bg-[#71BF44] hover:bg-[#60A339] text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-[0_0_15px_rgba(113,191,68,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {pdfStatus === 'loading' ? (
