@@ -25,11 +25,53 @@ export default function IngestTabs() {
   const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // ─── Zoho validation ───
+  const ZOHO_LEARN_DOMAINS = [
+    'learn.zoho.com',
+    'learn.zohopublic.com',
+    'learncustomer.zoho.com',
+  ];
+
+  const isValidZohoLink = (url: string): boolean => {
+    try {
+      const parsed = new URL(url.trim());
+      return ZOHO_LEARN_DOMAINS.some(domain => parsed.hostname === domain || parsed.hostname.endsWith('.' + domain));
+    } catch {
+      return false;
+    }
+  };
+
+  const validateZohoLinks = (raw: string): { valid: boolean; invalidLinks: string[] } => {
+    const urls = raw.split(',').map(l => l.trim()).filter(l => l.length > 0);
+    if (urls.length === 0) return { valid: false, invalidLinks: [] };
+    const invalidLinks = urls.filter(url => !isValidZohoLink(url));
+    return { valid: invalidLinks.length === 0, invalidLinks };
+  };
+
+  // ─── PDF validation ───
+  const isValidPdf = (f: File): boolean => {
+    const hasValidExtension = f.name.toLowerCase().endsWith('.pdf');
+    const hasValidMime = f.type === 'application/pdf';
+    return hasValidExtension && hasValidMime;
+  };
+
   // ─── Zoho handlers ───
   const handleZohoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setZohoStatus('loading');
     setZohoError('');
+
+    // Validar que todos los links sean de Zoho Learn
+    const { valid, invalidLinks } = validateZohoLinks(links);
+    if (!valid) {
+      setZohoStatus('error');
+      if (invalidLinks.length > 0) {
+        setZohoError(`Los siguientes links no son de Zoho Learn: ${invalidLinks.join(', ')}`);
+      } else {
+        setZohoError('Ingresa al menos un link válido de Zoho Learn.');
+      }
+      return;
+    }
 
     try {
       const payload = [{
@@ -69,10 +111,10 @@ export default function IngestTabs() {
     e.stopPropagation();
     setDragActive(false);
     const droppedFile = e.dataTransfer.files?.[0];
-    if (droppedFile && droppedFile.type === 'application/pdf') {
+    if (droppedFile && isValidPdf(droppedFile)) {
       setFile(droppedFile);
     } else {
-      setPdfError('Solo se permiten archivos PDF.');
+      setPdfError('Solo se permiten archivos PDF (.pdf).');
       setPdfStatus('error');
       setTimeout(() => setPdfStatus('idle'), 3000);
     }
@@ -80,12 +122,12 @@ export default function IngestTabs() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
-    if (selected && selected.type === 'application/pdf') {
+    if (selected && isValidPdf(selected)) {
       setFile(selected);
       setPdfStatus('idle');
       setPdfError('');
     } else if (selected) {
-      setPdfError('Solo se permiten archivos PDF.');
+      setPdfError('Solo se permiten archivos PDF (.pdf). El archivo seleccionado no es válido.');
       setPdfStatus('error');
       setTimeout(() => setPdfStatus('idle'), 3000);
     }
