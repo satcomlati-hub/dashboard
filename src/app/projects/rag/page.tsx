@@ -3,6 +3,7 @@ import React from 'react';
 import Link from 'next/link';
 import LogViewer from '@/components/LogViewer';
 import IngestForm from '@/components/IngestForm';
+import PdfUploadForm from '@/components/PdfUploadForm';
 import RAGCollectionsTable from '@/components/RAGCollectionsTable';
 
 export default function RAGProjectPage() {
@@ -57,11 +58,12 @@ export default function RAGProjectPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-8">
         <div className="lg:col-span-5 flex flex-col gap-6">
           <IngestForm />
+          <PdfUploadForm />
           
-          <div className="p-6 rounded-2xl bg-[#71BF44]/5 border border-[#71BF44]/10 h-full">
+          <div className="p-6 rounded-2xl bg-[#71BF44]/5 border border-[#71BF44]/10">
             <h3 className="text-lg font-bold text-[#71BF44] mb-2">Instrucciones de Ingesta</h3>
             <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed mb-3">
-              1. Ingresa uno o más enlaces de los manuales de Zoho separados por coma.
+              1. Ingresa enlaces de Zoho Learn <strong>o</strong> sube un archivo PDF directamente.
             </p>
             <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed mb-3">
               2. El sistema filtrará duplicados, procesará con PDF extraction u HTML scraper, dividirá en chunks, y calculará los embeddings.
