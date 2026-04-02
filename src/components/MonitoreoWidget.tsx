@@ -58,10 +58,10 @@ export default function MonitoreoWidget({ initialData, initialLoading = false, i
     }
 
     // Manual filters
-    if (filterFecha) result = result.filter(item => item.fecha_ecuador.toLowerCase().includes(filterFecha.toLowerCase()));
-    if (filterKey) result = result.filter(item => item.key.toLowerCase().includes(filterKey.toLowerCase()));
-    if (filterPais) result = result.filter(item => item.pais.toLowerCase().includes(filterPais.toLowerCase()));
-    if (filterDetalle) result = result.filter(item => item.detalle_evento.toLowerCase().includes(filterDetalle.toLowerCase()));
+    if (filterFecha) result = result.filter(item => (item.fecha_ecuador || '').toLowerCase().includes(filterFecha.toLowerCase()));
+    if (filterKey) result = result.filter(item => (item.key || '').toLowerCase().includes(filterKey.toLowerCase()));
+    if (filterPais) result = result.filter(item => (item.pais || '').toLowerCase().includes(filterPais.toLowerCase()));
+    if (filterDetalle) result = result.filter(item => (item.detalle_evento || '').toLowerCase().includes(filterDetalle.toLowerCase()));
 
     return result;
   }, [data, selectedDate, filterFecha, filterKey, filterPais, filterDetalle]);
