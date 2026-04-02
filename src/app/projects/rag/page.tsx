@@ -2,8 +2,7 @@
 import React from 'react';
 import Link from 'next/link';
 import LogViewer from '@/components/LogViewer';
-import IngestForm from '@/components/IngestForm';
-import PdfUploadForm from '@/components/PdfUploadForm';
+import IngestTabs from '@/components/IngestTabs';
 import RAGCollectionsTable from '@/components/RAGCollectionsTable';
 
 export default function RAGProjectPage() {
@@ -57,20 +56,15 @@ export default function RAGProjectPage() {
       {/* Ingesta + Logs */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-8">
         <div className="lg:col-span-5 flex flex-col gap-6">
-          <IngestForm />
-          <PdfUploadForm />
+          <IngestTabs />
           
-          <div className="p-6 rounded-2xl bg-[#71BF44]/5 border border-[#71BF44]/10">
-            <h3 className="text-lg font-bold text-[#71BF44] mb-2">Instrucciones de Ingesta</h3>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed mb-3">
-              1. Ingresa enlaces de Zoho Learn <strong>o</strong> sube un archivo PDF directamente.
-            </p>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed mb-3">
-              2. El sistema filtrará duplicados, procesará con PDF extraction u HTML scraper, dividirá en chunks, y calculará los embeddings.
-            </p>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed mb-0">
-              3. Los eventos de cada etapa se emitirán mediante el log-webhook y aparecerán en la ventana derecha en tiempo real.
-            </p>
+          <div className="p-5 rounded-xl bg-[#71BF44]/5 border border-[#71BF44]/10">
+            <h3 className="text-sm font-bold text-[#71BF44] mb-2 uppercase tracking-tight">Instrucciones</h3>
+            <ol className="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed space-y-1.5 list-decimal list-inside">
+              <li>Usa la pestaña <strong>Zoho Learn</strong> para links o <strong>Subir PDF</strong> para archivos.</li>
+              <li>SARA procesará, dividirá en chunks y calculará embeddings automáticamente.</li>
+              <li>Los eventos aparecerán en el visor de logs en tiempo real.</li>
+            </ol>
           </div>
         </div>
 
@@ -86,3 +80,4 @@ export default function RAGProjectPage() {
     </div>
   );
 }
+
