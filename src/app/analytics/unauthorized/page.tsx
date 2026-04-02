@@ -31,7 +31,8 @@ import {
   ArrowDown,
   Activity,
   FileText,
-  AlertTriangle
+  AlertTriangle,
+  Download
 } from 'lucide-react';
 
 interface Voucher {
@@ -342,6 +343,56 @@ export default function UnauthorizedVouchersPage() {
     }
   };
 
+  const exportToCSV = () => {
+    if (!filteredData.length) return;
+
+    const headers = [
+      'ID',
+      'Comprobante',
+      'Tipo Documento',
+      'Fecha Emisión',
+      'Establecimiento',
+      'Punto Emisión',
+      'Nemónico',
+      'Ambiente',
+      'País',
+      'Fecha Ingreso',
+      'Estado',
+      'Detalle',
+      'Intenciones',
+      'Última Gestión'
+    ];
+
+    const rows = filteredData.map(v => {
+      const id = v.Column1 || (v as any).co_id_comprobante;
+      return [
+        id,
+        v.co_num_comprobante || '',
+        v.DescripcionTipoDocumento || '',
+        v.co_fecha_emision ? new Date(v.co_fecha_emision).toLocaleDateString('es-EC') : '',
+        v.co_establecimiento || '',
+        v.co_punto_emision || '',
+        v.co_nemonico || '',
+        v.ambiente || '',
+        PAIS_MAP[v.co_pais] || v.co_pais || '',
+        v.co_hora_in ? new Date(v.co_hora_in).toLocaleString('es-EC') : '',
+        v.DescripcionEstatus || '',
+        `"${(v.co_detalle || '').replace(/"/g, '""')}"`,
+        v.co_numero_reprocesos || 0,
+        v.co_hora_reproceso ? new Date(v.co_hora_reproceso).toLocaleString('es-EC') : ''
+      ].join(';');
+    });
+
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(';'), ...rows].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `NoAutorizados_${new Date().getTime()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const toggleSort = (field: SortField) => {
     if (sortField === field) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     else { setSortField(field); setSortOrder('asc'); }
@@ -579,6 +630,17 @@ export default function UnauthorizedVouchersPage() {
               <button onClick={() => setCurrentPage(p => Math.min(totalPages, p+1))} disabled={currentPage === totalPages} className="p-1 text-[#71BF44] disabled:opacity-20"><ChevronRight className="w-5 h-5"/></button>
               <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages} className="p-1 text-[#71BF44] disabled:opacity-20"><ChevronsRight className="w-5 h-5"/></button>
             </div>
+         )}
+         
+         {/* Export Button */}
+         {filteredData.length > 0 && anyFilterActive && (
+            <button
+              onClick={exportToCSV}
+              className="flex items-center gap-2 px-4 py-2 bg-neutral-900 border border-neutral-800 hover:border-[#71BF44] hover:bg-[#71BF44]/10 transition-all rounded-2xl shadow-xl ml-auto group"
+            >
+              <Download className="w-4 h-4 text-[#71BF44] group-hover:-translate-y-0.5 transition-transform" />
+              <span className="text-[10px] font-black text-[#71BF44] uppercase tracking-widest">Descargar CSV</span>
+            </button>
          )}
       </div>
 
