@@ -38,6 +38,7 @@ export default function RAGCollectionsTable() {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
+  const [deletingManual, setDeletingManual] = useState<Set<string>>(new Set());
 
   const fetchData = useCallback(async () => {
     try {
@@ -160,6 +161,26 @@ export default function RAGCollectionsTable() {
     }
   };
 
+  const deleteManual = async (manual: string, total: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm(`¿Eliminar el manual "${manual}" completo (${total} artículos) de la base de conocimiento? Esta acción no se puede deshacer.`)) return;
+    setDeletingManual(prev => new Set(prev).add(manual));
+    try {
+      const res = await fetch('/api/db/rag-collections', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ manual }),
+      });
+      if (!res.ok) throw new Error();
+      setData(prev => prev.filter(g => g.manual !== manual));
+      setExpanded(prev => { const next = new Set(prev); next.delete(manual); return next; });
+    } catch {
+      // error silencioso
+    } finally {
+      setDeletingManual(prev => { const next = new Set(prev); next.delete(manual); return next; });
+    }
+  };
+
   const handleSync = async () => {
     setSyncing(true);
     setSyncMsg(null);
@@ -181,7 +202,7 @@ export default function RAGCollectionsTable() {
   const totalPublicos = data.reduce((sum, m) => sum + m.articulos.filter(a => a.is_public).length, 0);
 
   return (
-    <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-3xl overflow-hidden shadow-xl ring-1 ring-black/5 dark:ring-white/5">
+    <div className="group/table bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-3xl overflow-hidden shadow-xl ring-1 ring-black/5 dark:ring-white/5">
       {/* Header */}
       <div className="bg-neutral-50 dark:bg-[#1A1A1A] border-b border-neutral-200 dark:border-neutral-800 px-6 py-5">
         <div className="flex items-center justify-between gap-4">
@@ -296,6 +317,17 @@ export default function RAGCollectionsTable() {
                         }
                         {allPublic ? 'Todo público' : 'Todo privado'}
                       </button>
+                      <button
+                        onClick={(e) => deleteManual(group.manual, group.total, e)}
+                        disabled={deletingManual.has(group.manual)}
+                        className="opacity-0 group-hover/table:opacity-100 transition-opacity flex items-center text-neutral-400 hover:text-red-500 disabled:opacity-50 p-1"
+                        title="Eliminar manual completo"
+                      >
+                        {deletingManual.has(group.manual)
+                          ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          : <Trash2 className="w-3.5 h-3.5" />
+                        }
+                      </button>
                       {isOpen
                         ? <ChevronDown className="w-4 h-4 text-neutral-400 shrink-0" />
                         : <ChevronRight className="w-4 h-4 text-neutral-400 shrink-0" />
@@ -318,7 +350,7 @@ export default function RAGCollectionsTable() {
                         return (
                           <div
                             key={art.articulo}
-                            className="grid grid-cols-12 px-4 py-2.5 bg-white dark:bg-[#131313] hover:bg-neutral-50 dark:hover:bg-[#1A1A1A] transition-colors items-center group"
+                            className="grid grid-cols-12 px-4 py-2.5 bg-white dark:bg-[#131313] hover:bg-neutral-50 dark:hover:bg-[#1A1A1A] transition-colors items-center"
                           >
                             <div className="col-span-4 flex items-center gap-2">
                               <FileText className="w-3.5 h-3.5 text-neutral-300 dark:text-neutral-600 shrink-0" />
@@ -350,7 +382,7 @@ export default function RAGCollectionsTable() {
                                 {art.is_public ? 'Público' : 'Privado'}
                               </button>
                             </div>
-                            <div className="col-span-2 flex justify-end items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="col-span-2 flex justify-end items-center gap-2 opacity-0 group-hover/table:opacity-100 transition-opacity">
                               <a
                                 href={art.source_url}
                                 target="_blank"
