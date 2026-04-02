@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { BookOpen, ChevronDown, ChevronRight, ExternalLink, RefreshCw, BookMarked, FileText, Globe, Lock } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronRight, ExternalLink, RefreshCw, BookMarked, FileText, Globe, Lock, Trash2 } from 'lucide-react';
 
 interface Articulo {
   articulo: string;
@@ -37,6 +37,7 @@ export default function RAGCollectionsTable() {
   const [updatingManual, setUpdatingManual] = useState<Set<string>>(new Set());
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<Set<string>>(new Set());
 
   const fetchData = useCallback(async () => {
     try {
@@ -134,6 +135,28 @@ export default function RAGCollectionsTable() {
       ));
     } finally {
       setUpdatingManual(prev => { const next = new Set(prev); next.delete(manual); return next; });
+    }
+  };
+
+  const deleteArticulo = async (source_url: string) => {
+    if (!window.confirm('¿Eliminar este artículo de la base de conocimiento? Esta acción no se puede deshacer.')) return;
+    setDeleting(prev => new Set(prev).add(source_url));
+    try {
+      const res = await fetch('/api/db/rag-collections', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source_url }),
+      });
+      if (!res.ok) throw new Error();
+      setData(prev => prev
+        .map(group => ({ ...group, articulos: group.articulos.filter(a => a.source_url !== source_url) }))
+        .filter(group => group.articulos.length > 0)
+        .map(group => ({ ...group, total: group.articulos.length }))
+      );
+    } catch {
+      // error silencioso — el artículo no se elimina del estado
+    } finally {
+      setDeleting(prev => { const next = new Set(prev); next.delete(source_url); return next; });
     }
   };
 
@@ -288,7 +311,7 @@ export default function RAGCollectionsTable() {
                         <span className="col-span-4 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Artículo</span>
                         <span className="col-span-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Fecha de Ingesta</span>
                         <span className="col-span-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Visibilidad</span>
-                        <span className="col-span-2 text-[10px] font-bold text-neutral-400 uppercase tracking-widest text-right">Fuente</span>
+                        <span className="col-span-2 text-[10px] font-bold text-neutral-400 uppercase tracking-widest text-right">Acciones</span>
                       </div>
                       {group.articulos.map((art) => {
                         const isUpdating = updating.has(art.source_url);
@@ -327,17 +350,28 @@ export default function RAGCollectionsTable() {
                                 {art.is_public ? 'Público' : 'Privado'}
                               </button>
                             </div>
-                            <div className="col-span-2 flex justify-end">
+                            <div className="col-span-2 flex justify-end items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                               <a
                                 href={art.source_url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex items-center gap-1 text-[10px] font-medium text-neutral-400 hover:text-[#71BF44] transition-colors opacity-0 group-hover:opacity-100"
+                                className="flex items-center gap-1 text-[10px] font-medium text-neutral-400 hover:text-[#71BF44] transition-colors"
                                 title="Ver fuente"
                               >
                                 <ExternalLink className="w-3 h-3" />
                                 Ver
                               </a>
+                              <button
+                                onClick={() => deleteArticulo(art.source_url)}
+                                disabled={deleting.has(art.source_url)}
+                                className="flex items-center text-neutral-400 hover:text-red-500 transition-colors disabled:opacity-50"
+                                title="Eliminar artículo"
+                              >
+                                {deleting.has(art.source_url)
+                                  ? <RefreshCw className="w-3 h-3 animate-spin" />
+                                  : <Trash2 className="w-3 h-3" />
+                                }
+                              </button>
                             </div>
                           </div>
                         );

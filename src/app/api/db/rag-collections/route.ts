@@ -49,6 +49,35 @@ export async function GET() {
   }
 }
 
+export async function DELETE(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { source_url } = body;
+
+    if (typeof source_url !== 'string' || !source_url) {
+      return NextResponse.json({ error: 'source_url requerido' }, { status: 400 });
+    }
+
+    await pool.query(
+      `DELETE FROM zoho_learn_vectors WHERE metadata->>'source_url' = $1`,
+      [source_url]
+    );
+    await pool.query(
+      `DELETE FROM mm_base_publica WHERE metadata->>'source_url' = $1`,
+      [source_url]
+    );
+    await pool.query(
+      `DELETE FROM mm_collections_v2 WHERE source_url = $1`,
+      [source_url]
+    );
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting article:', error);
+    return NextResponse.json({ error: 'Failed to delete article' }, { status: 500 });
+  }
+}
+
 export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json();
