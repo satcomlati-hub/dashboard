@@ -202,7 +202,7 @@ export default function RAGCollectionsTable() {
   const totalPublicos = data.reduce((sum, m) => sum + m.articulos.filter(a => a.is_public).length, 0);
 
   return (
-    <div className="group/table bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-3xl overflow-hidden shadow-xl ring-1 ring-black/5 dark:ring-white/5">
+    <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-3xl overflow-hidden shadow-xl ring-1 ring-black/5 dark:ring-white/5">
       {/* Header */}
       <div className="bg-neutral-50 dark:bg-[#1A1A1A] border-b border-neutral-200 dark:border-neutral-800 px-6 py-5">
         <div className="flex items-center justify-between gap-4">
@@ -320,7 +320,7 @@ export default function RAGCollectionsTable() {
                       <button
                         onClick={(e) => deleteManual(group.manual, group.total, e)}
                         disabled={deletingManual.has(group.manual)}
-                        className="opacity-0 group-hover/table:opacity-100 transition-opacity flex items-center text-neutral-400 hover:text-red-500 disabled:opacity-50 p-1"
+                        className="flex items-center text-neutral-400 hover:text-red-500 disabled:opacity-50 p-1"
                         title="Eliminar manual completo"
                       >
                         {deletingManual.has(group.manual)
@@ -382,7 +382,7 @@ export default function RAGCollectionsTable() {
                                 {art.is_public ? 'Público' : 'Privado'}
                               </button>
                             </div>
-                            <div className="col-span-2 flex justify-end items-center gap-2 opacity-0 group-hover/table:opacity-100 transition-opacity">
+                            <div className="col-span-2 flex justify-end items-center gap-2">
                               <a
                                 href={art.source_url}
                                 target="_blank"
