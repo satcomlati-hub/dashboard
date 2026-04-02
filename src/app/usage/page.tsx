@@ -53,6 +53,11 @@ const OUTPUT_RATIO = 0.35;
 
 const GEMINI_CREDIT = 300;
 
+// Costo real reportado por Google AI Studio — últimos 90 días (actualizado 2026-04-02)
+// La tabla gemini_usage en Supabase NO recibe datos de producción (solo 1 fila de prueba),
+// así que este valor manual es la referencia más confiable.
+const GEMINI_STUDIO_COST_90D = 37.70;
+
 // ─── Supabase Free — verificado en supabase.com/pricing (abril 2026) ─────────
 const SUPABASE_LIMITS = {
   DB_MB: 500,
@@ -64,8 +69,8 @@ const SUPABASE_LIMITS = {
   PAUSE_DAYS: 7,
   PRO_PRICE: 25,
 };
-// Valores actuales — ingresar manualmente hasta integrar Supabase Management API
-const SUPABASE_USED = { DB_MB: 48, STORAGE_GB: 0.08, BANDWIDTH_GB: 0.4, MAU: 4, EDGE_FN: 1_200 };
+// Valores actuales — DB_MB obtenido de pg_database_size() vía Supabase MCP (2026-04-02)
+const SUPABASE_USED = { DB_MB: 652, STORAGE_GB: 0.08, BANDWIDTH_GB: 0.4, MAU: 4, EDGE_FN: 1_200 };
 
 // ─── n8n Cloud Starter — verificado en n8n.io/pricing (abril 2026) ───────────
 // NOTA: n8n eliminó el límite de workflows activos. Solo importa el nº de ejecuciones.
@@ -247,13 +252,13 @@ export default function UsagePage() {
               { label: 'Gasto fijo mensual', value: '$20', sub: 'n8n Cloud Starter' },
               {
                 label: 'Crédito Gemini restante',
-                value: `$${(GEMINI_CREDIT - geminiCostMonth).toFixed(2)}`,
-                sub: `de $${GEMINI_CREDIT} · ~${((geminiCostMonth / GEMINI_CREDIT) * 100).toFixed(4)}% usado`,
+                value: `$${(GEMINI_CREDIT - GEMINI_STUDIO_COST_90D).toFixed(2)}`,
+                sub: `de $${GEMINI_CREDIT} · ${((GEMINI_STUDIO_COST_90D / GEMINI_CREDIT) * 100).toFixed(2)}% usado (90 días)`,
               },
               {
-                label: 'Gemini est. este mes',
-                value: `$${geminiCostMonth.toFixed(4)}`,
-                sub: `${geminiTokens.toLocaleString()} tokens · ${GEMINI_MODELS[model].label}`,
+                label: 'Gemini real (90 días)',
+                value: `$${GEMINI_STUDIO_COST_90D.toFixed(2)}`,
+                sub: `Fuente: Google AI Studio · tabla local sin datos`,
               },
               { label: 'Servicios gratuitos', value: '3 / 5', sub: 'Supabase · Vercel · OCI' },
             ].map(c => (
@@ -331,15 +336,31 @@ export default function UsagePage() {
                 <ProgressBar value={geminiCostMonth} max={GEMINI_CREDIT} />
               </div>
 
+              {/* Real cost from AI Studio */}
+              <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 mt-3">
+                <p className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide mb-2">
+                  Costo real · Google AI Studio
+                </p>
+                <div className="flex justify-between text-xs text-neutral-700 dark:text-neutral-300">
+                  <span>Últimos 90 días</span>
+                  <span className="font-mono font-semibold text-amber-600 dark:text-amber-400">${GEMINI_STUDIO_COST_90D.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                  <span>Tracking local (tabla <code className="font-mono">gemini_usage</code>)</span>
+                  <span className="font-mono text-red-500">Sin datos reales</span>
+                </div>
+                <p className="text-[11px] text-amber-700 dark:text-amber-500 mt-2">
+                  Los workflows no escriben en la tabla local. El seguimiento por modelo y por tarjeta API requiere instrumentar cada llamada a Gemini para insertar en <code className="font-mono">gemini_usage</code>.
+                </p>
+              </div>
+
               {GEMINI_MODELS[model].deprecated && (
                 <InfoBox variant="warn">
                   Gemini 2.0 Flash se dará de baja el 1 jun 2026. Migrar a 2.5 Flash-Lite (mismo precio) o 2.5 Flash antes de esa fecha.
                 </InfoBox>
               )}
               <InfoBox variant="neutral">
-                La tasa combinada asume 65% input / 35% output. Para mayor precisión, registrar input y output por separado en{' '}
-                <code className="font-mono">/api/metrics</code>.{' '}
-                El crédito $300 es de Google Cloud — aplica solo si se factura vía Vertex AI o Google AI Studio con billing habilitado.
+                La tasa combinada asume 65% input / 35% output. El crédito $300 es de Google Cloud — aplica solo si se factura vía Vertex AI o Google AI Studio con billing habilitado.
               </InfoBox>
             </ServiceCard>
 
@@ -378,7 +399,10 @@ export default function UsagePage() {
                 <div className="flex justify-between"><span>Pausa por inactividad</span><span className="font-mono">7 días</span></div>
                 <div className="flex justify-between"><span>Plan Pro (si se supera)</span><span className="font-mono text-blue-500">$25/mes</span></div>
               </div>
-              <InfoBox variant="neutral">Valores ingresados manualmente. Para datos en tiempo real integrar la Supabase Management API.</InfoBox>
+              <InfoBox variant="warn">
+                DB a 652 MB — supera el límite de 500 MB del Free Tier. Supabase puede pausar o degradar el proyecto. Revisar y limpiar datos (p.ej. <code className="font-mono">zoho_learn_vectors</code> con 8,522 filas) o migrar al plan Pro ($25/mes).
+              </InfoBox>
+              <InfoBox variant="neutral">DB_MB medido con <code className="font-mono">pg_database_size()</code> vía MCP (2026-04-02). Resto de valores ingresados manualmente.</InfoBox>
             </ServiceCard>
 
             {/* ── n8n Cloud ── */}
