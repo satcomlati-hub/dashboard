@@ -1,8 +1,8 @@
 'use client';
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Send, Link as LinkIcon, Mail, Loader2, CheckCircle, AlertCircle,
-  Upload, FileText, X, FileUp, Globe, BookMarked, Plus
+  Upload, FileText, X, FileUp, Globe, BookMarked, Plus, Search
 } from 'lucide-react';
 
 type Tab = 'zoho' | 'pdf';
@@ -26,9 +26,95 @@ export default function IngestTabs() {
   const [pdfStatus, setPdfStatus] = useState<Status>('idle');
   const [pdfError, setPdfError] = useState('');
   const [dragActive, setDragActive] = useState(false);
+  
+  // ─── Autocomplete state ───
+  const [existingArticulos, setExistingArticulos] = useState<{articulo: string; manual: string}[]>([]);
+  const [filteredSuggestions, setFilteredSuggestions] = useState<{articulo: string; manual: string}[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isFetchingSuggestions, setIsFetchingSuggestions] = useState(false);
+
   const inputRef = useRef<HTMLInputElement>(null);
+  const suggestionRef = useRef<HTMLDivElement>(null);
 
   const MANUAL_OPTIONS = ['Ecuador', 'Colombia', 'Panamá', 'Symphony', 'Opera'];
+
+  // ─── Fetch existing articles ───
+  useEffect(() => {
+    const fetchArticles = async () => {
+      setIsFetchingSuggestions(true);
+      try {
+        const res = await fetch('/api/db/rag-collections');
+        if (res.ok) {
+          const json = await res.json();
+          const flatList: {articulo: string; manual: string}[] = [];
+          
+          if (json.data && Array.isArray(json.data)) {
+            json.data.forEach((group: any) => {
+              if (group.articulos && Array.isArray(group.articulos)) {
+                group.articulos.forEach((art: any) => {
+                  flatList.push({
+                    articulo: art.articulo,
+                    manual: group.manual
+                  });
+                });
+              }
+            });
+          }
+          // Eliminar duplicados exactos si los hay
+          const uniqueList = flatList.filter((v, i, a) => 
+            a.findIndex(t => (t.articulo === v.articulo && t.manual === v.manual)) === i
+          );
+          setExistingArticulos(uniqueList);
+        }
+      } catch (err) {
+        console.error('Error fetching suggestions:', err);
+      } finally {
+        setIsFetchingSuggestions(false);
+      }
+    };
+
+    fetchArticles();
+  }, []);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (suggestionRef.current && !suggestionRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleArticuloChange = (val: string) => {
+    setArticuloName(val);
+    if (val.length > 1) {
+      const filtered = existingArticulos.filter(item => 
+        item.articulo.toLowerCase().includes(val.toLowerCase())
+      ).slice(0, 8); // Limitar a 8 sugerencias
+      setFilteredSuggestions(filtered);
+      setShowSuggestions(filtered.length > 0);
+    } else {
+      setShowSuggestions(false);
+    }
+  };
+
+  const selectSuggestion = (item: {articulo: string; manual: string}) => {
+    setArticuloName(item.articulo);
+    
+    // Si el manual está en las opciones estándar, seleccionarlo
+    if (MANUAL_OPTIONS.includes(item.manual)) {
+      setManual(item.manual);
+      setCustomManual('');
+    } else {
+      // Si no, ponerlo como custom
+      setManual('custom');
+      setCustomManual(item.manual);
+    }
+    
+    setShowSuggestions(false);
+  };
 
   // ─── Zoho validation ───
   const ZOHO_LEARN_DOMAINS = [
@@ -401,19 +487,61 @@ export default function IngestTabs() {
             </div>
 
             {/* Article Name field */}
-            <div>
-              <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-2 flex items-center gap-2">
-                <FileText className="w-4 h-4 text-neutral-400" />
-                Nombre del artículo
+            <div className="relative">
+              <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-2 flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-neutral-400" />
+                  Nombre del artículo
+                </span>
+                {isFetchingSuggestions && (
+                  <span className="text-[10px] text-[#71BF44] animate-pulse">Sincronizando sugerencias...</span>
+                )}
               </label>
-              <input
-                type="text"
-                required
-                value={articuloName}
-                onChange={(e) => setArticuloName(e.target.value)}
-                placeholder="Eje: Guía de instalación rápida"
-                className="w-full bg-neutral-50 dark:bg-[#0A0A0A] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#71BF44]/50 dark:text-white transition-all"
-              />
+              <div className="group relative">
+                <input
+                  type="text"
+                  required
+                  value={articuloName}
+                  onChange={(e) => handleArticuloChange(e.target.value)}
+                  onFocus={() => articuloName.length > 1 && filteredSuggestions.length > 0 && setShowSuggestions(true)}
+                  placeholder="Ej: Guía de instalación rápida"
+                  className="w-full bg-neutral-50 dark:bg-[#0A0A0A] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#71BF44]/50 dark:text-white transition-all pl-10"
+                />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 group-focus-within:text-[#71BF44] transition-colors" />
+              </div>
+
+              {/* Suggestions dropdown */}
+              {showSuggestions && (
+                <div 
+                  ref={suggestionRef}
+                  className="absolute z-50 left-0 right-0 mt-2 bg-white dark:bg-[#1A1A1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+                >
+                  <div className="p-2 border-b border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-[#131313]">
+                    <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest px-2">Artículos Sugeridos</p>
+                  </div>
+                  <div className="max-h-60 overflow-y-auto cursor-pointer">
+                    {filteredSuggestions.map((item, idx) => (
+                      <div
+                        key={`${item.articulo}-${idx}`}
+                        onClick={() => selectSuggestion(item)}
+                        className="px-4 py-3 hover:bg-[#71BF44]/5 dark:hover:bg-[#71BF44]/10 transition-colors flex flex-col gap-0.5 border-b border-neutral-50 dark:border-neutral-800 last:border-0"
+                      >
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-3.5 h-3.5 text-[#71BF44]" />
+                          <span className="text-sm font-medium dark:text-neutral-200">{item.articulo}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 ml-5">
+                          <BookMarked className="w-3 h-3 text-neutral-400" />
+                          <span className="text-[11px] text-neutral-500 font-medium">Manual: {item.manual}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="p-2 bg-neutral-50 dark:bg-[#131313] text-center">
+                    <p className="text-[9px] text-neutral-400">Selecciona para autocompletar artículo y manual</p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Email field */}
