@@ -564,7 +564,9 @@ export default function PendientesReportePage() {
                      <th className="px-8 py-5">Nemónico</th>
                      <th className="px-8 py-5">País</th>
                      <th className="px-8 py-5">Estado</th>
-                     <th className="px-8 py-5">{timeField === 'co_hora_in' ? 'Ingreso' : timeField === 'co_fecha_emision' ? 'Emisión' : 'Autorización'}</th>
+                     <th className="px-8 py-5">Ingreso</th>
+                     <th className="px-8 py-5">Emisión</th>
+                     <th className="px-8 py-5">Autorización</th>
                   </tr>
                </thead>
                <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/50">
@@ -594,8 +596,20 @@ export default function PendientesReportePage() {
                        </td>
                        <td className="px-8 py-4">
                           <div className="flex items-center gap-2 text-[10px] font-bold text-neutral-400">
-                             <Clock className="w-3 h-3" />
-                             {new Date(item[timeField]).toLocaleString('es-EC')}
+                             <Clock className="w-3 h-3 text-[#71BF44]/50" />
+                             {new Date(item.co_hora_in).toLocaleString('es-EC')}
+                          </div>
+                       </td>
+                       <td className="px-8 py-4">
+                          <div className="flex items-center gap-2 text-[10px] font-bold text-neutral-400">
+                             <Calendar className="w-3 h-3 text-[#71BF44]/50" />
+                             {new Date(item.co_fecha_emision).toLocaleString('es-EC')}
+                          </div>
+                       </td>
+                       <td className="px-8 py-4">
+                          <div className="flex items-center gap-2 text-[10px] font-bold text-neutral-400">
+                             <Check className="w-3 h-3 text-[#71BF44]/50" />
+                             {new Date(item.co_fecha_autorizacion).toLocaleString('es-EC')}
                           </div>
                        </td>
                     </tr>
