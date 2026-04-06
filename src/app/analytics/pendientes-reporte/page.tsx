@@ -101,6 +101,11 @@ export default function PendientesReportePage() {
   const [selectedAmbiente, setSelectedAmbiente] = useState('AWS');
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
+  // Advanced Table States
+  const [sortField, setSortField] = useState<keyof Pendiente | 'pais_name'>('co_hora_in');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
+
   const fetchData = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) setRefreshing(true);
@@ -140,13 +145,19 @@ export default function PendientesReportePage() {
     fetchData();
   }, [fetchData]);
 
-  // Clear selected date when timeField or nemonico filter changes
+  // Clear states when filters change
   useEffect(() => {
     setSelectedDate(null);
   }, [timeField, filterNemonico, selectedPais, selectedAmbiente]);
 
+  const toggleSort = (field: keyof Pendiente | 'pais_name') => {
+    if (sortField === field) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    else { setSortField(field); setSortOrder('asc'); }
+  };
+
   const filteredData = useMemo(() => {
-    return data.filter(item => {
+    let result = data.filter(item => {
+      // Global filters
       const matchNemonico = !filterNemonico || item.co_nemonico.toLowerCase().includes(filterNemonico.toLowerCase());
       const matchPais = selectedPais === null || item.co_pais === selectedPais;
       
@@ -161,9 +172,47 @@ export default function PendientesReportePage() {
         }
       }
 
-      return matchNemonico && matchPais && matchDate;
+      if (!matchNemonico || !matchPais || !matchDate) return false;
+
+      // Column specific filters
+      for (const [key, filterValue] of Object.entries(columnFilters)) {
+        if (!filterValue) continue;
+        
+        let itemValue: string;
+        if (key === 'pais_name') {
+           itemValue = PAIS_MAP[item.co_pais] || String(item.co_pais);
+        } else if (key === 'co_hora_in' || key === 'co_fecha_emision' || key === 'co_fecha_autorizacion') {
+           itemValue = new Date(item[key as keyof Pendiente]).toLocaleString('es-EC');
+        } else {
+           itemValue = String(item[key as keyof Pendiente] || '');
+        }
+
+        if (!itemValue.toLowerCase().includes(filterValue.toLowerCase())) return false;
+      }
+
+      return true;
     });
-  }, [data, filterNemonico, selectedPais, selectedDate, timeField]);
+
+    // Apply Sorting
+    result.sort((a, b) => {
+      let valA: any;
+      let valB: any;
+
+      if (sortField === 'pais_name') {
+        valA = PAIS_MAP[a.co_pais] || String(a.co_pais);
+        valB = PAIS_MAP[b.co_pais] || String(b.co_pais);
+      } else {
+        valA = a[sortField as keyof Pendiente];
+        valB = b[sortField as keyof Pendiente];
+      }
+
+      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return result;
+  }, [data, filterNemonico, selectedPais, selectedDate, timeField, sortField, sortOrder, columnFilters]);
 
   const stats = useMemo(() => {
     // Current date for comparison: 2026-04-06
@@ -558,17 +607,48 @@ export default function PendientesReportePage() {
          
          <div className="overflow-x-auto">
             <table className="w-full text-left">
-               <thead>
+                <thead>
                   <tr className="border-b border-neutral-100 dark:border-neutral-800 text-[10px] font-black text-neutral-400 uppercase tracking-widest">
-                     <th className="px-8 py-5">ID Comprobante</th>
-                     <th className="px-8 py-5">Nemónico</th>
-                     <th className="px-8 py-5">País</th>
-                     <th className="px-8 py-5">Estado</th>
-                     <th className="px-8 py-5">Ingreso</th>
-                     <th className="px-8 py-5">Emisión</th>
-                     <th className="px-8 py-5">Autorización</th>
+                     {[
+                        { id: 'co_id_comprobante' as keyof Pendiente, label: 'ID Comprobante' },
+                        { id: 'co_nemonico' as keyof Pendiente, label: 'Nemónico' },
+                        { id: 'pais_name' as any, label: 'País' },
+                        { id: 'co_estatus' as keyof Pendiente, label: 'Estado' },
+                        { id: 'co_hora_in' as keyof Pendiente, label: 'Ingreso' },
+                        { id: 'co_fecha_emision' as keyof Pendiente, label: 'Emisión' },
+                        { id: 'co_fecha_autorizacion' as keyof Pendiente, label: 'Autorización' }
+                     ].map(col => (
+                        <th key={col.id} className="px-8 py-5 cursor-pointer hover:text-[#71BF44] transition-colors" onClick={() => toggleSort(col.id)}>
+                           <div className="flex items-center gap-2">
+                              {col.label}
+                              {sortField === col.id ? (
+                                 sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                              ) : (
+                                 <ArrowUpDown className="w-3 h-3 opacity-20" />
+                              )}
+                           </div>
+                        </th>
+                     ))}
                   </tr>
-               </thead>
+                  <tr className="bg-neutral-50/50 dark:bg-white/[0.01] border-b border-neutral-100 dark:border-neutral-800">
+                     {[
+                        'co_id_comprobante', 'co_nemonico', 'pais_name', 'co_estatus', 'co_hora_in', 'co_fecha_emision', 'co_fecha_autorizacion'
+                     ].map(colId => (
+                        <th key={`filter-${colId}`} className="px-8 py-3 min-w-[120px]">
+                           <div className="relative group">
+                              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-neutral-400 group-focus-within:text-[#71BF44] transition-colors" />
+                              <input 
+                                 type="text"
+                                 placeholder={`Filtrar...`}
+                                 value={columnFilters[colId] || ''}
+                                 onChange={(e) => setColumnFilters(prev => ({ ...prev, [colId]: e.target.value }))}
+                                 className="w-full bg-white dark:bg-[#151515] border border-neutral-200 dark:border-neutral-800 rounded-lg pl-8 pr-3 py-1.5 text-[9px] font-bold outline-none focus:ring-1 focus:ring-[#71BF44]/30 focus:border-[#71BF44]/30 transition-all placeholder:text-neutral-500"
+                              />
+                           </div>
+                        </th>
+                     ))}
+                  </tr>
+                </thead>
                <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/50">
                   {filteredData.slice(0, 50).map((item) => (
                     <tr key={item.co_id_comprobante} className="group hover:bg-neutral-50 dark:hover:bg-white/[0.01] transition-all">
