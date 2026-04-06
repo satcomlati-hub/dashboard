@@ -121,13 +121,19 @@ export default function PendientesReportePage() {
       
       if (Array.isArray(json)) {
         json.forEach(item => {
-          if (item.data && typeof item.data === 'string') {
-            try {
-              const parsed = JSON.parse(item.data);
-              if (Array.isArray(parsed)) flattened = [...flattened, ...parsed];
-            } catch (e) {
-              console.error('Error parsing nested JSON', e);
+          if (item.data) {
+            if (typeof item.data === 'string') {
+              try {
+                const parsed = JSON.parse(item.data);
+                if (Array.isArray(parsed)) flattened = [...flattened, ...parsed];
+              } catch (e) {
+                console.error('Error parsing nested JSON', e);
+              }
+            } else if (Array.isArray(item.data)) {
+              flattened = [...flattened, ...item.data];
             }
+          } else if (item.co_id_comprobante) {
+            flattened.push(item);
           }
         });
       }
@@ -144,6 +150,14 @@ export default function PendientesReportePage() {
 
   useEffect(() => {
     fetchData();
+  }, [fetchData]);
+
+  // Auto-refresh every 30 minutes
+  useEffect(() => {
+    const timer = setInterval(() => {
+      fetchData(true);
+    }, 30 * 60 * 1000);
+    return () => clearInterval(timer);
   }, [fetchData]);
 
   // Clear states when filters change
@@ -341,13 +355,16 @@ export default function PendientesReportePage() {
                   <Building2 className="w-3 h-3 text-neutral-400" />
                   <div className="flex gap-1">
                     {[
-                      { id: 'AWS', label: 'Colombia (AWS)' },
                       { id: 'V5', label: 'V5' },
-                      { id: 'Panama', label: 'Panamá' }
+                      { id: 'Panama', label: 'Panamá' },
+                      { id: 'AWS', label: 'Colombia (AWS)' }
                     ].map(env => (
                       <button
                         key={env.id}
-                        onClick={() => setSelectedAmbiente(env.id)}
+                        onClick={() => {
+                          setData([]);
+                          setSelectedAmbiente(env.id);
+                        }}
                         className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${selectedAmbiente === env.id ? 'bg-[#71BF44] text-white' : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'}`}
                       >
                         {env.label}
