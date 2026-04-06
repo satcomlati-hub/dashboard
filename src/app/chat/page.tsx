@@ -101,6 +101,12 @@ const IconExternalLink = () => (
   </svg>
 );
 
+const IconTrash = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" />
+  </svg>
+);
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function SaraChatPage() {
@@ -153,6 +159,37 @@ export default function SaraChatPage() {
     setMessages(s.messages);
     setInput('');
     clearFile();
+  }
+
+  async function deleteSession(sessionId: string) {
+    if (!window.confirm('¿Estás seguro de que deseas borrar este chat? Esta acción no se puede deshacer.')) return;
+
+    // 1. Borrar de la base de datos (Supabase)
+    try {
+      await fetch('/api/chat/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      });
+    } catch (err) {
+      console.error('Error deleting from DB:', err);
+    }
+
+    // 2. Borrar del estado y localStorage
+    setSessions(prev => {
+      const next = prev.filter(s => s.id !== sessionId);
+      localStorage.setItem('sara_sessions', JSON.stringify(next));
+
+      // Si borramos la activa, cambiamos a otra o creamos una nueva
+      if (sessionId === activeSessionId) {
+        if (next.length > 0) {
+          switchSession(next[0]);
+        } else {
+          createSession(false);
+        }
+      }
+      return next;
+    });
   }
 
   function persist(updated: Message[], sid: string) {
@@ -263,23 +300,31 @@ export default function SaraChatPage() {
           {sessions.map((s) => {
             const active = s.id === activeSessionId;
             return (
-              <button
-                key={s.id}
-                onClick={() => switchSession(s)}
-                className={`w-full text-left px-4 py-3 transition-colors border-l-2 ${
-                  active
-                    ? 'bg-[#71BF44]/5 border-l-[#71BF44]'
-                    : 'border-l-transparent hover:bg-neutral-50 dark:hover:bg-neutral-800/40'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2 mb-0.5">
-                  <span className={`text-xs truncate ${active ? 'font-semibold text-neutral-900 dark:text-white' : 'font-medium text-neutral-700 dark:text-neutral-300'}`}>
-                    {s.title}
-                  </span>
-                  <span className="text-[9px] text-neutral-400 shrink-0">{formatTime(s.timestamp)}</span>
-                </div>
-                <p className="text-[10px] text-neutral-400 dark:text-neutral-500 truncate">{s.preview}</p>
-              </button>
+              <div key={s.id} className="group relative">
+                <button
+                  onClick={() => switchSession(s)}
+                  className={`w-full text-left px-4 py-3 transition-colors border-l-2 ${
+                    active
+                      ? 'bg-[#71BF44]/5 border-l-[#71BF44]'
+                      : 'border-l-transparent hover:bg-neutral-50 dark:hover:bg-neutral-800/40'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2 mb-0.5">
+                    <span className={`text-xs truncate max-w-[120px] ${active ? 'font-semibold text-neutral-900 dark:text-white' : 'font-medium text-neutral-700 dark:text-neutral-300'}`}>
+                      {s.title}
+                    </span>
+                    <span className="text-[9px] text-neutral-400 shrink-0">{formatTime(s.timestamp)}</span>
+                  </div>
+                  <p className="text-[10px] text-neutral-400 dark:text-neutral-500 truncate pr-6">{s.preview}</p>
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-all"
+                  title="Borrar chat"
+                >
+                  <IconTrash />
+                </button>
+              </div>
             );
           })}
         </div>
@@ -298,7 +343,7 @@ export default function SaraChatPage() {
               <h2 className="text-sm font-bold text-neutral-900 dark:text-white">AI Assistant: SARA</h2>
               <div className="flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#71BF44] animate-pulse" />
-                <span className="text-[10px] font-medium text-[#71BF44] uppercase tracking-wide">Sistema óptimo · Gemini 2.0 Flash</span>
+                <span className="text-[10px] font-medium text-[#71BF44] uppercase tracking-wide">Sistema óptimo · Powered by Gemini</span>
               </div>
             </div>
           </div>
