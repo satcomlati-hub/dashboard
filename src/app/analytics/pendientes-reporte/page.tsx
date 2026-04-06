@@ -36,6 +36,7 @@ import {
   BarChart3,
   LineChart as LineChartIcon
 } from 'lucide-react';
+import { formatDate } from '@/lib/formatters';
 import {
   LineChart,
   Line,
@@ -182,7 +183,7 @@ export default function PendientesReportePage() {
         if (key === 'pais_name') {
            itemValue = PAIS_MAP[item.co_pais] || String(item.co_pais);
         } else if (key === 'co_hora_in' || key === 'co_fecha_emision' || key === 'co_fecha_autorizacion') {
-           itemValue = new Date(item[key as keyof Pendiente]).toLocaleString('es-EC');
+           itemValue = formatDate(item[key as keyof Pendiente] as any, true);
         } else {
            itemValue = String(item[key as keyof Pendiente] || '');
         }
@@ -505,7 +506,7 @@ export default function PendientesReportePage() {
                       axisLine={false} 
                       tickLine={false} 
                       tick={{ fill: '#999', fontSize: 10, fontWeight: 700 }}
-                      tickFormatter={(val) => val.split('-').reverse().join('/')}
+                      tickFormatter={(val) => formatDate(val)}
                     />
                     <YAxis 
                       axisLine={false} 
@@ -593,7 +594,7 @@ export default function PendientesReportePage() {
               {selectedDate && (
                 <div className="flex items-center gap-2 text-[9px] font-black text-[#71BF44] uppercase tracking-widest animate-in fade-in slide-in-from-left-2">
                    <Calendar className="w-3 h-3" />
-                   Filtrado por: {selectedDate.split('-').reverse().join('/')}
+                   Filtrado por: {formatDate(selectedDate)}
                    <button onClick={() => setSelectedDate(null)} className="ml-2 bg-[#71BF44]/10 p-1 rounded-md hover:bg-[#71BF44]/20 transition-all text-[#71BF44]">
                       <X className="w-3 h-3" />
                    </button>
@@ -677,19 +678,19 @@ export default function PendientesReportePage() {
                        <td className="px-8 py-4">
                           <div className="flex items-center gap-2 text-[10px] font-bold text-neutral-400">
                              <Clock className="w-3 h-3 text-[#71BF44]/50" />
-                             {new Date(item.co_hora_in).toLocaleString('es-EC')}
+                             {formatDate(item.co_hora_in, true)}
                           </div>
                        </td>
                        <td className="px-8 py-4">
                           <div className="flex items-center gap-2 text-[10px] font-bold text-neutral-400">
                              <Calendar className="w-3 h-3 text-[#71BF44]/50" />
-                             {new Date(item.co_fecha_emision).toLocaleString('es-EC')}
+                             {formatDate(item.co_fecha_emision, true)}
                           </div>
                        </td>
                        <td className="px-8 py-4">
                           <div className="flex items-center gap-2 text-[10px] font-bold text-neutral-400">
                              <Check className="w-3 h-3 text-[#71BF44]/50" />
-                             {new Date(item.co_fecha_autorizacion).toLocaleString('es-EC')}
+                             {formatDate(item.co_fecha_autorizacion, true)}
                           </div>
                        </td>
                     </tr>

@@ -1,6 +1,7 @@
 'use client';
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { formatDate } from '@/lib/formatters';
 
 interface Evento {
   fecha_ecuador: string;
@@ -27,7 +28,7 @@ function CustomTooltip({ active, payload }: any) {
     <div className="bg-[#1a1a1a] border border-neutral-700/50 rounded-2xl px-5 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.5)] text-white text-xs leading-relaxed min-w-[280px] backdrop-blur-xl animate-in fade-in zoom-in duration-200">
       <div className="flex items-center gap-2 mb-3 border-b border-white/10 pb-2">
         <div className="w-2 h-2 rounded-full bg-[#71BF44] animate-pulse" />
-        <p className="text-neutral-400 font-bold uppercase tracking-widest text-[10px]">{d.date}</p>
+        <p className="text-neutral-400 font-bold uppercase tracking-widest text-[10px]">{formatDate(d.date, true)}</p>
       </div>
       
       <div className="space-y-2.5">
@@ -105,7 +106,7 @@ export default function MonitoreoChart({ data, onPointClick, selectedDate }: Mon
             <div className="flex items-center gap-2 animate-in slide-in-from-right-4 duration-300">
               <span className="text-[10px] font-bold text-neutral-400 uppercase">Enfoque:</span>
               <span className="bg-blue-600 text-white text-[10px] font-black px-3 py-1.5 rounded-full shadow-lg shadow-blue-600/20">
-                {selectedDate}
+                {formatDate(selectedDate, true)}
               </span>
             </div>
           )}
@@ -139,21 +140,7 @@ export default function MonitoreoChart({ data, onPointClick, selectedDate }: Mon
                   tick={{ fill: '#999', fontSize: 10, fontWeight: 500 }}
                   interval={Math.max(Math.floor(chartData.length / 10), 0)}
                   // Format label to show date and time
-                  tickFormatter={(val) => {
-                    if (!val) return '';
-                    const d = new Date(val);
-                    if (!isNaN(d.getTime())) {
-                      const day = String(d.getDate()).padStart(2, '0');
-                      const month = String(d.getMonth() + 1).padStart(2, '0');
-                      const h = String(d.getHours()).padStart(2, '0');
-                      const m = String(d.getMinutes()).padStart(2, '0');
-                      return `${day}/${month} ${h}:${m}`;
-                    }
-                    if (typeof val === 'string') {
-                      return val.split(' ')[1]?.substring(0, 5) || val;
-                    }
-                    return String(val);
-                  }}
+                  tickFormatter={(val) => formatDate(val, true)}
                 />
                 <YAxis 
                   axisLine={false} 

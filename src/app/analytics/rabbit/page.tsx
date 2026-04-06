@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Server, ExternalLink, Clock, RefreshCw, Inbox, Users, Gauge, AlertTriangle, Info, XCircle } from 'lucide-react';
+import { formatDate } from '@/lib/formatters';
 
 interface Cola {
   NombreCola: string;
@@ -106,12 +107,6 @@ export default function MonitoreoRabbitPage() {
 
   const selectedData = data.find(d => d.Ambiente === selectedEnv);
 
-  const formatDate = (iso: string) => {
-    try {
-      const d = new Date(iso);
-      return d.toLocaleString('es-EC', { dateStyle: 'medium', timeStyle: 'medium' });
-    } catch { return iso; }
-  };
 
   const formatCountdown = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -251,7 +246,7 @@ export default function MonitoreoRabbitPage() {
                 <div className="flex items-center justify-between pt-3 border-t border-neutral-200/50 dark:border-neutral-700/50">
                   <span className="text-[10px] text-neutral-400 flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    {formatDate(env.HoraMonitoreo)}
+                    {formatDate(env.HoraMonitoreo, true)}
                   </span>
                   <span className="text-[10px] font-bold text-neutral-500">
                     {env.Colas.length} cola{env.Colas.length !== 1 ? 's' : ''}

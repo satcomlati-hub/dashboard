@@ -5,6 +5,7 @@ import Link from 'next/link';
 import MonitoreoChart from '@/components/MonitoreoChart';
 import MonitoreoWidget from '@/components/MonitoreoWidget';
 import { ChevronLeft, BarChart2, FilterX, Calendar, Globe, Activity, TrendingUp, Clock, CalendarDays, RefreshCw } from 'lucide-react';
+import { formatDate } from '@/lib/formatters';
 
 const POLL_INTERVAL = 60_000; // 60 segundos
 
@@ -227,7 +228,7 @@ export default function MonitoreoSubpage() {
           <div className="flex items-center gap-3">
             {lastUpdated && (
               <span className="text-xs text-neutral-400 hidden sm:block">
-                Actualizado: {lastUpdated.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                Actualizado: {formatDate(lastUpdated, true)}
               </span>
             )}
             <button

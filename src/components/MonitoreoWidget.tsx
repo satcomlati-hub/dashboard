@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { Activity, Clock, Globe, Key, FileText, Loader2, AlertCircle, Search, X, Filter, Copy, Check } from 'lucide-react';
+import { formatDate } from '@/lib/formatters';
 
 interface Evento {
   fecha_ecuador: string;
@@ -76,7 +77,7 @@ export default function MonitoreoWidget({ initialData, initialLoading = false, i
           </h3>
           {selectedDate && (
             <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-3 py-1 rounded-lg text-xs font-semibold animate-in zoom-in duration-300 border border-blue-200 dark:border-blue-800">
-              Filtro: {selectedDate}
+              Filtro: {formatDate(selectedDate, true)}
               <button onClick={onClearDateFilter} className="hover:bg-blue-200 dark:hover:bg-blue-800 rounded-full p-0.5 transition-colors">
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -200,19 +201,7 @@ export default function MonitoreoWidget({ initialData, initialLoading = false, i
                 filteredData.map((row, i) => (
                   <tr key={i} className={`hover:bg-neutral-50 dark:hover:bg-neutral-800/20 transition-colors ${selectedDate && row.fecha_ecuador === selectedDate ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}>
                     <td className="px-4 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 font-mono tracking-tighter">
-                      {(() => {
-                        const d = new Date(row.fecha_ecuador);
-                        if (!isNaN(d.getTime())) {
-                          const dd = String(d.getDate()).padStart(2, '0');
-                          const mm = String(d.getMonth() + 1).padStart(2, '0');
-                          const yyyy = d.getFullYear();
-                          const hh = String(d.getHours()).padStart(2, '0');
-                          const min = String(d.getMinutes()).padStart(2, '0');
-                          const ss = String(d.getSeconds()).padStart(2, '0');
-                          return `${dd}-${mm}-${yyyy} ${hh}:${min}:${ss}`;
-                        }
-                        return row.fecha_ecuador;
-                      })()}
+                      {formatDate(row.fecha_ecuador, true)}
                     </td>
                     <td className="px-4 py-3.5 text-sm font-semibold text-neutral-900 dark:text-white">{row.key}</td>
                     <td className="px-4 py-3.5 text-sm text-[#71BF44] font-bold text-right">{row.num_eventos}</td>

@@ -34,6 +34,7 @@ import {
   AlertTriangle,
   Download
 } from 'lucide-react';
+import { formatDate } from '@/lib/formatters';
 
 interface Voucher {
   ambiente: string;
@@ -191,7 +192,7 @@ export default function UnauthorizedVouchersPage() {
     if (data.length === 0) return '---';
     const dates = data.map(d => new Date(d.co_ultima_actualizacion).getTime()).filter(t => !isNaN(t));
     if (dates.length === 0) return '---';
-    return new Date(Math.max(...dates)).toLocaleString('es-EC');
+    return formatDate(new Date(Math.max(...dates)), true);
   }, [data]);
 
   const filteredData = useMemo(() => {
@@ -375,11 +376,11 @@ export default function UnauthorizedVouchersPage() {
         v.co_nemonico || '',
         v.ambiente || '',
         PAIS_MAP[v.co_pais] || v.co_pais || '',
-        v.co_hora_in ? new Date(v.co_hora_in).toLocaleString('es-EC') : '',
+        v.co_hora_in ? formatDate(v.co_hora_in, true) : '',
         v.DescripcionEstatus || '',
         `"${(v.co_detalle || '').replace(/"/g, '""')}"`,
         v.co_numero_reprocesos || 0,
-        v.co_hora_reproceso ? new Date(v.co_hora_reproceso).toLocaleString('es-EC') : ''
+        v.co_hora_reproceso ? formatDate(v.co_hora_reproceso, true) : ''
       ].join(';');
     });
 
@@ -533,7 +534,7 @@ export default function UnauthorizedVouchersPage() {
                     onClick={() => setSelectedDate('')}
                     className="flex items-center gap-2 px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-lg text-[9px] font-black text-red-500 uppercase tracking-widest hover:bg-red-500/20 transition-all"
                   >
-                    <X className="w-3 h-3" /> Limpiar Filtro Fecha: {selectedDate.split('-').reverse().join('/')}
+                    <X className="w-3 h-3" /> Limpiar Filtro Fecha: {formatDate(selectedDate)}
                   </button>
                 )}
               </div>
@@ -554,7 +555,7 @@ export default function UnauthorizedVouchersPage() {
                      />
                      <div className={`text-[8px] font-black rotate-45 origin-left mt-4 mb-2 whitespace-nowrap uppercase tracking-tighter ${selectedDate === date ? 'text-[#71BF44]' : 'text-neutral-500'}`}>
     
-                       {date.split('-').reverse().join('/')}
+                       {formatDate(date)}
                      </div>
                   </button>
                 ))}
@@ -802,7 +803,7 @@ export default function UnauthorizedVouchersPage() {
                                  </div>
                                  <div className="flex items-center gap-2 mt-2">
                                     <Calendar className="w-3 h-3 text-neutral-500" />
-                                    <span className="text-[10px] font-bold text-neutral-400">{v.co_fecha_emision ? new Date(v.co_fecha_emision).toLocaleDateString('es-EC') : 'S/F'}</span>
+                                    <span className="text-[10px] font-bold text-neutral-400">{v.co_fecha_emision ? formatDate(v.co_fecha_emision) : 'S/F'}</span>
                                  </div>
                               </div>
                            </td>
@@ -827,7 +828,7 @@ export default function UnauthorizedVouchersPage() {
                            </td>
                            <td className="px-6 py-6">
                               <div className="flex flex-col font-mono">
-                                 <span className="text-[11px] font-black text-neutral-800 dark:text-neutral-200">{v.co_hora_in ? new Date(v.co_hora_in).toLocaleDateString('es-EC') : '--'}</span>
+                                 <span className="text-[11px] font-black text-neutral-800 dark:text-neutral-200">{v.co_hora_in ? formatDate(v.co_hora_in) : '--'}</span>
                                  <span className="text-[10px] text-neutral-500">{v.co_hora_in ? new Date(v.co_hora_in).toLocaleTimeString('es-EC') : '--'}</span>
                               </div>
                            </td>
@@ -856,7 +857,7 @@ export default function UnauthorizedVouchersPage() {
                                     <div className="flex flex-col gap-0.5">
                                        <span className="text-[8px] font-black text-neutral-500 uppercase tracking-widest">Última Gestión</span>
                                        <span className="text-[10px] font-mono font-bold text-neutral-400">
-                                          {v.co_hora_reproceso ? new Date(v.co_hora_reproceso).toLocaleString('es-EC', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                          {formatDate(v.co_hora_reproceso, true)}
                                        </span>
                                     </div>
                                  </div>
