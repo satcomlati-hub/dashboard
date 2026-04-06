@@ -2,11 +2,13 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { query, sessionId } = body;
+    const formData = await request.formData();
+    const query = formData.get('query');
+    const sessionId = formData.get('sessionId');
+    const image = formData.get('image');
 
-    if (!query) {
-      return NextResponse.json({ error: 'Query is required' }, { status: 400 });
+    if (!query && !image) {
+      return NextResponse.json({ error: 'Query or Image is required' }, { status: 400 });
     }
 
     const n8nWebhookUrl = process.env.SARA_WEBHOOK_URL;
@@ -15,12 +17,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Configuration error' }, { status: 500 });
     }
 
+    // Reenviamos el FormData completo a n8n. 
+    // fetch establecerá automáticamente el Content-Type adecuado con el boundary para multipart/form-data.
     const response = await fetch(n8nWebhookUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ query, sessionId }),
+      body: formData,
     });
 
     if (!response.ok) {
