@@ -98,13 +98,15 @@ export default function PendientesReportePage() {
   const [timeField, setTimeField] = useState<TimeField>('co_hora_in');
   const [filterNemonico, setFilterNemonico] = useState('');
   const [selectedPais, setSelectedPais] = useState<number | null>(null);
+  const [selectedAmbiente, setSelectedAmbiente] = useState('AWS');
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const fetchData = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       
-      const res = await fetch('https://sara.mysatcomla.com/webhook/MonitoreoNoAutorizados?Ambiente=AWS&Proceso=consulta_tablero_pendiente_info_reportes_2026');
+      const res = await fetch(`https://sara.mysatcomla.com/webhook/MonitoreoNoAutorizados?Ambiente=${selectedAmbiente}&Proceso=consulta_tablero_pendiente_info_reportes_2026`);
 
       if (!res.ok) throw new Error('Error al obtener datos');
       
@@ -132,19 +134,36 @@ export default function PendientesReportePage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [selectedAmbiente]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
+  // Clear selected date when timeField or nemonico filter changes
+  useEffect(() => {
+    setSelectedDate(null);
+  }, [timeField, filterNemonico, selectedPais, selectedAmbiente]);
+
   const filteredData = useMemo(() => {
     return data.filter(item => {
       const matchNemonico = !filterNemonico || item.co_nemonico.toLowerCase().includes(filterNemonico.toLowerCase());
       const matchPais = selectedPais === null || item.co_pais === selectedPais;
-      return matchNemonico && matchPais;
+      
+      let matchDate = true;
+      if (selectedDate) {
+        const dateVal = item[timeField];
+        if (dateVal) {
+          const itemDate = dateVal.split('T')[0];
+          matchDate = itemDate === selectedDate;
+        } else {
+          matchDate = false;
+        }
+      }
+
+      return matchNemonico && matchPais && matchDate;
     });
-  }, [data, filterNemonico, selectedPais]);
+  }, [data, filterNemonico, selectedPais, selectedDate, timeField]);
 
   const stats = useMemo(() => {
     // Current date for comparison: 2026-04-06
@@ -166,7 +185,15 @@ export default function PendientesReportePage() {
       byPais: {} as Record<number, number>
     };
 
-    filteredData.forEach(item => {
+    // Use full unfiltered data (only filtered by nemonico) for stats? 
+    // Usually stats should reflect the filters too, but maybe not the selectedDate filter
+    const statsSource = data.filter(item => {
+      const matchNemonico = !filterNemonico || item.co_nemonico.toLowerCase().includes(filterNemonico.toLowerCase());
+      const matchPais = selectedPais === null || item.co_pais === selectedPais;
+      return matchNemonico && matchPais;
+    });
+
+    statsSource.forEach(item => {
       // By Country
       counts.byPais[item.co_pais] = (counts.byPais[item.co_pais] || 0) + 1;
 
@@ -183,13 +210,21 @@ export default function PendientesReportePage() {
     });
 
     return counts;
-  }, [filteredData, timeField]);
+  }, [data, filterNemonico, selectedPais, timeField]);
 
   const chartData = useMemo(() => {
     const grouped: Record<string, Record<string, number>> = {};
-    const pises = Array.from(new Set(filteredData.map(d => d.co_pais))).sort();
+    
+    // Use data filtered by nemonico and pais for chart
+    const chartSource = data.filter(item => {
+       const matchNemonico = !filterNemonico || item.co_nemonico.toLowerCase().includes(filterNemonico.toLowerCase());
+       const matchPais = selectedPais === null || item.co_pais === selectedPais;
+       return matchNemonico && matchPais;
+    });
 
-    filteredData.forEach(item => {
+    const pises = Array.from(new Set(chartSource.map(d => d.co_pais))).sort();
+
+    chartSource.forEach(item => {
       const dateVal = item[timeField];
       if (!dateVal) return;
       
@@ -207,7 +242,7 @@ export default function PendientesReportePage() {
       .map(([date, counts]) => ({ date, ...counts }))
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(-15); // Show last 15 days
-  }, [filteredData, timeField]);
+  }, [data, filterNemonico, selectedPais, timeField]);
 
   const paisList = Array.from(new Set(data.map(d => d.co_pais))).sort((a, b) => {
     const nameA = PAIS_MAP[a] || a.toString();
@@ -245,10 +280,30 @@ export default function PendientesReportePage() {
               <h1 className="text-4xl font-black text-neutral-900 dark:text-white tracking-tighter mb-2">
                 Pendientes de Reporte <span className="text-[#71BF44] opacity-50 text-sm ml-2 font-black">2026</span>
               </h1>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-6">
                 <div className="flex items-center gap-2">
                   <Activity className="w-3.5 h-3.5 text-[#71BF44]" />
                   <span className="text-[10px] font-black text-[#71BF44] uppercase tracking-[0.2em]">Monitor en Vivo</span>
+                </div>
+                
+                {/* Environment Selector */}
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 rounded-xl">
+                  <Building2 className="w-3 h-3 text-neutral-400" />
+                  <div className="flex gap-1">
+                    {[
+                      { id: 'AWS', label: 'Colombia (AWS)' },
+                      { id: 'V5', label: 'V5' },
+                      { id: 'Panama', label: 'Panamá' }
+                    ].map(env => (
+                      <button
+                        key={env.id}
+                        onClick={() => setSelectedAmbiente(env.id)}
+                        className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${selectedAmbiente === env.id ? 'bg-[#71BF44] text-white' : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'}`}
+                      >
+                        {env.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -270,11 +325,11 @@ export default function PendientesReportePage() {
         <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm">
           <p className="text-[10px] font-black text-neutral-400 uppercase mb-2 tracking-widest">Total Pendientes</p>
           <div className="text-4xl font-black text-neutral-900 dark:text-white leading-none">
-            {filteredData.length.toLocaleString()}
+            {data.length.toLocaleString()}
           </div>
           <div className="mt-4 flex items-center gap-2 text-[10px] font-bold text-neutral-500">
              <Layers className="w-3.5 h-3.5" />
-             <span>En vista actual</span>
+             <span>En ambiente seleccionado</span>
           </div>
         </div>
 
@@ -376,7 +431,17 @@ export default function PendientesReportePage() {
           <div className="h-[400px]">
              {chartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData}>
+                  <AreaChart 
+                    data={chartData}
+                    onClick={(data) => {
+                      if (data && data.activeLabel) {
+                        setSelectedDate(String(data.activeLabel));
+                        // Scroll to table nicely
+                        document.getElementById('records-table')?.scrollIntoView({ behavior: 'smooth' });
+                      }
+                    }}
+                    style={{ cursor: 'pointer' }}
+                  >
                     <defs>
                       {chartData.length > 0 && Object.keys(chartData[0]).filter(k => k !== 'date').map((key, i) => (
                         <linearGradient key={key} id={`color${i}`} x1="0" y1="0" x2="0" y2="1">
@@ -469,11 +534,22 @@ export default function PendientesReportePage() {
       </div>
 
       {/* Data Table Preview */}
-      <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] overflow-hidden shadow-sm">
+      <div id="records-table" className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] overflow-hidden shadow-sm">
          <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between bg-neutral-50/50 dark:bg-white/[0.02]">
-            <div className="flex items-center gap-3">
-               <TableIcon className="w-5 h-5 text-[#71BF44]" />
-               <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">Vista Previa de Registros</h3>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-3">
+                 <TableIcon className="w-5 h-5 text-[#71BF44]" />
+                 <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">Vista Previa de Registros</h3>
+              </div>
+              {selectedDate && (
+                <div className="flex items-center gap-2 text-[9px] font-black text-[#71BF44] uppercase tracking-widest animate-in fade-in slide-in-from-left-2">
+                   <Calendar className="w-3 h-3" />
+                   Filtrado por: {selectedDate.split('-').reverse().join('/')}
+                   <button onClick={() => setSelectedDate(null)} className="ml-2 bg-[#71BF44]/10 p-1 rounded-md hover:bg-[#71BF44]/20 transition-all text-[#71BF44]">
+                      <X className="w-3 h-3" />
+                   </button>
+                </div>
+              )}
             </div>
             <span className="text-[10px] font-black text-neutral-400 bg-neutral-200 dark:bg-neutral-800 px-3 py-1 rounded-full uppercase tracking-tighter">
                Mostrando {Math.min(filteredData.length, 50)} de {filteredData.length}
