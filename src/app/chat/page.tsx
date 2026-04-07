@@ -452,15 +452,7 @@ export default function SaraChatPage() {
         {/* ── Input area ──────────────────────────────────────────────────────── */}
         <div className="shrink-0 border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#0e0e0e] p-4">
 
-          {/* Quick prompts */}
-          <div className="flex flex-wrap gap-2 mb-3">
-            {['Analizar telemetría satelital', 'Optimizar workflow activo', 'Estado del sistema'].map((p) => (
-              <button key={p} onClick={() => setInput(p)}
-                className="px-3 py-1 text-[11px] rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:text-[#71BF44] hover:bg-[#71BF44]/10 transition-colors border border-neutral-200 dark:border-neutral-700">
-                {p}
-              </button>
-            ))}
-          </div>
+
 
           {/* Image preview */}
           {previewUrl && (
