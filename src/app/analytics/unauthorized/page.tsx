@@ -1,4 +1,5 @@
 'use client';
+// Version: 1.0.1 - Force Vercel Redeploy
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
