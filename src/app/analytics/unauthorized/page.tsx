@@ -104,7 +104,7 @@ export default function UnauthorizedVouchersPage() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [selectedAmbiente, setSelectedAmbiente] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<string>('');
-  const [groupBy, setGroupBy] = useState<'none' | 'co_nemonico' | 'DescripcionTipoDocumento' | 'DescripcionEstatus' | 'co_detalle'>('none');
+  const [groupBy, setGroupBy] = useState<string[]>([]);
 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
@@ -188,94 +188,8 @@ export default function UnauthorizedVouchersPage() {
     return () => clearInterval(timer);
   }, [fetchData]);
 
-  const lastUpdate = useMemo(() => {
-    if (data.length === 0) return '---';
-    const dates = data.map(d => new Date(d.co_ultima_actualizacion).getTime()).filter(t => !isNaN(t));
-    if (dates.length === 0) return '---';
-    return formatDate(new Date(Math.max(...dates)), true);
-  }, [data]);
 
-  const filteredData = useMemo(() => {
-    let result = data.filter(item => {
-      return (
-        (!filters.co_num_comprobante || item.co_num_comprobante.toLowerCase().includes(filters.co_num_comprobante.toLowerCase())) &&
-        (!filters.co_detalle || item.co_detalle.toLowerCase().includes(filters.co_detalle.toLowerCase())) &&
-        (!filters.co_nemonico || item.co_nemonico.toLowerCase().includes(filters.co_nemonico.toLowerCase())) &&
-        (!filters.co_pais || (PAIS_MAP[item.co_pais] || item.co_pais.toString()).toLowerCase().includes(filters.co_pais.toLowerCase())) &&
-        (!filters.ambiente || item.ambiente.toLowerCase().includes(filters.ambiente.toLowerCase())) &&
-        (!filters.DescripcionEstatus || item.DescripcionEstatus.toLowerCase().includes(filters.DescripcionEstatus.toLowerCase())) &&
-        (!filters.DescripcionTipoDocumento || item.DescripcionTipoDocumento.toLowerCase().includes(filters.DescripcionTipoDocumento.toLowerCase())) &&
-        (!filters.co_establecimiento || item.co_establecimiento.toLowerCase().includes(filters.co_establecimiento.toLowerCase())) &&
-        (!filters.co_punto_emision || item.co_punto_emision.toLowerCase().includes(filters.co_punto_emision.toLowerCase())) &&
-        (!selectedDate || (item.co_hora_in && item.co_hora_in.split('T')[0] === selectedDate))
-      );
-    });
-
-
-    result.sort((a, b) => {
-      let valA: any = a[sortField as keyof Voucher] ?? '';
-      let valB: any = b[sortField as keyof Voucher] ?? '';
-      if (sortField === 'pais_name') {
-        valA = PAIS_MAP[a.co_pais] || '';
-        valB = PAIS_MAP[b.co_pais] || '';
-      }
-      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-      return 0;
-    });
-
-    return result;
-  }, [data, filters, sortField, sortOrder, selectedDate]);
-
-  const anyFilterActive = useMemo(() => Object.values(filters).some(v => v !== ''), [filters]);
-
-  const groupedData = useMemo(() => {
-    if (!anyFilterActive) return [];
-    if (groupBy === 'none') return [{ key: 'Todos', vouchers: filteredData }];
-    const groups: Record<string, Voucher[]> = {};
-    filteredData.forEach(v => {
-      let key = 'Sin Categoría';
-      if (groupBy === 'co_nemonico') key = (v.co_nemonico || '').trim();
-      else if (groupBy === 'co_detalle') key = (v.co_detalle || '').trim() || 'Sin Detalle';
-      else if (groupBy === 'DescripcionEstatus') key = (v.DescripcionEstatus || '').trim() || 'Sin Estado';
-      else if (groupBy === 'DescripcionTipoDocumento') key = (v.DescripcionTipoDocumento || '').trim() || 'Sin Tipo Documento';
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(v);
-    });
-    return Object.entries(groups).map(([key, vouchers]) => ({ key, vouchers })).sort((a, b) => b.vouchers.length - a.vouchers.length);
-  }, [filteredData, groupBy]);
-
-  const displayItems = useMemo(() => {
-    if (!anyFilterActive) return [];
-    
-    const flat: (Voucher | { type: 'header'; label: string; count: number; vouchers: Voucher[] })[] = [];
-    
-    if (groupBy === 'none') {
-      // In flat mode, just show all vouchers
-      flat.push(...filteredData);
-    } else {
-      // In grouped mode, show headers and expanded items
-      for (const group of groupedData) {
-        flat.push({ 
-          type: 'header', 
-          label: group.key, 
-          count: group.vouchers.length,
-          vouchers: group.vouchers
-        });
-        if (expandedGroups.has(group.key)) {
-          flat.push(...group.vouchers);
-        }
-      }
-    }
-    
-    return flat;
-  }, [filteredData, groupedData, groupBy, expandedGroups, anyFilterActive]);
-
-  const totalPages = Math.ceil(displayItems.length / pageSize);
-  const paginatedItems = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return displayItems.slice(start, start + pageSize);
-  }, [displayItems, currentPage]);
+  const anyFilterActive = useMemo(() => Object.values(filters).some(v => v !== '') || selectedDate !== '', [filters, selectedDate]);
 
   const stats = useMemo(() => {
     const byPais = data.reduce((acc, d) => {
@@ -309,9 +223,152 @@ export default function UnauthorizedVouchersPage() {
     }).slice(-15);
 
     return { byPais, sortedDates };
-  }, [data, filteredData]);
+  }, [data, filters]);
 
   const maxDateCount = useMemo(() => Math.max(...stats.sortedDates.map(d => d[1]), 1), [stats.sortedDates]);
+
+  // Selección automática del primer país al cargar datos
+  useEffect(() => {
+    if (data.length > 0 && selectedAmbiente && !anyFilterActive) {
+      const countries = Object.keys(stats.byPais);
+      if (countries.length > 0) {
+        const firstCountryCode = Number(countries[0]);
+        const countryName = PAIS_MAP[firstCountryCode] || String(firstCountryCode);
+        setFilters(f => ({ ...f, co_pais: countryName }));
+      }
+    }
+  }, [data, selectedAmbiente, anyFilterActive, stats.byPais]);
+
+  const lastUpdate = useMemo(() => {
+    if (data.length === 0) return '---';
+    const dates = data.map(d => new Date(d.co_ultima_actualizacion).getTime()).filter(t => !isNaN(t));
+    if (dates.length === 0) return '---';
+    return formatDate(new Date(Math.max(...dates)), true);
+  }, [data]);
+
+  const filteredData = useMemo(() => {
+    let result = data.filter(item => {
+      return (
+        (!filters.co_num_comprobante || item.co_num_comprobante.toLowerCase().includes(filters.co_num_comprobante.toLowerCase())) &&
+        (!filters.co_detalle || item.co_detalle.toLowerCase().includes(filters.co_detalle.toLowerCase())) &&
+        (!filters.co_nemonico || item.co_nemonico.toLowerCase().includes(filters.co_nemonico.toLowerCase())) &&
+        (!filters.co_pais || (PAIS_MAP[item.co_pais] || item.co_pais.toString()).toLowerCase().includes(filters.co_pais.toLowerCase())) &&
+        (!filters.ambiente || item.ambiente.toLowerCase().includes(filters.ambiente.toLowerCase())) &&
+        (!filters.DescripcionEstatus || item.DescripcionEstatus.toLowerCase().includes(filters.DescripcionEstatus.toLowerCase())) &&
+        (!filters.DescripcionTipoDocumento || item.DescripcionTipoDocumento.toLowerCase().includes(filters.DescripcionTipoDocumento.toLowerCase())) &&
+        (!filters.co_establecimiento || item.co_establecimiento.toLowerCase().includes(filters.co_establecimiento.toLowerCase())) &&
+        (!filters.co_punto_emision || item.co_punto_emision.toLowerCase().includes(filters.co_punto_emision.toLowerCase())) &&
+        (!selectedDate || (item.co_hora_in && item.co_hora_in.split('T')[0] === selectedDate))
+      );
+    });
+
+    result.sort((a, b) => {
+      let valA: any = a[sortField as keyof Voucher] ?? '';
+      let valB: any = b[sortField as keyof Voucher] ?? '';
+      if (sortField === 'pais_name') {
+        valA = PAIS_MAP[a.co_pais] || '';
+        valB = PAIS_MAP[b.co_pais] || '';
+      }
+      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return result;
+  }, [data, filters, sortField, sortOrder, selectedDate]);
+
+  const groupedData = useMemo(() => {
+    if (!anyFilterActive) return [];
+    
+    const groupRecursive = (vouchers: Voucher[], fields: string[], depth = 0): any[] => {
+      if (fields.length === 0 || depth >= fields.length) return vouchers;
+      
+      const field = fields[depth];
+      const groups: Record<string, Voucher[]> = {};
+      
+      vouchers.forEach(v => {
+        let key = 'Sin Categoría';
+        if (field === 'co_nemonico') key = (v.co_nemonico || '').trim();
+        else if (field === 'co_detalle') key = (v.co_detalle || '').trim() || 'Sin Detalle';
+        else if (field === 'DescripcionEstatus') key = (v.DescripcionEstatus || '').trim() || 'Sin Estado';
+        else if (field === 'DescripcionTipoDocumento') key = (v.DescripcionTipoDocumento || '').trim() || 'Sin Tipo Documento';
+        else if (field === 'co_hora_in') key = v.co_hora_in ? v.co_hora_in.split('T')[0] : 'Sin Fecha';
+        
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(v);
+      });
+      
+      return Object.entries(groups).map(([key, items]) => ({
+        key,
+        items: groupRecursive(items, fields, depth + 1),
+        count: items.length,
+        field
+      })).sort((a, b) => b.count - a.count);
+    };
+
+    if (groupBy.length === 0) return [{ key: 'Todos', items: filteredData, count: filteredData.length, field: 'none' }];
+    
+    return groupRecursive(filteredData, groupBy);
+  }, [filteredData, groupBy, anyFilterActive]);
+
+  const displayItems = useMemo(() => {
+    if (!anyFilterActive) return [];
+    
+    const flat: any[] = [];
+    
+    const flatten = (items: any[], path = '') => {
+      items.forEach(item => {
+        if ('items' in item) {
+          const currentPath = path ? `${path} > ${item.key}` : item.key;
+          
+          // Get all leaf vouchers from this group recursively
+          const getAllVouchers = (node: any): Voucher[] => {
+            if (Array.isArray(node)) return node;
+            if (Array.isArray(node.items)) {
+              if (node.items.length > 0 && !('items' in node.items[0])) return node.items;
+              return node.items.flatMap((child: any) => getAllVouchers(child));
+            }
+            return [];
+          };
+
+          const vouchers = getAllVouchers(item);
+
+          flat.push({ 
+            type: 'header', 
+            label: item.key, 
+            count: item.count, 
+            vouchers: vouchers,
+            path: currentPath,
+            depth: currentPath.split(' > ').length - 1
+          });
+          
+          if (expandedGroups.has(currentPath)) {
+            if (Array.isArray(item.items)) {
+              if (item.items.length > 0 && 'items' in item.items[0]) {
+                flatten(item.items, currentPath);
+              } else {
+                flat.push(...item.items);
+              }
+            }
+          }
+        }
+      });
+    };
+
+    if (groupBy.length === 0) {
+      flat.push(...filteredData);
+    } else {
+      flatten(groupedData);
+    }
+    
+    return flat;
+  }, [groupedData, groupBy, expandedGroups, anyFilterActive, filteredData]);
+
+  const totalPages = Math.ceil(displayItems.length / pageSize);
+  const paginatedItems = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return displayItems.slice(start, start + pageSize);
+  }, [displayItems, currentPage]);
 
   const handleCopy = () => {
     const ids = filteredData.map(v => v.Column1 || (v as any).co_id_comprobante).join('\n');
@@ -399,10 +456,10 @@ export default function UnauthorizedVouchersPage() {
     else { setSortField(field); setSortOrder('asc'); }
   };
 
-  const toggleGroup = (key: string) => {
+  const toggleGroup = (path: string) => {
     const next = new Set(expandedGroups);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
+    if (next.has(path)) next.delete(path);
+    else next.add(path);
     setExpandedGroups(next);
   };
 
@@ -598,8 +655,8 @@ export default function UnauthorizedVouchersPage() {
             </div>
           </div>
 
-         {/* Group Selector "Agrupar" (Now Second) */}
-         <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-6 py-2.5 rounded-2xl shadow-xl">
+          {/* Group Selector "Agrupar" (Now Second) */}
+          <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-6 py-2.5 rounded-2xl shadow-xl">
             <Layers className="w-4 h-4 text-[#71BF44]" />
             <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">Agrupar:</span>
             <div className="flex gap-2">
@@ -607,19 +664,65 @@ export default function UnauthorizedVouchersPage() {
                  { id: 'none', label: 'Lista Plana' },
                  { id: 'DescripcionEstatus', label: 'Estado' },
                  { id: 'co_detalle', label: 'Motivo' },
-                 { id: 'co_nemonico', label: 'Nemónico' },
-                 { id: 'DescripcionTipoDocumento', label: 'Documento' }
-               ].map(opt => (
-                 <button
-                  key={opt.id}
-                  onClick={() => { setGroupBy(opt.id as any); setCurrentPage(1); setExpandedGroups(new Set()); }}
-                  className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all ${groupBy === opt.id ? 'bg-[#71BF44] text-white' : 'text-neutral-500 hover:text-white hover:bg-neutral-800'}`}
-                 >
-                   {opt.label}
-                 </button>
-               ))}
+                 { id: 'co_nemonico', label: 'Cliente' },
+                 { id: 'DescripcionTipoDocumento', label: 'Documento' },
+                 { id: 'co_hora_in', label: 'F. Llegada' }
+               ].map(opt => {
+                 const isActive = opt.id === 'none' ? groupBy.length === 0 : groupBy.includes(opt.id);
+                 return (
+                   <button
+                    key={opt.id}
+                    onClick={() => { 
+                      if (opt.id === 'none') {
+                        setGroupBy([]);
+                      } else {
+                        setGroupBy(prev => {
+                          if (prev.includes(opt.id)) return prev.filter(g => g !== opt.id);
+                          return [...prev, opt.id];
+                        });
+                      }
+                      setCurrentPage(1); 
+                      setExpandedGroups(new Set()); 
+                    }}
+                    className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all ${isActive ? 'bg-[#71BF44] text-white' : 'text-neutral-500 hover:text-white hover:bg-neutral-800'}`}
+                   >
+                     {opt.label}
+                   </button>
+                 );
+               })}
             </div>
          </div>
+
+         {/* Active Group Tags */}
+         {groupBy.length > 0 && (
+           <div className="flex flex-wrap items-center gap-2 p-2 bg-[#1a1a1a] rounded-2xl border border-neutral-800">
+             {groupBy.map((g, idx) => {
+               const label = [
+                 { id: 'DescripcionEstatus', label: 'Estado' },
+                 { id: 'co_detalle', label: 'Motivo' },
+                 { id: 'co_nemonico', label: 'Cliente' },
+                 { id: 'DescripcionTipoDocumento', label: 'Documento' },
+                 { id: 'co_hora_in', label: 'F. Llegada' }
+               ].find(opt => opt.id === g)?.label || g;
+               
+               return (
+                 <div key={g} className="flex items-center gap-2 px-3 py-1 bg-[#71BF44]/20 border border-[#71BF44]/30 rounded-lg text-[9px] font-black text-[#71BF44] uppercase tracking-widest">
+                   {label}
+                   <button 
+                    onClick={() => {
+                      setGroupBy(prev => prev.filter(p => p !== g));
+                      setCurrentPage(1);
+                      setExpandedGroups(new Set());
+                    }}
+                    className="hover:text-white transition-colors"
+                   >
+                     <X className="w-3 h-3" />
+                   </button>
+                 </div>
+               );
+             })}
+           </div>
+         )}
 
 
          {/* Pagination Controls */}
@@ -727,12 +830,12 @@ export default function UnauthorizedVouchersPage() {
                   ) : paginatedItems.length === 0 ? (
                     <tr><td colSpan={5} className="py-24 text-center text-neutral-400 font-black uppercase tracking-[0.5em] opacity-20 text-3xl">Sin Registros</td></tr>
                   ) : (
-                    paginatedItems.map((item, i) => {
+                    paginatedItems.map((item: any, i: number) => {
                       if ('type' in item && item.type === 'header') {
-                        const isExp = expandedGroups.has(item.label);
+                        const isExp = expandedGroups.has(item.path);
                         return (
-                          <tr key={`h-${item.label}`} className="bg-neutral-800 dark:bg-black/90 z-20 transition-all hover:bg-neutral-700 border-l-4 border-l-[#71BF44]">
-                             <td colSpan={5} className="px-6 py-4 cursor-pointer" onClick={() => toggleGroup(item.label)}>
+                          <tr key={`h-${item.path}`} className="bg-neutral-800 dark:bg-black/90 z-20 transition-all hover:bg-neutral-700 border-l-4 border-l-[#71BF44]">
+                             <td colSpan={5} className="px-6 py-4 cursor-pointer" style={{ paddingLeft: `${item.depth * 2 + 1.5}rem` }} onClick={() => toggleGroup(item.path)}>
                                 <div className="flex items-center justify-between">
                                    <div className="flex items-center gap-3">
                                       <div className={`p-1.5 rounded-lg ${isExp ? 'bg-[#71BF44] text-white' : 'bg-neutral-700 text-neutral-400'}`}>
@@ -742,35 +845,37 @@ export default function UnauthorizedVouchersPage() {
                                       <span className="text-xs font-bold text-[#71BF44]">({item.count})</span>
                                    </div>
                                     <div className="flex items-center gap-4 mr-4">
-                                        <button
-                                           onClick={(e) => {
-                                              e.stopPropagation();
-                                              const vouchers = (item as any).vouchers;
-                                              const ids = vouchers.map((v: any) => v.Column1 || v.co_id_comprobante).join('\n');
-                                              handleMassReprocess(selectedAmbiente, ids);
-                                           }}
-                                           className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all border bg-white/5 text-neutral-400 border-white/10 hover:bg-[#71BF44] hover:text-white hover:border-[#71BF44] shadow-lg shadow-black/20"
-                                           title="Reprocesar todos los comprobantes de este grupo"
-                                        >
-                                           <RefreshCw className="w-3 h-3" />
-                                           <span>Reproceso Masivo</span>
-                                        </button>
-                                        <button
-                                           onClick={(e) => {
-                                              e.stopPropagation();
-                                              const vouchers = (item as any).vouchers;
-                                              const ids = vouchers.map((v: any) => v.Column1 || v.co_id_comprobante).join('\n');
-                                              navigator.clipboard.writeText(ids);
-                                              setGroupCopied(item.label);
-                                              setTimeout(() => setGroupCopied(null), 2000);
-                                           }}
-                                           className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all border ${groupCopied === item.label ? 'bg-green-600 text-white border-green-500' : 'bg-white/5 text-neutral-400 border-white/10 hover:bg-[#71BF44] hover:text-white hover:border-[#71BF44] shadow-lg shadow-black/20'}`}
-                                           title="Copiar IDs de este grupo"
-                                        >
-                                           {groupCopied === item.label ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                                           <span>{groupCopied === item.label ? 'Copiado!' : 'Exportar IDs'}</span>
-                                        </button>
-                                        <span className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">{isExp ? 'OCULTAR DETALLE' : 'VER DETALLE'}</span>
+                                        {item.vouchers.length > 0 && (
+                                          <button
+                                             onClick={(e) => {
+                                                e.stopPropagation();
+                                                const ids = item.vouchers.map((v: any) => v.Column1 || v.co_id_comprobante).join('\n');
+                                                handleMassReprocess(selectedAmbiente, ids);
+                                             }}
+                                             className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all border bg-white/5 text-neutral-400 border-white/10 hover:bg-[#71BF44] hover:text-white hover:border-[#71BF44] shadow-lg shadow-black/20"
+                                             title="Reprocesar todos los comprobantes de este subgrupo"
+                                          >
+                                             <RefreshCw className="w-3 h-3" />
+                                             <span>Reproceso Masivo</span>
+                                          </button>
+                                        )}
+                                        {item.vouchers.length > 0 && (
+                                          <button
+                                             onClick={(e) => {
+                                                e.stopPropagation();
+                                                const ids = item.vouchers.map((v: any) => v.Column1 || v.co_id_comprobante).join('\n');
+                                                navigator.clipboard.writeText(ids);
+                                                setGroupCopied(item.path);
+                                                setTimeout(() => setGroupCopied(null), 2000);
+                                             }}
+                                             className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all border ${groupCopied === item.path ? 'bg-green-600 text-white border-green-500' : 'bg-white/5 text-neutral-400 border-white/10 hover:bg-[#71BF44] hover:text-white hover:border-[#71BF44] shadow-lg shadow-black/20'}`}
+                                             title="Copiar IDs de este subgrupo"
+                                          >
+                                             {groupCopied === item.path ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                             <span>{groupCopied === item.path ? 'Copiado!' : 'Exportar IDs'}</span>
+                                          </button>
+                                        )}
+                                        <span className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">{isExp ? 'OCULTAR' : 'VER'}</span>
                                      </div>
                                  </div>
                              </td>
@@ -780,7 +885,7 @@ export default function UnauthorizedVouchersPage() {
                       
                       const v = item as Voucher;
                       const ID = v.Column1 || (v as any).co_id_comprobante;
-                      const isGrouped = groupBy !== 'none';
+                      const isGrouped = groupBy.length > 0;
                       return (
                         <tr key={ID} className={`group transition-all ${isGrouped ? 'bg-[#71BF44]/[0.02] hover:bg-[#71BF44]/10' : 'hover:bg-[#71BF44]/5'}`}>
                            <td className={`px-6 py-6 transition-all ${isGrouped ? 'pl-10' : 'group-hover:pl-8'}`}>
