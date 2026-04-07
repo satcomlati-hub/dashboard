@@ -40,7 +40,7 @@ function renderMarkdown(text: string) {
   let match: RegExpExecArray | null;
   while ((match = regex.exec(text)) !== null) {
     if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
-    if (match[1]) parts.push(<strong key={key++} className="font-semibold text-white">{match[2]}</strong>);
+    if (match[1]) parts.push(<strong key={key++} className="font-bold">{match[2]}</strong>);
     else if (match[3]) parts.push(
       <a key={key++} href={match[5]} target="_blank" rel="noopener noreferrer"
         className="text-[#71BF44] underline underline-offset-2 hover:text-[#98e968] transition-colors">
