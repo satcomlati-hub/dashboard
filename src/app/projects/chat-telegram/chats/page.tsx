@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 
 interface Chat {
   chat_id: string;
@@ -20,6 +21,19 @@ interface Message {
 }
 
 export default function ChatsPage() {
+  return (
+    <Suspense fallback={
+      <div className="h-[calc(100vh-140px)] flex flex-col items-center justify-center text-neutral-500">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#71BF44] mb-4"></div>
+        Cargando portal de chats...
+      </div>
+    }>
+      <ChatsContent />
+    </Suspense>
+  );
+}
+
+function ChatsContent() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [history, setHistory] = useState<Message[]>([]);
@@ -27,9 +41,22 @@ export default function ChatsPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const searchParams = useSearchParams();
+  const chatIdFromUrl = searchParams.get('chatId') || searchParams.get('IdChat');
+
   useEffect(() => {
     fetchChats();
   }, []);
+
+  // Auto-select chat from URL parameter
+  useEffect(() => {
+    if (chats.length > 0 && chatIdFromUrl && !selectedChat) {
+      const chatToSelect = chats.find(c => String(c.chat_id) === String(chatIdFromUrl));
+      if (chatToSelect) {
+        setSelectedChat(chatToSelect);
+      }
+    }
+  }, [chats, chatIdFromUrl, selectedChat]);
 
   useEffect(() => {
     if (selectedChat) {
