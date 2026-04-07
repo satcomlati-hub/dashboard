@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, ChangeEvent } from 'react';
+import { useSession } from 'next-auth/react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -110,6 +111,7 @@ const IconTrash = () => (
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function SaraChatPage() {
+  const { data: session }             = useSession();
   const [sessions, setSessions]             = useState<StoredSession[]>([]);
   const [activeSessionId, setActiveId]      = useState('');
   const [messages, setMessages]             = useState<Message[]>([WELCOME]);
@@ -248,6 +250,8 @@ export default function SaraChatPage() {
       const fd = new FormData();
       fd.append('query', q);
       fd.append('sessionId', activeSessionId);
+      if (session?.user?.name) fd.append('userName', session.user.name);
+      if (session?.user?.email) fd.append('userEmail', session.user.email);
       if (f) fd.append('image', f);
       const res = await fetch('/api/chat', { method: 'POST', body: fd });
       if (!res.ok) throw new Error();

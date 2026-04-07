@@ -1,4 +1,5 @@
 {
+  "name": "SARA Chat Webhook (Gemini v2)",
   "nodes": [
     {
       "parameters": {
@@ -42,7 +43,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const binaryData = $input.item.binary;\nconst image = binaryData && binaryData.image ? binaryData.image : null;\nconst body = $input.item.json.body || {};\n\nreturn [{\n  json: {\n    hasImage: !!image,\n    imageMimeType: image?.mimeType || null,\n    imageData: image?.data || null,\n    query: body.query || \"\",\n    sessionId: body.sessionId || \"unknown\",\n    chatHistory: $input.all().map(i => i.json).reverse()\n  }\n}];"
+        "jsCode": "const binaryData = $input.item.binary;\nconst image = binaryData && binaryData.image ? binaryData.image : null;\nconst body = $input.item.json.body || {};\n\nreturn [{\n  json: {\n    hasImage: !!image,\n    imageMimeType: image?.mimeType || null,\n    imageData: image?.data || null,\n    query: body.query || \"\",\n    sessionId: body.sessionId || \"unknown\",\n    userName: body.userName || \"Usuario\",\n    userEmail: body.userEmail || \"no-email@satcomla.com\",\n    chatHistory: $input.all().map(i => i.json).filter(msg => msg.role).reverse()\n  }\n}];"
       },
       "id": "d1cef7a2-d0f3-4c80-8e33-da3d1acdfb98",
       "name": "Process Input",
@@ -61,7 +62,7 @@
         "nodeCredentialType": "googlePalmApi",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ \n  const input = $('Process Input').item.json;\n  const parts = [];\n  if (input.hasImage) {\n    parts.push({ inline_data: { mime_type: input.imageMimeType, data: input.imageData } });\n  }\n  if (input.query) {\n    parts.push({ text: input.query });\n  }\n  return JSON.stringify({\n    model: 'models/gemini-embedding-2-preview',\n    content: { parts },\n    outputDimensionality: 3072\n  });\n}}",
+        "jsonBody": "={{ JSON.stringify({\n  model: 'models/gemini-embedding-2-preview',\n  content: {\n    parts: [\n      ...($('Process Input').item.json.hasImage ? [{ inline_data: { mime_type: $('Process Input').item.json.imageMimeType, data: $('Process Input').item.json.imageData } }] : []),\n      ...($('Process Input').item.json.query ? [{ text: $('Process Input').item.json.query }] : [])\n    ]\n  },\n  outputDimensionality: 3072\n}) }}",
         "options": {}
       },
       "id": "10c27022-9932-4cec-b68b-ca2dbdb368d9",
@@ -120,7 +121,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const { contexto, images, query, hasImage, imageData, imageMimeType, chatHistory } = $json;\n\nconst imageListForPrompt = images.length > 0\n  ? `\\n\\nIMAGENES DISPONIBLES DEL MANUAL:\\n${images.map(img => `  [${img.index}] ${img.filename}`).join('\\n')}\\nSi alguna imagen es relevante para tu respuesta, incluyela con [ENVIAR_IMAGENES: N] donde N son los indices separados por coma.`\n  : '';\n\nconst systemInstruction = `Eres SARA, una asistente inteligente experta en los manuales de la empresa.\nTu objetivo es ser conversacional, amable y precisa.\n\nREGLAS DE ORO:\n1. Si el usuario te envia una imagen, analizala primero. El contexto del RAG puede contener informacion sobre esa imagen.\n2. Solo menciona la fuente del manual cuando tu respuesta se basa directamente en la documentacion.\n3. Si es charla casual (hola, gracias, etc.), responde de forma natural sin citar manuales.\n4. Si hay imagenes disponibles del manual que complementen tu respuesta, incluyelas usando el marcador [ENVIAR_IMAGENES: N] con los indices correspondientes. Solo hazlo si realmente aportan valor visual.\n5. No inventes informacion. Si no encuentras la respuesta en el contexto, dilo honestamente.`;\n\nlet contents = [];\nchatHistory.forEach(msg => {\n  if (msg.content) {\n    contents.push({ role: msg.role === 'assistant' ? 'model' : 'user', parts: [{ text: msg.content }] });\n  }\n});\n\nlet userParts = [];\nif (hasImage) {\n  userParts.push({ inline_data: { mime_type: imageMimeType, data: imageData } });\n}\n\nlet fullPrompt = query;\nif (contexto) {\n  fullPrompt = `CONTEXTO DEL MANUAL:\\n${contexto}${imageListForPrompt}\\n\\nCONSULTA: ${query}`;\n}\nuserParts.push({ text: fullPrompt });\n\ncontents.push({ role: 'user', parts: userParts });\n\nreturn [{\n  json: {\n    gemini_body: {\n      system_instruction: { parts: [{ text: systemInstruction }] },\n      contents,\n      generationConfig: { temperature: 0.2, maxOutputTokens: 2048 }\n    },\n    images,\n    sourceUrl: $json.sourceUrl\n  }\n}];"
+        "jsCode": "const { contexto, images, query, hasImage, imageData, imageMimeType, chatHistory, userName } = $json;\n\nconst imageListForPrompt = images.length > 0\n  ? `\\n\\nIMAGENES DISPONIBLES DEL MANUAL:\\n${images.map(img => `  [${img.index}] ${img.filename}`).join('\\n')}\\nSi alguna imagen es relevante para tu respuesta, incluyela con [ENVIAR_IMAGENES: N] donde N son los indices separados por coma.`\n  : '';\n\nconst systemInstruction = `Eres SARA, una asistente inteligente experta en los manuales de la empresa.\nTu objetivo es ser conversacional, amable y precisa.\n\nEstás hablando con ${userName || 'un usuario'}.\n\nREGLAS DE ORO:\n1. Si el usuario te envia una imagen, analizala primero. El contexto del RAG puede contener informacion sobre esa imagen.\n2. Solo menciona la fuente del manual cuando tu respuesta se basa directamente en la documentacion.\n3. Si es charla casual (hola, gracias, etc.), responde de forma natural sin citar manuales.\n4. Si hay imagenes disponibles del manual que complementen tu respuesta, incluyelas usando el marcador [ENVIAR_IMAGENES: N] con los indices correspondientes. Solo hazlo si realmente aportan valor visual.\n5. No inventes informacion. Si no encuentras la respuesta en el contexto, dilo honestamente.`;\n\nlet contents = [];\nchatHistory.forEach(msg => {\n  if (msg.content) {\n    contents.push({ role: msg.role === 'assistant' ? 'model' : 'user', parts: [{ text: msg.content }] });\n  }\n});\n\nlet userParts = [];\nif (hasImage) {\n  userParts.push({ inline_data: { mime_type: imageMimeType, data: imageData } });\n}\n\nlet fullPrompt = query;\nif (contexto) {\n  fullPrompt = `CONTEXTO DEL MANUAL:\\n${contexto}${imageListForPrompt}\\n\\nCONSULTA: ${query}`;\n}\nuserParts.push({ text: fullPrompt });\n\ncontents.push({ role: 'user', parts: userParts });\n\nreturn [{\n  json: {\n    gemini_body: {\n      system_instruction: { parts: [{ text: systemInstruction }] },\n      contents,\n      generationConfig: { temperature: 0.2, maxOutputTokens: 2048 }\n    },\n    images,\n    sourceUrl: $json.sourceUrl\n  }\n}];"
       },
       "id": "b10974e3-a794-497b-bf31-fccfd36b7d8e",
       "name": "Preparar Body LLM",
@@ -173,7 +174,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "{{ `INSERT INTO sara_chat_memory (session_id, role, content) VALUES ('${$json.sessionId}', 'user', '${$('Process Input').item.json.query?.replace(/'/g, \"''\") || \"[Imagen]\"}'), ('${$json.sessionId}', 'assistant', '${$json.response.replace(/'/g, \"''\")}');` }}",
+        "query": "{{ `INSERT INTO sara_chat_memory (session_id, role, content, user_name, user_email) VALUES ('${$json.sessionId}', 'user', '${$('Process Input').item.json.query?.replace(/'/g, \"''\") || \"[Imagen]\"}', '${$('Process Input').item.json.userName}', '${$('Process Input').item.json.userEmail}'), ('${$json.sessionId}', 'assistant', '${$json.response.replace(/'/g, \"''\")}', '${$('Process Input').item.json.userName}', '${$('Process Input').item.json.userEmail}');` }}",
         "options": {}
       },
       "id": "08830b2f-5e45-4837-8574-3743ed78efd7",

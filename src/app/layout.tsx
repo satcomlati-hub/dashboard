@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import NavigationWrapper from '@/components/NavigationWrapper';
+import SessionProviderWrapper from '@/components/SessionProviderWrapper';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -41,9 +42,11 @@ export default function RootLayout({
         className={`${inter.className} bg-white dark:bg-[#0e0e0e] text-neutral-900 dark:text-white antialiased transition-colors duration-200`}
         suppressHydrationWarning
       >
-        <NavigationWrapper>
-          {children}
-        </NavigationWrapper>
+        <SessionProviderWrapper>
+          <NavigationWrapper>
+            {children}
+          </NavigationWrapper>
+        </SessionProviderWrapper>
       </body>
     </html>
   );
