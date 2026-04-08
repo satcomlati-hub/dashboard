@@ -20,8 +20,9 @@ interface AmbienteRabbit {
   HoraMonitoreo: string;
 }
 
-function getTipoConfig(tipo: string) {
-  if (tipo.includes('Error')) {
+function getTipoConfig(tipo: string | null | undefined) {
+  const safeTipo = tipo || '';
+  if (safeTipo.includes('Error')) {
     return {
       border: 'border-red-500',
       bg: 'bg-red-500/5',
@@ -34,7 +35,7 @@ function getTipoConfig(tipo: string) {
       label: 'Error',
     };
   }
-  if (tipo.includes('Alerta')) {
+  if (safeTipo.includes('Alerta')) {
     return {
       border: 'border-amber-500',
       bg: 'bg-amber-500/5',
@@ -75,11 +76,20 @@ export default function MonitoreoRabbitPage() {
       else setLoading(true);
       const res = await fetch('https://sara.mysatcomla.com/webhook/MonitorRabbit');
       if (!res.ok) throw new Error('Error al obtener datos de RabbitMQ');
-      const json: AmbienteRabbit[] = await res.json();
-      setData(json);
-      setError(null);
+      const json = await res.json();
+      
+      // Ensure data is an array to avoid crashes
+      if (Array.isArray(json)) {
+        setData(json);
+        setError(null);
+      } else {
+        console.error('Webhook error - Expected array but received:', json);
+        throw new Error('Formato de datos inválido desde RabbitMQ');
+      }
+      
       setCountdown(300); // Reset countdown on successful fetch
     } catch (err: any) {
+      console.error('Fetch error in RabbitMQ:', err);
       setError(err.message || 'Error desconocido');
     } finally {
       setLoading(false);
@@ -105,7 +115,7 @@ export default function MonitoreoRabbitPage() {
     return () => clearInterval(timer);
   }, [fetchData]);
 
-  const selectedData = data.find(d => d.Ambiente === selectedEnv);
+  const selectedData = Array.isArray(data) ? data.find(d => d.Ambiente === selectedEnv) : null;
 
 
   const formatCountdown = (seconds: number) => {
@@ -114,8 +124,8 @@ export default function MonitoreoRabbitPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const totalColas = data.reduce((acc, d) => acc + d.Colas.length, 0);
-  const totalMensajes = data.reduce((acc, d) => acc + d.Colas.reduce((a, c) => a + c.Mensajes, 0), 0);
+  const totalColas = Array.isArray(data) ? data.reduce((acc, d) => acc + (d.Colas?.length || 0), 0) : 0;
+  const totalMensajes = Array.isArray(data) ? data.reduce((acc, d) => acc + (d.Colas?.reduce((a, c) => a + (c.Mensajes || 0), 0) || 0), 0) : 0;
 
   return (
     <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 pb-20">
@@ -249,7 +259,7 @@ export default function MonitoreoRabbitPage() {
                     {formatDate(env.HoraMonitoreo, true)}
                   </span>
                   <span className="text-[10px] font-bold text-neutral-500">
-                    {env.Colas.length} cola{env.Colas.length !== 1 ? 's' : ''}
+                    {(env.Colas?.length || 0)} cola{(env.Colas?.length || 0) !== 1 ? 's' : ''}
                   </span>
                 </div>
               </button>
