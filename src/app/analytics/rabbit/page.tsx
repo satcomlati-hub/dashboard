@@ -78,13 +78,36 @@ export default function MonitoreoRabbitPage() {
       if (!res.ok) throw new Error('Error al obtener datos de RabbitMQ');
       const json = await res.json();
       
-      // Ensure data is an array to avoid crashes
+      // Normalize data into an array
+      let normalizedData: AmbienteRabbit[] = [];
+      
       if (Array.isArray(json)) {
-        setData(json);
+        normalizedData = json;
+      } else if (json && typeof json === 'object') {
+        // Handle common wrappers: { data: [...] } or { results: [...] }
+        if (Array.isArray(json.data)) {
+          normalizedData = json.data;
+        } else if (Array.isArray(json.results)) {
+          normalizedData = json.results;
+        } else if (json.Ambiente) {
+          // It's a single object, wrap it
+          normalizedData = [json as AmbienteRabbit];
+        } else {
+          // If none of the above, try to find an array in any property
+          const arrayProp = Object.values(json).find(val => Array.isArray(val)) as AmbienteRabbit[];
+          if (arrayProp) {
+            normalizedData = arrayProp;
+          }
+        }
+      }
+
+      if (normalizedData.length > 0 || (Array.isArray(json) && json.length === 0)) {
+        setData(normalizedData);
         setError(null);
       } else {
-        console.error('Webhook error - Expected array but received:', json);
-        throw new Error('Formato de datos inválido desde RabbitMQ');
+        console.error('Webhook error - Could not normalize data:', json);
+        const keys = json && typeof json === 'object' ? `[${Object.keys(json).join(', ')}]` : typeof json;
+        throw new Error(`Formato de datos no reconocido: Recibido ${keys}`);
       }
       
       setCountdown(300); // Reset countdown on successful fetch
