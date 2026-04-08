@@ -422,31 +422,42 @@ export default function UnauthorizedVouchersPage() {
       'Última Gestión'
     ];
 
+    // Helper to force text format in Excel and escape semicolons
+    const sanitize = (valValue: any) => {
+      if (valValue === null || valValue === undefined) return '""';
+      let str = String(valValue).replace(/"/g, '""').trim();
+      // Prefix with \t to force Excel to treat as text (avoids scientific notation)
+      return `"\t${str}"`;
+    };
+
     const rows = filteredData.map(v => {
       const id = v.Column1 || (v as any).co_id_comprobante;
       return [
-        id,
-        v.co_num_comprobante || '',
-        v.DescripcionTipoDocumento || '',
-        v.co_fecha_emision ? new Date(v.co_fecha_emision).toLocaleDateString('es-EC') : '',
-        v.co_establecimiento || '',
-        v.co_punto_emision || '',
-        v.co_nemonico || '',
-        v.ambiente || '',
-        PAIS_MAP[v.co_pais] || v.co_pais || '',
-        v.co_hora_in ? formatDate(v.co_hora_in, true) : '',
-        v.DescripcionEstatus || '',
-        `"${(v.co_detalle || '').replace(/"/g, '""')}"`,
-        v.co_numero_reprocesos || 0,
-        v.co_hora_reproceso ? formatDate(v.co_hora_reproceso, true) : ''
+        sanitize(id),
+        sanitize(v.co_num_comprobante),
+        sanitize(v.DescripcionTipoDocumento),
+        sanitize(v.co_fecha_emision ? new Date(v.co_fecha_emision).toLocaleDateString('es-EC') : ''),
+        sanitize(v.co_establecimiento),
+        sanitize(v.co_punto_emision),
+        sanitize(v.co_nemonico),
+        sanitize(v.ambiente),
+        sanitize(PAIS_MAP[v.co_pais] || v.co_pais),
+        sanitize(v.co_hora_in ? formatDate(v.co_hora_in, true) : ''),
+        sanitize(v.DescripcionEstatus),
+        sanitize(v.co_detalle),
+        sanitize(v.co_numero_reprocesos || 0),
+        sanitize(v.co_hora_reproceso ? formatDate(v.co_hora_reproceso, true) : '')
       ].join(';');
     });
 
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(';'), ...rows].join('\n');
-    const encodedUri = encodeURI(csvContent);
+    const csvContent = "\uFEFF" + [headers.join(';'), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute("download", `NoAutorizados_${new Date().getTime()}.csv`);
+    link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
