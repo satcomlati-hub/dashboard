@@ -45,6 +45,17 @@ export default function AnalyticsPage() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2a4 4 0 014-4h4m-4 4l2-2m-2 2l-2-2m2 7a2 2 0 100-4 2 2 0 000 4z" />
         </svg>
       )
+    },
+    {
+      id: 'eventos',
+      name: 'Historial de Eventos',
+      description: 'Seguimiento cronológico de encolamientos, reprocesos y eventos de RabbitMQ.',
+      href: '/analytics/eventos',
+      icon: (
+        <svg className="w-6 h-6 text-[#71BF44]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      )
     }
   ];
 
