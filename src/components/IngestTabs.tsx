@@ -36,7 +36,7 @@ export default function IngestTabs() {
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionRef = useRef<HTMLDivElement>(null);
 
-  const MANUAL_OPTIONS = ['Ecuador', 'Colombia', 'Panamá', 'Symphony', 'Opera'];
+  const MANUAL_OPTIONS = ['Ecuador', 'Colombia', 'Panamá', 'Simphony', 'Opera'];
 
   // ─── Fetch existing articles ───
   useEffect(() => {
