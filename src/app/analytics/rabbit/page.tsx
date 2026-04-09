@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, Server, ExternalLink, Clock, RefreshCw, Inbox, Users, Gauge, AlertTriangle, Info, XCircle } from 'lucide-react';
+import { ChevronLeft, Server, ExternalLink, Clock, RefreshCw, Inbox, Users, Gauge, AlertTriangle, Info, XCircle, Copy, Key } from 'lucide-react';
 import { formatDate } from '@/lib/formatters';
+import { useSession } from 'next-auth/react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 interface Cola {
   NombreCola: string;
@@ -18,6 +20,17 @@ interface AmbienteRabbit {
   Tipo: string;
   Colas: Cola[];
   HoraMonitoreo: string;
+  US?: string; // Authorized only
+  PK?: string; // Authorized only
+}
+
+interface EventData {
+  created_at: string;
+  ambiente: string;
+  pais: string | null;
+  num_eventos: string | null;
+  evento: string;
+  key: string;
 }
 
 function getTipoConfig(tipo: string | null | undefined) {
@@ -62,21 +75,40 @@ function getTipoConfig(tipo: string | null | undefined) {
   };
 }
 
+const AUTHORIZED_USERS = ['kleber.toapanta@satcomla.com', 'kevin.valle@satcomla.com', 'jaime.lucas@satcomla.com'];
+
 export default function MonitoreoRabbitPage() {
+  const { data: session } = useSession();
   const [data, setData] = useState<AmbienteRabbit[]>([]);
+  const [events, setEvents] = useState<EventData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedEnv, setSelectedEnv] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [countdown, setCountdown] = useState(300); // 5 minutes in seconds
 
+  const isAuthorized = session?.user?.email ? AUTHORIZED_USERS.includes(session.user.email.toLowerCase()) : false;
+
   const fetchData = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
+
+      // Fetch Rabbit Data
       const res = await fetch('https://sara.mysatcomla.com/webhook/MonitorRabbit');
       if (!res.ok) throw new Error('Error al obtener datos de RabbitMQ');
       const json = await res.json();
+      
+      // Fetch Event Details
+      try {
+        const resEvents = await fetch('https://sara.mysatcomla.com/webhook/DetalleEventosRabbit?Evento=Encolamiento');
+        if (resEvents.ok) {
+          const jsonEvents = await resEvents.json();
+          setEvents(Array.isArray(jsonEvents) ? jsonEvents : jsonEvents.data || []);
+        }
+      } catch (e) {
+        console.error('Error fetching events:', e);
+      }
       
       // Normalize data into an array
       let normalizedData: AmbienteRabbit[] = [];
@@ -93,7 +125,7 @@ export default function MonitoreoRabbitPage() {
           // It's a single object, wrap it
           normalizedData = [json as AmbienteRabbit];
         } else {
-          // If none of the above, try to find an array in any property
+          // If none of the above, try to find an array in any property (handles 'value', etc.)
           const arrayProp = Object.values(json).find(val => Array.isArray(val)) as AmbienteRabbit[];
           if (arrayProp) {
             normalizedData = arrayProp;
@@ -119,6 +151,33 @@ export default function MonitoreoRabbitPage() {
       setRefreshing(false);
     }
   }, []);
+
+  // Process data for chart
+  const { chartData, uniqueAmbientes } = useMemo(() => {
+    if (!events.length) return { chartData: [], uniqueAmbientes: [] };
+
+    const ambientesSet = new Set<string>();
+    const timeMap: Record<string, any> = {};
+
+    // Take only the last 48 events to avoid cluttering the chart
+    const processedEvents = [...events].slice(0, 48).reverse();
+
+    processedEvents.forEach(ev => {
+      const amb = ev.pais || ev.ambiente || 'Otros';
+      ambientesSet.add(amb);
+      
+      const time = ev.key.replace('Rabbit ', ''); // Use the key as the time axis label
+      if (!timeMap[time]) {
+        timeMap[time] = { time };
+      }
+      timeMap[time][amb] = parseInt(ev.num_eventos || '0');
+    });
+
+    return {
+      chartData: Object.values(timeMap),
+      uniqueAmbientes: Array.from(ambientesSet)
+    };
+  }, [events]);
 
   useEffect(() => {
     fetchData();
@@ -174,6 +233,10 @@ export default function MonitoreoRabbitPage() {
 
           <div className="flex items-center gap-4">
             <div className="hidden sm:flex flex-col items-end">
+              <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Último Monitoreo</span>
+              <span className="text-xs font-bold text-neutral-500">{data[0]?.HoraMonitoreo ? formatDate(data[0].HoraMonitoreo, true) : '--'}</span>
+            </div>
+            <div className="hidden sm:flex flex-col items-end border-l border-neutral-200 dark:border-neutral-800 pl-4">
               <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Próxima actualización en</span>
               <span className="text-sm font-mono font-bold text-[#71BF44]">{formatCountdown(countdown)}</span>
             </div>
@@ -264,24 +327,54 @@ export default function MonitoreoRabbitPage() {
                 <h3 className="text-lg font-extrabold text-neutral-900 dark:text-white mb-1 tracking-tight">{env.Ambiente}</h3>
 
                 {/* URL - Clickable Link */}
-                <a
-                  href={env.Url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-xs text-neutral-500 dark:text-neutral-400 truncate mb-3 flex items-center gap-1 hover:text-[#71BF44] transition-colors group/link"
-                >
-                  <ExternalLink className="w-3 h-3 flex-shrink-0 group-hover/link:scale-110 transition-transform" />
-                  <span className="truncate underline-offset-2 group-hover/link:underline">{env.Url}</span>
-                </a>
+                <div className="flex flex-col gap-2 mb-4">
+                  <a
+                    href={env.Url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-xs text-neutral-500 dark:text-neutral-400 truncate flex items-center gap-1 hover:text-[#71BF44] transition-colors group/link"
+                  >
+                    <ExternalLink className="w-3 h-3 flex-shrink-0 group-hover/link:scale-110 transition-transform" />
+                    <span className="truncate underline-offset-2 group-hover/link:underline">{env.Url}</span>
+                  </a>
+
+                  {isAuthorized && (
+                    <div className="flex flex-col gap-1.5 p-2 bg-neutral-100 dark:bg-neutral-800/50 rounded-lg">
+                      {env.US && (
+                        <div className="text-[10px] text-neutral-500 dark:text-neutral-400 font-mono">
+                          {env.US}
+                        </div>
+                      )}
+                      {env.PK && (
+                        <div className="flex items-center justify-between">
+                          <div className="text-[10px] text-neutral-400">••••••••</div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(env.PK || '');
+                              alert('Clave copiada al portapapeles');
+                            }}
+                            className="p-1 hover:bg-[#71BF44]/20 rounded transition-colors text-neutral-400 hover:text-[#71BF44]"
+                            title="Copiar Clave"
+                          >
+                            <Copy className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {/* Footer info */}
                 <div className="flex items-center justify-between pt-3 border-t border-neutral-200/50 dark:border-neutral-700/50">
-                  <span className="text-[10px] text-neutral-400 flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {formatDate(env.HoraMonitoreo, true)}
-                  </span>
-                  <span className="text-[10px] font-bold text-neutral-500">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] font-bold text-neutral-600 dark:text-neutral-300 flex items-center gap-1">
+                      <Inbox className="w-3.5 h-3.5" />
+                      {env.Colas?.reduce((a, c) => a + (c.Mensajes || 0), 0).toLocaleString()} mensajes
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold text-neutral-400">
                     {(env.Colas?.length || 0)} cola{(env.Colas?.length || 0) !== 1 ? 's' : ''}
                   </span>
                 </div>
@@ -358,6 +451,101 @@ export default function MonitoreoRabbitPage() {
           )}
         </section>
       )}
+      {/* Timeline Section */}
+      <section className="mt-12 pt-8 border-t border-neutral-200 dark:border-neutral-800">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+          <div>
+            <h3 className="text-xl font-bold text-neutral-900 dark:text-white flex items-center gap-2">
+              <Clock className="w-5 h-5 text-[#71BF44]" />
+              Línea de Tiempo de Encolamiento
+            </h3>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">Histórico de mensajes en colas por ambiente.</p>
+          </div>
+        </div>
+
+        {/* Chart */}
+        <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 mb-8 shadow-sm h-[400px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#88888822" vertical={false} />
+              <XAxis 
+                dataKey="time" 
+                stroke="#888888" 
+                fontSize={10} 
+                tickLine={false} 
+                axisLine={false} 
+              />
+              <YAxis 
+                stroke="#888888" 
+                fontSize={10} 
+                tickLine={false} 
+                axisLine={false} 
+                tickFormatter={(val: number) => val.toLocaleString()}
+              />
+              <Tooltip 
+                contentStyle={{ 
+                  backgroundColor: '#111', 
+                  border: '1px solid #333', 
+                  borderRadius: '12px',
+                  fontSize: '11px',
+                  color: '#fff'
+                }}
+                itemStyle={{ color: '#fff' }}
+              />
+              <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '20px' }} />
+              {uniqueAmbientes.map((amb: string, index: number) => (
+                <Line
+                  key={amb}
+                  type="monotone"
+                  dataKey={amb}
+                  stroke={CHART_COLORS[index % CHART_COLORS.length]}
+                  strokeWidth={2}
+                  dot={{ r: 3, strokeWidth: 1 }}
+                  activeDot={{ r: 5, strokeWidth: 0 }}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Event Details Table */}
+        <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-neutral-50 dark:bg-[#0e0e0e] border-b border-neutral-200 dark:border-neutral-800">
+                  <th className="text-left px-6 py-3 text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Fecha</th>
+                  <th className="text-left px-6 py-3 text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Ambiente</th>
+                  <th className="text-right px-6 py-3 text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Eventos</th>
+                  <th className="text-left px-6 py-3 text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Evento</th>
+                </tr>
+              </thead>
+              <tbody>
+                {events.slice(0, 20).map((ev, i) => (
+                  <tr key={ev.created_at + i} className="border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-[#1a1a1a] transition-colors">
+                    <td className="px-6 py-4 text-neutral-500 whitespace-nowrap">
+                      {formatDate(ev.created_at, true)}
+                    </td>
+                    <td className="px-6 py-4 font-semibold text-neutral-900 dark:text-white whitespace-nowrap">
+                      {ev.pais || ev.ambiente}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <span className="font-bold text-[#71BF44]">
+                        {parseInt(ev.num_eventos || '0').toLocaleString()}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-neutral-500">
+                      {ev.evento} — {ev.key}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
+
+const CHART_COLORS = ['#71BF44', '#3b82f6', '#a855f7', '#f59e0b', '#ef4444', '#ec4899', '#06b6d4'];
