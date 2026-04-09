@@ -15,7 +15,11 @@ import {
   Search,
   CheckCircle2,
   XCircle,
-  Info
+  Info,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  X
 } from 'lucide-react';
 import { formatDate } from '@/lib/formatters';
 import { 
@@ -47,6 +51,11 @@ interface EventoRabbit {
 
 type TimeRange = 'hoy' | 'semana' | 'mes' | 'trimestre' | 'todos';
 
+interface SortConfig {
+  key: keyof EventoRabbit | 'fecha_norm';
+  direction: 'asc' | 'desc';
+}
+
 export default function EventHistoryPage() {
   const [data, setData] = useState<EventoRabbit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,8 +64,31 @@ export default function EventHistoryPage() {
   
   // Filter States
   const [selectedEstado, setSelectedEstado] = useState<string>('todos');
+  const [selectedEvento, setSelectedEvento] = useState<string>('todos');
   const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('todos');
   const [searchQuery, setSearchQuery] = useState('');
+  const [chartFilterDate, setChartFilterDate] = useState<string | null>(null);
+
+  // Column Filters
+  const [columnFilters, setColumnFilters] = useState<Record<string, string>>({
+    ambiente: '',
+    pais: '',
+    evento: '',
+    estado: '',
+    reporta: '',
+    detalle_evento: '',
+    num_eventos: '',
+    key: '',
+    version: '',
+    mensaje: '',
+    justificacion: ''
+  });
+
+  // Sorting
+  const [sortConfig, setSortConfig] = useState<SortConfig>({
+    key: 'fecha_norm',
+    direction: 'desc'
+  });
 
   const fetchData = useCallback(async (isRefresh = false) => {
     try {
@@ -85,21 +117,23 @@ export default function EventHistoryPage() {
 
   // Derived filtered data
   const filteredData = useMemo(() => {
-    return data.filter(item => {
-      // Estado filter
-      if (selectedEstado !== 'todos' && item.estado !== selectedEstado) return false;
-      
-      // Search filter (ambiente, evento, detalle)
+    let result = data.filter(item => {
+      // Global Search filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         const matches = 
-          item.ambiente?.toLowerCase().includes(query) || 
-          item.evento?.toLowerCase().includes(query) || 
-          item.detalle_evento?.toLowerCase().includes(query) ||
-          item.pais?.toLowerCase().includes(query);
+          (item.ambiente || '').toLowerCase().includes(query) || 
+          (item.evento || '').toLowerCase().includes(query) || 
+          (item.detalle_evento || '').toLowerCase().includes(query) ||
+          (item.pais || '').toLowerCase().includes(query) ||
+          (item.estado || '').toLowerCase().includes(query);
         if (!matches) return false;
       }
 
+      // Dropdown Filters
+      if (selectedEstado !== 'todos' && item.estado !== selectedEstado) return false;
+      if (selectedEvento !== 'todos' && item.evento !== selectedEvento) return false;
+      
       // Time range filter
       if (selectedTimeRange !== 'todos' && item.fecha_evento) {
         const eventDate = new Date(item.fecha_evento);
@@ -112,33 +146,77 @@ export default function EventHistoryPage() {
         if (selectedTimeRange === 'trimestre' && diffDays > 90) return false;
       }
 
+      // Chart Date Filter (Matches the chart X-axis label)
+      if (chartFilterDate) {
+        const date = new Date(item.fecha_evento);
+        const label = selectedTimeRange === 'hoy' 
+          ? date.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })
+          : date.toLocaleDateString('es-EC', { month: 'short', day: 'numeric', hour: '2-digit' });
+        if (label !== chartFilterDate) return false;
+      }
+
+      // Column Filters
+      const colMatch = Object.entries(columnFilters).every(([key, filterVal]) => {
+        if (!filterVal) return true;
+        const val = String((item as any)[key] || '').toLowerCase();
+        return val.includes(filterVal.toLowerCase());
+      });
+      if (!colMatch) return false;
+
       return true;
     });
-  }, [data, selectedEstado, selectedTimeRange, searchQuery]);
+
+    // Sorting
+    result.sort((a, b) => {
+      let valA: any = sortConfig.key === 'fecha_norm' ? new Date(a.fecha_evento).getTime() : ((a as any)[sortConfig.key] || '');
+      let valB: any = sortConfig.key === 'fecha_norm' ? new Date(b.fecha_evento).getTime() : ((b as any)[sortConfig.key] || '');
+
+      // Numeric comparison for num_eventos
+      if (sortConfig.key === 'num_eventos') {
+        valA = parseInt(valA) || 0;
+        valB = parseInt(valB) || 0;
+      }
+
+      if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return result;
+  }, [data, selectedEstado, selectedEvento, selectedTimeRange, searchQuery, chartFilterDate, columnFilters, sortConfig]);
 
   // Unique values for filters
-  const estados = useMemo(() => {
-    const set = new Set(data.map(d => d.estado).filter(Boolean));
-    return ['todos', ...Array.from(set)];
-  }, [data]);
+  const estados = useMemo(() => ['todos', ...Array.from(new Set(data.map(d => d.estado).filter(Boolean)))], [data]);
+  const tiposEvento = useMemo(() => ['todos', ...Array.from(new Set(data.map(d => d.evento).filter(Boolean)))], [data]);
 
   // Chart Data Processing
   const { chartData, eventTypes } = useMemo(() => {
-    if (filteredData.length === 0) return { chartData: [], eventTypes: [] };
+    // We use all data for the chart but respect dropdown/time filters to determine lines
+    const chartBase = data.filter(item => {
+        if (selectedEstado !== 'todos' && item.estado !== selectedEstado) return false;
+        if (selectedEvento !== 'todos' && item.evento !== selectedEvento) return false;
+        if (selectedTimeRange !== 'todos' && item.fecha_evento) {
+            const eventDate = new Date(item.fecha_evento);
+            const now = new Date();
+            const diffDays = (now.getTime() - eventDate.getTime()) / (1000 * 3600 * 24);
+            if (selectedTimeRange === 'hoy' && diffDays > 1) return false;
+            if (selectedTimeRange === 'semana' && diffDays > 7) return false;
+            if (selectedTimeRange === 'mes' && diffDays > 30) return false;
+            if (selectedTimeRange === 'trimestre' && diffDays > 90) return false;
+        }
+        return true;
+    });
 
-    const types = Array.from(new Set(filteredData.map(d => d.evento)));
-    
-    // Group by Date (ignoring exact time for smoother display if many events)
-    // We'll use the 'key' or a formatted date/hour depending on the range
+    if (chartBase.length === 0) return { chartData: [], eventTypes: [] };
+
+    const types = Array.from(new Set(chartBase.map(d => d.evento)));
     const timeMap: Record<string, any> = {};
 
-    // Sort by date ascending for the chart
-    const sorted = [...filteredData].sort((a, b) => 
+    const sorted = [...chartBase].sort((a, b) => 
       new Date(a.fecha_evento).getTime() - new Date(b.fecha_evento).getTime()
     );
 
     sorted.forEach(item => {
-      // Format X-axis label based on precision needed
       const date = new Date(item.fecha_evento);
       const label = selectedTimeRange === 'hoy' 
         ? date.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })
@@ -153,56 +231,57 @@ export default function EventHistoryPage() {
       timeMap[label][item.evento] = (timeMap[label][item.evento] || 0) + val;
     });
 
-    return { 
-      chartData: Object.values(timeMap), 
-      eventTypes: types 
-    };
-  }, [filteredData, selectedTimeRange]);
+    return { chartData: Object.values(timeMap), eventTypes: types };
+  }, [data, selectedEstado, selectedEvento, selectedTimeRange]);
 
   const downloadCSV = () => {
     if (filteredData.length === 0) return;
 
-    const headers = [
-      'Fecha Evento',
-      'Ambiente',
-      'País',
-      'Evento',
-      'Num Eventos',
-      'Estado',
-      'Causa/Detalle',
-      'Reportado Por'
+    const allKeys: (keyof EventoRabbit)[] = [
+      'fecha_evento', 'ambiente', 'pais', 'evento', 'num_eventos', 
+      'estado', 'detalle_evento', 'reporta', 'created_at', 'version', 
+      'key', 'mensaje', 'justificacion'
     ];
 
-    const rows = filteredData.map(d => [
-      formatDate(d.fecha_evento, true),
-      d.ambiente,
-      d.pais,
-       d.evento,
-      d.num_eventos,
-      d.estado,
-      d.detalle_evento.replace(/\n|\r/g, ' '),
-      d.reporta
-    ]);
+    const headers = allKeys.map(k => k.toUpperCase().replace('_', ' '));
+
+    const rows = filteredData.map(d => allKeys.map(key => {
+      let val = (d as any)[key];
+      if (key === 'fecha_evento' || key === 'created_at') val = formatDate(val as string, true);
+      if (val === null || val === undefined) val = '';
+      
+      // Excel text format trick: prefix with \t or wrap in ="" 
+      // User asked for "string" format. \t is often cleaner as it doesn't show in the cell text but prevents numeric conversion.
+      return `"\t${val.toString().replace(/"/g, '""').replace(/\n|\r/g, ' ')}"`;
+    }));
 
     const csvContent = "\uFEFF" + [
       headers.join(';'),
-      ...rows.map(row => row.map(cell => `"${(cell || '').toString().replace(/"/g, '""')}"`).join(';'))
+      ...rows.map(row => row.join(';'))
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `Historial_Eventos_${new Date().getTime()}.csv`);
+    link.href = url;
+    link.download = `Historial_Eventos_${new Date().getTime()}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleSort = (key: SortConfig['key']) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
   };
 
   const COLORS = ['#71BF44', '#3b82f6', '#a855f7', '#f59e0b', '#ef4444', '#ec4899', '#06b6d4', '#10b981'];
 
   return (
-    <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 pb-20">
+    <div className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8 pb-20">
       {/* Header */}
       <header className="mb-8 py-6 border-b border-neutral-100 dark:border-neutral-800">
         <div className="flex items-center gap-2 mb-4">
@@ -219,7 +298,7 @@ export default function EventHistoryPage() {
             </div>
             <div>
               <h2 className="text-2xl font-extrabold text-neutral-900 dark:text-white tracking-tight">Historial de Eventos</h2>
-              <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">Seguimiento detallado de la actividad técnica de Satcom.</p>
+              <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">Bitácora masiva y evolución temporal de actividad técnica.</p>
             </div>
           </div>
 
@@ -245,37 +324,54 @@ export default function EventHistoryPage() {
       </header>
 
       {/* Filters Bar */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        {/* Search */}
         <div className="relative group lg:col-span-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 transition-colors group-focus-within:text-[#71BF44]" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
           <input 
             type="text" 
-            placeholder="Buscar por ambiente, evento..." 
+            placeholder="Buscador global..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl pl-10 pr-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#71BF44]/20 focus:border-[#71BF44] transition-all"
+            className="w-full bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl pl-10 pr-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-[#71BF44] transition-all"
           />
         </div>
 
-        <div className="flex items-center gap-2 bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl px-3 py-1 lg:col-span-1">
-          <Activity className="w-4 h-4 text-neutral-400" />
+        {/* Estado Dropdown */}
+        <div className="flex items-center gap-2 bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl px-3 py-1">
+          <CheckCircle2 className="w-4 h-4 text-neutral-400" />
           <select 
             value={selectedEstado}
             onChange={(e) => setSelectedEstado(e.target.value)}
             className="w-full bg-transparent text-sm font-semibold outline-none py-1.5 cursor-pointer capitalize"
           >
             {estados.map(est => (
-              <option key={est} value={est}>{est === 'todos' ? 'Todos los Estados' : est}</option>
+              <option key={est} value={est}>{est === 'todos' ? 'Estado: Todos' : `Estado: ${est}`}</option>
             ))}
           </select>
         </div>
 
+        {/* Evento Dropdown */}
+        <div className="flex items-center gap-2 bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl px-3 py-1">
+          <Activity className="w-4 h-4 text-neutral-400" />
+          <select 
+            value={selectedEvento}
+            onChange={(e) => setSelectedEvento(e.target.value)}
+            className="w-full bg-transparent text-sm font-semibold outline-none py-1.5 cursor-pointer capitalize"
+          >
+            {tiposEvento.map(ev => (
+              <option key={ev} value={ev}>{ev === 'todos' ? 'Evento: Todos' : `Evento: ${ev}`}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Time Range */}
         <div className="flex items-center gap-1 bg-neutral-100 dark:bg-[#1a1a1a] p-1 rounded-xl lg:col-span-2">
           {(['hoy', 'semana', 'mes', 'trimestre', 'todos'] as TimeRange[]).map((range) => (
             <button
               key={range}
-              onClick={() => setSelectedTimeRange(range)}
-              className={`flex-1 text-[10px] font-black uppercase tracking-widest py-2 rounded-lg transition-all ${selectedTimeRange === range ? 'bg-[#71BF44] text-white shadow-md' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
+              onClick={() => { setSelectedTimeRange(range); setChartFilterDate(null); }}
+              className={`flex-1 text-[9px] font-black uppercase tracking-widest py-2.5 rounded-lg transition-all ${selectedTimeRange === range ? 'bg-[#71BF44] text-white shadow-md' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
             >
               {range}
             </button>
@@ -283,194 +379,195 @@ export default function EventHistoryPage() {
         </div>
       </div>
 
-      {/* Summary Scorecards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {[
-          { label: 'Eventos Filtrados', value: filteredData.length, icon: Database, color: 'text-[#71BF44]', bg: 'bg-[#71BF44]/5' },
-          { label: 'Tipos de Eventos', value: eventTypes.length, icon: Activity, color: 'text-blue-500', bg: 'bg-blue-500/5' },
-          { label: 'Suma de Eventos', value: filteredData.reduce((acc, curr) => acc + (parseInt(curr.num_eventos) || 0), 0).toLocaleString(), icon: Info, color: 'text-purple-500', bg: 'bg-purple-500/5' },
-          { label: 'Hoy', value: data.filter(d => new Date(d.fecha_evento).toDateString() === new Date().toDateString()).length, icon: Calendar, color: 'text-amber-500', bg: 'bg-amber-500/5' }
-        ].map((stat, i) => (
-          <div key={i} className={`flex items-center gap-4 ${stat.bg} border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 shadow-sm`}>
-            <div className={`p-3 rounded-xl ${stat.bg} ${stat.color} shadow-inner`}>
-              <stat.icon className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">{stat.label}</p>
-              <h4 className={`text-xl font-black ${stat.color}`}>{stat.value}</h4>
-            </div>
-          </div>
-        ))}
-      </div>
+      {/* Active Filters Visualization */}
+      {(selectedEstado !== 'todos' || selectedEvento !== 'todos' || chartFilterDate) && (
+        <div className="flex flex-wrap items-center gap-2 mb-6 p-2 bg-neutral-50 dark:bg-black/20 rounded-xl border border-dashed border-neutral-200 dark:border-neutral-800">
+           {selectedEstado !== 'todos' && (
+             <span className="bg-[#71BF44]/10 text-[#71BF44] px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5">
+               {selectedEstado} <X className="w-3 h-3 cursor-pointer" onClick={() => setSelectedEstado('todos')} />
+             </span>
+           )}
+           {selectedEvento !== 'todos' && (
+             <span className="bg-blue-500/10 text-blue-500 px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5">
+               {selectedEvento} <X className="w-3 h-3 cursor-pointer" onClick={() => setSelectedEvento('todos')} />
+             </span>
+           )}
+           {chartFilterDate && (
+             <span className="bg-purple-500/10 text-purple-500 px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5">
+               Fecha Chart: {chartFilterDate} <X className="w-3 h-3 cursor-pointer" onClick={() => setChartFilterDate(null)} />
+             </span>
+           )}
+        </div>
+      )}
 
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-4">
           <div className="w-12 h-12 border-4 border-[#71BF44]/20 border-t-[#71BF44] rounded-full animate-spin" />
-          <p className="text-sm font-medium text-neutral-500">Analizando historial de eventos…</p>
-        </div>
-      ) : error ? (
-        <div className="bg-red-500/5 border border-red-500/20 rounded-2xl p-8 text-center max-w-lg mx-auto">
-          <AlertCircle className="w-10 h-10 text-red-500 mx-auto mb-4" />
-          <p className="text-neutral-900 dark:text-white font-bold mb-2">Error al cargar datos</p>
-          <p className="text-sm text-neutral-500 mb-6">{error}</p>
-          <button onClick={() => fetchData()} className="text-sm font-black text-[#71BF44] uppercase tracking-widest hover:underline px-6 py-2 border border-[#71BF44]/20 rounded-xl">Intentar de nuevo</button>
+          <p className="text-sm font-medium text-neutral-500">Analizando historial masivo…</p>
         </div>
       ) : (
         <>
           {/* Timeline Chart */}
           <section className="mb-12">
-            <div className="flex items-center gap-2 mb-6">
-              <span className="w-1.5 h-6 bg-[#71BF44] rounded-full"></span>
-              <h3 className="text-sm font-black text-neutral-400 uppercase tracking-[0.2em]">Evolución del Volumen de Eventos</h3>
-            </div>
-            
             <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm h-[450px]">
-              {chartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#88888822" />
-                    <XAxis 
-                      dataKey="name" 
-                      stroke="#888888" 
-                      fontSize={10} 
-                      tickLine={false} 
-                      axisLine={false}
-                      dy={10}
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart 
+                  data={chartData} 
+                  onClick={(state) => {
+                    if (state && state.activeLabel) setChartFilterDate(String(state.activeLabel));
+                  }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#88888811" />
+                  <XAxis dataKey="name" stroke="#888888" fontSize={10} tickLine={false} axisLine={false} dy={10} />
+                  <YAxis stroke="#888888" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => val.toLocaleString()} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#000', border: 'none', borderRadius: '16px', fontSize: '11px', color: '#fff' }}
+                    itemStyle={{ color: '#fff' }}
+                  />
+                  <Legend 
+                    verticalAlign="top" 
+                    align="right" 
+                    iconType="circle" 
+                    wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', paddingBottom: '30px' }}
+                    onClick={(data) => {
+                        const type = data.dataKey as string;
+                        setSelectedEvento(selectedEvento === type ? 'todos' : type);
+                    }}
+                  />
+                  {eventTypes.map((type, index) => (
+                    <Line
+                      key={type}
+                      type="monotone"
+                      dataKey={type}
+                      name={type}
+                      stroke={COLORS[index % COLORS.length]}
+                      strokeWidth={selectedEvento === type ? 5 : 2}
+                      dot={{ r: 4, fill: '#fff' }}
+                      activeDot={{ r: 8, strokeWidth: 0 }}
+                      animationDuration={1000}
                     />
-                    <YAxis 
-                      stroke="#888888" 
-                      fontSize={10} 
-                      tickLine={false} 
-                      axisLine={false} 
-                      tickFormatter={(val) => val.toLocaleString()}
-                    />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: '#111', 
-                        border: '1px solid #333', 
-                        borderRadius: '16px',
-                        fontSize: '11px',
-                        color: '#fff',
-                        boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
-                      }}
-                      itemStyle={{ color: '#fff' }}
-                      cursor={{ stroke: '#71BF44', strokeWidth: 1, strokeDasharray: '5 5' }}
-                    />
-                    <Legend 
-                      verticalAlign="top" 
-                      align="right" 
-                      iconType="circle" 
-                      wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', paddingBottom: '30px' }} 
-                    />
-                    {eventTypes.map((type, index) => (
-                      <Line
-                        key={type}
-                        type="monotone"
-                        dataKey={type}
-                        name={type}
-                        stroke={COLORS[index % COLORS.length]}
-                        strokeWidth={3}
-                        dot={{ r: 4, strokeWidth: 2, fill: '#fff' }}
-                        activeDot={{ r: 6, strokeWidth: 0 }}
-                        animationDuration={1500}
-                      />
-                    ))}
-                  </LineChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-full flex flex-col items-center justify-center text-neutral-500 gap-2 italic">
-                  <Activity className="w-10 h-10 opacity-20" />
-                  <p>Sin datos suficientes para graficar con los filtros actuales.</p>
-                </div>
-              )}
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+              <div className="mt-4 text-[9px] text-center text-neutral-400 font-bold uppercase tracking-widest">
+                 💡 Haz clic en un punto para filtrar la tabla por fecha específica. Haz clic en la leyenda para filtrar por tipo de evento.
+              </div>
             </div>
           </section>
 
           {/* Details Table */}
           <section>
-            <div className="flex items-center justify-between mb-6 px-1">
-              <div className="flex items-center gap-2">
-                <span className="w-1.5 h-6 bg-[#3b82f6] rounded-full"></span>
-                <h3 className="text-sm font-black text-neutral-400 uppercase tracking-[0.2em]">Bitácora Detallada de Actividad</h3>
-              </div>
-              <span className="text-[10px] font-bold text-neutral-500 px-3 py-1 bg-neutral-100 dark:bg-neutral-800 rounded-lg">
-                Mostrando {filteredData.length} registros
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-black text-neutral-400 uppercase tracking-widest flex items-center gap-2">
+                <Database className="w-4 h-4 text-[#71BF44]" /> Bitácora Técnica de Eventos
+              </h3>
+              <span className="text-[10px] font-bold text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-3 py-1 rounded-lg">
+                Viendo {filteredData.length} de {data.length} registros
               </span>
             </div>
 
             <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-[32px] overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
+                <table className="w-full text-left text-sm border-collapse">
                   <thead>
                     <tr className="bg-neutral-50 dark:bg-[#0c0c0c] border-b border-neutral-100 dark:border-neutral-800">
-                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Fecha Ingreso</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Ambiente / País</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Evento</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Detalle</th>
-                      <th className="px-6 py-4 text-center text-[10px] font-black text-neutral-400 uppercase tracking-widest">Volumen</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Estado</th>
+                      {[
+                        { label: 'Fecha Evento', key: 'fecha_norm', minWidth: '180px' },
+                        { label: 'Ambiente', key: 'ambiente', minWidth: '120px' },
+                        { label: 'País', key: 'pais', minWidth: '120px' },
+                        { label: 'Evento', key: 'evento', minWidth: '180px' },
+                        { label: 'Vol.', key: 'num_eventos', minWidth: '80px', align: 'center' },
+                        { label: 'Estado', key: 'estado', minWidth: '120px' },
+                        { label: 'Reporta', key: 'reporta', minWidth: '120px' },
+                        { label: 'Detalle Técnico', key: 'detalle_evento', minWidth: '350px' },
+                        { label: 'Version API', key: 'version', minWidth: '200px' },
+                        { label: 'Key', key: 'key', minWidth: '200px' },
+                        { label: 'Mensaje', key: 'mensaje', minWidth: '150px' },
+                        { label: 'Created At', key: 'created_at', minWidth: '180px' }
+                      ].map((col) => (
+                        <th key={col.key} className="px-6 py-4" style={{ minWidth: col.minWidth }}>
+                          <div className="flex flex-col gap-3">
+                            <button 
+                              onClick={() => handleSort(col.key as any)}
+                              className="flex items-center gap-2 text-[10px] font-black text-neutral-400 uppercase tracking-widest hover:text-[#71BF44] transition-colors"
+                            >
+                              {col.label}
+                              {sortConfig.key === col.key ? (
+                                sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                              ) : <ArrowUpDown className="w-3 h-3 opacity-20" />}
+                            </button>
+                            {/* Individual Column Filter */}
+                            <div className="relative">
+                               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-neutral-600" />
+                               <input 
+                                 type="text" 
+                                 placeholder="..."
+                                 value={columnFilters[col.key === 'fecha_norm' ? 'fecha_evento' : col.key] || ''}
+                                 onChange={(e) => setColumnFilters(f => ({ ...f, [col.key === 'fecha_norm' ? 'fecha_evento' : col.key]: e.target.value }))}
+                                 className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-lg pl-7 pr-2 py-1.5 text-[10px] font-medium transition-all focus:border-[#71BF44] outline-none"
+                               />
+                            </div>
+                          </div>
+                        </th>
+                      ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-neutral-50 dark:divide-neutral-800/50">
-                    {filteredData.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-6 py-12 text-center text-neutral-400 italic font-medium">
-                          No se encontraron eventos para los criterios de búsqueda aplicados.
+                  <tbody className="divide-y divide-neutral-50 dark:divide-neutral-800/20">
+                    {filteredData.slice(0, 200).map((ev, i) => (
+                      <tr key={ev.created_at + i} className="group hover:bg-[#71BF44]/[0.02] transition-all">
+                        <td className="px-6 py-5 whitespace-nowrap text-xs font-bold text-neutral-900 dark:text-neutral-200">
+                          {formatDate(ev.fecha_evento, true)}
+                        </td>
+                        <td className="px-6 py-5">
+                          <span className="text-[10px] font-black text-[#71BF44] uppercase">{ev.ambiente}</span>
+                        </td>
+                        <td className="px-6 py-5">
+                          <span className="text-[10px] font-bold text-neutral-500 uppercase">{ev.pais}</span>
+                        </td>
+                        <td className="px-6 py-5">
+                          <span className="text-[10px] font-black tracking-tight text-neutral-900 dark:text-white bg-neutral-100 dark:bg-neutral-800 px-2 py-1 rounded">
+                            {ev.evento}
+                          </span>
+                        </td>
+                        <td className="px-6 py-5 text-center text-xs font-black text-[#71BF44]">
+                          {ev.num_eventos}
+                        </td>
+                        <td className="px-6 py-5">
+                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
+                            ev.estado === 'Enviado' || ev.estado === 'Activo' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'
+                          }`}>
+                            {ev.estado}
+                          </span>
+                        </td>
+                        <td className="px-6 py-5 whitespace-nowrap text-[10px] font-bold text-neutral-400 uppercase tracking-tighter">{ev.reporta}</td>
+                        <td className="px-6 py-5 max-w-sm">
+                          <p className="text-[11px] font-medium text-neutral-500 leading-relaxed italic line-clamp-2" title={ev.detalle_evento}>
+                            {ev.detalle_evento || '-'}
+                          </p>
+                        </td>
+                        <td className="px-6 py-5">
+                          <span className="text-[10px] font-medium text-neutral-400 truncate block max-w-[180px]">{ev.version}</span>
+                        </td>
+                        <td className="px-6 py-5">
+                          <span className="text-[10px] font-medium text-neutral-400 truncate block max-w-[180px]">{ev.key}</span>
+                        </td>
+                        <td className="px-6 py-5">
+                          <p className="text-[10px] font-medium text-neutral-400 line-clamp-1">{ev.mensaje || '-'}</p>
+                        </td>
+                        <td className="px-6 py-5 whitespace-nowrap text-[10px] text-neutral-500 uppercase font-bold">
+                          {formatDate(ev.created_at, true)}
                         </td>
                       </tr>
-                    ) : (
-                      filteredData.slice(0, 100).map((ev, i) => (
-                        <tr key={ev.created_at + i} className="group hover:bg-neutral-50 dark:hover:bg-[#111] transition-all">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-xs font-bold text-neutral-900 dark:text-neutral-200">{formatDate(ev.fecha_evento, true)}</span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex flex-col">
-                              <span className="text-xs font-black text-[#71BF44] uppercase">{ev.ambiente}</span>
-                              <span className="text-[10px] text-neutral-500 font-bold">{ev.pais}</span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="text-xs font-bold text-neutral-900 dark:text-white bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-md">
-                              {ev.evento}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 max-w-xs">
-                            <p className="text-[10px] font-medium text-neutral-500 leading-normal line-clamp-2" title={ev.detalle_evento}>
-                              {ev.detalle_evento || '-'}
-                            </p>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className="text-xs font-black text-[#71BF44]">{ev.num_eventos ?? '--'}</span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              {ev.estado === 'Enviado' || ev.estado === 'Activo' ? (
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                              ) : ev.estado === 'Error' || ev.estado === 'Inactivo' ? (
-                                <XCircle className="w-3.5 h-3.5 text-red-500" />
-                              ) : (
-                                <Info className="w-3.5 h-3.5 text-blue-500" />
-                              )}
-                              <span className={`text-[10px] font-black uppercase tracking-widest ${
-                                ev.estado === 'Enviado' || ev.estado === 'Activo' ? 'text-emerald-500' : 
-                                ev.estado === 'Error' || ev.estado === 'Inactivo' ? 'text-red-500' : 'text-blue-500'
-                              }`}>
-                                {ev.estado}
-                              </span>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
+                    ))}
                   </tbody>
                 </table>
               </div>
-              {filteredData.length > 100 && (
-                <div className="bg-neutral-50 dark:bg-[#0c0c0c] px-6 py-3 text-center border-t border-neutral-100 dark:border-neutral-800">
-                  <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Se muestran los 100 registros más recientes. Utilice la descarga CSV para ver el historial completo.</p>
-                </div>
-              )}
+              <div className="bg-neutral-50 dark:bg-[#0c0c0c] px-8 py-4 flex items-center justify-between border-t border-neutral-100 dark:border-neutral-800">
+                 <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">
+                   {filteredData.length > 200 ? 'Mostrando los últimos 200 registros. Usa los filtros o descarga para ver el resto.' : `Total de registros filtrados: ${filteredData.length}`}
+                 </p>
+                 <button onClick={downloadCSV} className="text-[#71BF44] text-[10px] font-black uppercase hover:underline">Descargar {filteredData.length} registros</button>
+              </div>
             </div>
           </section>
         </>
