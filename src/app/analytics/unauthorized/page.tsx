@@ -902,16 +902,18 @@ export default function UnauthorizedVouchersPage() {
                         <tr key={ID} className={`group transition-all ${isGrouped ? 'bg-[#71BF44]/[0.02] hover:bg-[#71BF44]/10' : 'hover:bg-[#71BF44]/5'}`}>
                            <td className={`px-6 py-6 transition-all ${isGrouped ? 'pl-10' : 'group-hover:pl-8'}`}>
                               <div className="flex flex-col">
-                                 <a 
-                                  href={`${AMBIENTE_DOMAINS[selectedAmbiente] || 'https://www5.mysatcomla.com'}/Facturacion/Comprobantes/DetalleReporte?idComprobante=${ID}`}
-                                  target="_blank"
-
-                                  rel="noopener noreferrer"
-                                  className="text-[10px] font-black text-[#71BF44] hover:underline mb-1 flex items-center gap-1 group/link"
+                                 <button 
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    const url = `${AMBIENTE_DOMAINS[selectedAmbiente] || 'https://www5.mysatcomla.com'}/Facturacion/Comprobantes/DetalleReporte?idComprobante=${ID}`;
+                                    navigator.clipboard.writeText(url);
+                                    alert('Enlace del comprobante copiado al portapapeles');
+                                  }}
+                                  className="text-[10px] font-black text-[#71BF44] hover:underline mb-1 flex items-center gap-1 group/link cursor-pointer text-left"
                                  >
                                     <Hash className="w-3 h-3" /> {ID}
-                                    <ExternalLink className="w-2.5 h-2.5 opacity-0 group-hover/link:opacity-100 transition-opacity" />
-                                 </a>
+                                    <Copy className="w-2.5 h-2.5 opacity-0 group-hover/link:opacity-100 transition-opacity" />
+                                 </button>
                                  <div className="flex items-center gap-1.5">
                                     <span className="text-xs font-black text-neutral-900 dark:text-white">{v.co_num_comprobante}</span>
                                     <span className="text-[9px] font-bold text-neutral-500 uppercase px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded">

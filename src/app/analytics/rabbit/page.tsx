@@ -75,7 +75,13 @@ function getTipoConfig(tipo: string | null | undefined) {
   };
 }
 
-const AUTHORIZED_USERS = ['kleber.toapanta@satcomla.com', 'kevin.valle@satcomla.com', 'jaime.lucas@satcomla.com'];
+const AUTHORIZED_USERS = [
+  'kleber.toapanta@satcomla.com', 
+  'kevin.valle@satcomla.com', 
+  'jaime.lucas@satcomla.com',
+  'hector.paullan@satcomla.com',
+  'jesus.navarrete@satcomla.com'
+];
 
 export default function MonitoreoRabbitPage() {
   const { data: session } = useSession();
@@ -101,7 +107,7 @@ export default function MonitoreoRabbitPage() {
       
       // Fetch Event Details
       try {
-        const resEvents = await fetch('https://sara.mysatcomla.com/webhook/DetalleEventosRabbit?Evento=Encolamiento');
+        const resEvents = await fetch('https://sara.mysatcomla.com/webhook/DetalleEventosRabbit?Evento=Encolamiento-Rabbit');
         if (resEvents.ok) {
           const jsonEvents = await resEvents.json();
           setEvents(Array.isArray(jsonEvents) ? jsonEvents : jsonEvents.data || []);
