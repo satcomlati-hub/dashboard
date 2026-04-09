@@ -65,6 +65,8 @@ export default function EventHistoryPage() {
   // Filter States
   const [selectedEstado, setSelectedEstado] = useState<string>('todos');
   const [selectedEvento, setSelectedEvento] = useState<string>('todos');
+  const [selectedAmbiente, setSelectedAmbiente] = useState<string>('todos');
+  const [selectedPais, setSelectedPais] = useState<string>('todos');
   const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('todos');
   const [searchQuery, setSearchQuery] = useState('');
   const [chartFilterDate, setChartFilterDate] = useState<string | null>(null);
@@ -133,6 +135,8 @@ export default function EventHistoryPage() {
       // Dropdown Filters
       if (selectedEstado !== 'todos' && item.estado !== selectedEstado) return false;
       if (selectedEvento !== 'todos' && item.evento !== selectedEvento) return false;
+      if (selectedAmbiente !== 'todos' && item.ambiente !== selectedAmbiente) return false;
+      if (selectedPais !== 'todos' && item.pais !== selectedPais) return false;
       
       // Time range filter
       if (selectedTimeRange !== 'todos' && item.fecha_evento) {
@@ -183,11 +187,13 @@ export default function EventHistoryPage() {
     });
 
     return result;
-  }, [data, selectedEstado, selectedEvento, selectedTimeRange, searchQuery, chartFilterDate, columnFilters, sortConfig]);
+  }, [data, selectedEstado, selectedEvento, selectedAmbiente, selectedPais, selectedTimeRange, searchQuery, chartFilterDate, columnFilters, sortConfig]);
 
   // Unique values for filters
   const estados = useMemo(() => ['todos', ...Array.from(new Set(data.map(d => d.estado).filter(Boolean)))], [data]);
   const tiposEvento = useMemo(() => ['todos', ...Array.from(new Set(data.map(d => d.evento).filter(Boolean)))], [data]);
+  const ambientes = useMemo(() => ['todos', ...Array.from(new Set(data.map(d => d.ambiente).filter(Boolean)))], [data]);
+  const paises = useMemo(() => ['todos', ...Array.from(new Set(data.map(d => d.pais).filter(Boolean)))], [data]);
 
   // Chart Data Processing
   const { chartData, eventTypes } = useMemo(() => {
@@ -195,6 +201,8 @@ export default function EventHistoryPage() {
     const chartBase = data.filter(item => {
         if (selectedEstado !== 'todos' && item.estado !== selectedEstado) return false;
         if (selectedEvento !== 'todos' && item.evento !== selectedEvento) return false;
+        if (selectedAmbiente !== 'todos' && item.ambiente !== selectedAmbiente) return false;
+        if (selectedPais !== 'todos' && item.pais !== selectedPais) return false;
         if (selectedTimeRange !== 'todos' && item.fecha_evento) {
             const eventDate = new Date(item.fecha_evento);
             const now = new Date();
@@ -232,7 +240,7 @@ export default function EventHistoryPage() {
     });
 
     return { chartData: Object.values(timeMap), eventTypes: types };
-  }, [data, selectedEstado, selectedEvento, selectedTimeRange]);
+  }, [data, selectedEstado, selectedEvento, selectedAmbiente, selectedPais, selectedTimeRange]);
 
   const downloadCSV = () => {
     if (filteredData.length === 0) return;
@@ -324,9 +332,9 @@ export default function EventHistoryPage() {
       </header>
 
       {/* Filters Bar */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+      <div className="flex flex-wrap items-center gap-4 mb-8">
         {/* Search */}
-        <div className="relative group lg:col-span-1">
+        <div className="relative group flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
           <input 
             type="text" 
@@ -365,13 +373,41 @@ export default function EventHistoryPage() {
           </select>
         </div>
 
+        {/* Ambiente Dropdown */}
+        <div className="flex items-center gap-2 bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl px-3 py-1">
+          <Activity className="w-4 h-4 text-neutral-400" />
+          <select 
+            value={selectedAmbiente}
+            onChange={(e) => setSelectedAmbiente(e.target.value)}
+            className="w-full bg-transparent text-sm font-semibold outline-none py-1.5 cursor-pointer capitalize"
+          >
+            {ambientes.map(amb => (
+              <option key={amb} value={amb}>{amb === 'todos' ? 'Ambiente: Todos' : `Ambiente: ${amb}`}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* País Dropdown */}
+        <div className="flex items-center gap-2 bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl px-3 py-1">
+          <Activity className="w-4 h-4 text-neutral-400" />
+          <select 
+            value={selectedPais}
+            onChange={(e) => setSelectedPais(e.target.value)}
+            className="w-full bg-transparent text-sm font-semibold outline-none py-1.5 cursor-pointer capitalize"
+          >
+            {paises.map(p => (
+              <option key={p} value={p}>{p === 'todos' ? 'País: Todos' : `País: ${p}`}</option>
+            ))}
+          </select>
+        </div>
+
         {/* Time Range */}
-        <div className="flex items-center gap-1 bg-neutral-100 dark:bg-[#1a1a1a] p-1 rounded-xl lg:col-span-2">
+        <div className="flex items-center gap-1 bg-neutral-100 dark:bg-[#1a1a1a] p-1 rounded-xl">
           {(['hoy', 'semana', 'mes', 'trimestre', 'todos'] as TimeRange[]).map((range) => (
             <button
               key={range}
               onClick={() => { setSelectedTimeRange(range); setChartFilterDate(null); }}
-              className={`flex-1 text-[9px] font-black uppercase tracking-widest py-2.5 rounded-lg transition-all ${selectedTimeRange === range ? 'bg-[#71BF44] text-white shadow-md' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
+              className={`px-4 text-[9px] font-black uppercase tracking-widest py-2.5 rounded-lg transition-all ${selectedTimeRange === range ? 'bg-[#71BF44] text-white shadow-md' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
             >
               {range}
             </button>
@@ -380,20 +416,30 @@ export default function EventHistoryPage() {
       </div>
 
       {/* Active Filters Visualization */}
-      {(selectedEstado !== 'todos' || selectedEvento !== 'todos' || chartFilterDate) && (
+      {(selectedEstado !== 'todos' || selectedEvento !== 'todos' || selectedAmbiente !== 'todos' || selectedPais !== 'todos' || chartFilterDate) && (
         <div className="flex flex-wrap items-center gap-2 mb-6 p-2 bg-neutral-50 dark:bg-black/20 rounded-xl border border-dashed border-neutral-200 dark:border-neutral-800">
            {selectedEstado !== 'todos' && (
              <span className="bg-[#71BF44]/10 text-[#71BF44] px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5">
-               {selectedEstado} <X className="w-3 h-3 cursor-pointer" onClick={() => setSelectedEstado('todos')} />
+               Estado: {selectedEstado} <X className="w-3 h-3 cursor-pointer" onClick={() => setSelectedEstado('todos')} />
              </span>
            )}
            {selectedEvento !== 'todos' && (
              <span className="bg-blue-500/10 text-blue-500 px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5">
-               {selectedEvento} <X className="w-3 h-3 cursor-pointer" onClick={() => setSelectedEvento('todos')} />
+               Evento: {selectedEvento} <X className="w-3 h-3 cursor-pointer" onClick={() => setSelectedEvento('todos')} />
+             </span>
+           )}
+           {selectedAmbiente !== 'todos' && (
+             <span className="bg-orange-500/10 text-orange-500 px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5">
+               Ambiente: {selectedAmbiente} <X className="w-3 h-3 cursor-pointer" onClick={() => setSelectedAmbiente('todos')} />
+             </span>
+           )}
+           {selectedPais !== 'todos' && (
+             <span className="bg-purple-500/10 text-purple-500 px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5">
+               País: {selectedPais} <X className="w-3 h-3 cursor-pointer" onClick={() => setSelectedPais('todos')} />
              </span>
            )}
            {chartFilterDate && (
-             <span className="bg-purple-500/10 text-purple-500 px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5">
+             <span className="bg-rose-500/10 text-rose-500 px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5">
                Fecha Chart: {chartFilterDate} <X className="w-3 h-3 cursor-pointer" onClick={() => setChartFilterDate(null)} />
              </span>
            )}
