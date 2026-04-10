@@ -1,4 +1,5 @@
 import type { NextAuthConfig } from "next-auth"
+import { getRequiredPermission } from "./lib/permissions"
 
 export const authConfig = {
   pages: {
@@ -15,12 +16,22 @@ export const authConfig = {
       if (isAuthRoute || isLoginPage || isPublicRoute) {
         return true;
       }
-      
+
       if (!isLoggedIn) {
         return false;
       }
+
+      // Verificar permisos por ruta
+      const requiredPerm = getRequiredPermission(nextUrl.pathname);
+      if (requiredPerm) {
+        const permissions = (auth as any)?.user?.permissions as string[] | undefined;
+        if (permissions && !permissions.includes(requiredPerm)) {
+          return Response.redirect(new URL('/', nextUrl.origin));
+        }
+      }
+
       return true;
     },
   },
-  providers: [], 
+  providers: [],
 } satisfies NextAuthConfig;

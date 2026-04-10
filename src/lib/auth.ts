@@ -1,6 +1,7 @@
 import NextAuth from "next-auth"
 import Zoho from "next-auth/providers/zoho"
 import { authConfig } from "../auth.config"
+import { getUserPermissions } from "./permissions"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -17,18 +18,30 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       if (!allowedDomain) {
          console.warn("La variable ZOHO_ORG_DOMAIN no está definida en .env.local. Bloqueando acceso por seguridad.");
-         return false; 
+         return false;
       }
 
       if (user.email && user.email.endsWith(`@${allowedDomain}`)) {
-        return true; 
+        return true;
       }
 
-      return false; 
+      return false;
+    },
+    async jwt({ token }) {
+      if (token.email && !token.permissions) {
+        const { role, permissions } = await getUserPermissions(token.email);
+        token.role = role;
+        token.permissions = permissions;
+      }
+      return token;
     },
     async session({ session, token }) {
       if (token?.sub && session.user) {
         session.user.id = token.sub;
+      }
+      if (session.user) {
+        session.user.role = token.role;
+        session.user.permissions = token.permissions;
       }
       return session;
     },

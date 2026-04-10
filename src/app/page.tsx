@@ -1,6 +1,8 @@
 import { auth, signOut } from "@/lib/auth"
-import TopCards from '@/components/TopCards';
-import ActiveTools from '@/components/ActiveTools';
+import { query } from '@/lib/db';
+import { DEFAULT_LAYOUT } from '@/lib/widgets';
+import type { WidgetLayoutItem } from '@/lib/widgets';
+import DashboardGrid from '@/components/dashboard/DashboardGrid';
 
 function ZohoIcon() {
   return (
@@ -14,6 +16,22 @@ function ZohoIcon() {
 export default async function Home() {
   const session = await auth()
   const user = session?.user
+
+  // Cargar layout personalizado del usuario
+  let layout: WidgetLayoutItem[] = DEFAULT_LAYOUT;
+  if (user?.email) {
+    try {
+      const result = await query(
+        'SELECT layout FROM dashboard.user_dashboard WHERE email = $1',
+        [user.email]
+      );
+      if (result.rows.length > 0) {
+        layout = result.rows[0].layout;
+      }
+    } catch {
+      // Fallback a layout default
+    }
+  }
 
   const firstName = user?.name?.split(' ')[0] ?? 'Usuario'
   const now = new Date()
@@ -84,22 +102,7 @@ export default async function Home() {
         <span className="text-[0.6875rem] bg-[#003743] text-[#58d6f6] px-1.5 py-0.5 rounded-sm ml-1">Activo</span>
       </div>
 
-      <TopCards />
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <ActiveTools />
-        </div>
-        <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 shadow-sm flex flex-col items-center justify-center text-center">
-          <div className="w-12 h-12 bg-neutral-100 dark:bg-neutral-800 rounded-full flex items-center justify-center mb-4 overflow-hidden" style={{ width: '48px', height: '48px' }}>
-            <svg width="24" height="24" className="w-6 h-6 text-neutral-400 dark:text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-          </div>
-          <h3 className="text-sm font-semibold text-neutral-900 dark:text-white mb-2">Uso en el Tiempo</h3>
-          <p className="text-xs text-neutral-500 dark:text-[#ababab] max-w-[200px]">El gráfico de ejecuciones se conectará próximamente con la API de métricas históricas.</p>
-        </div>
-      </div>
+      <DashboardGrid initialLayout={layout} permissions={user?.permissions} />
     </>
   );
 }
