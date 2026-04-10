@@ -188,13 +188,56 @@
     },
     {
       "parameters": {
-        "jsCode": "const results = $input.all().map(i => i.json).filter(r => r && r.id);\nconst MIN_CONTENT = 50;\nconst meaningful = results.filter(r => (r.content || '').trim().length >= MIN_CONTENT);\n\n// Filtrar por score directamente (sin LLM)\nconst bestResults = meaningful\n  .sort((a, b) => (b.combined_score || b.similarity || 0) - (a.combined_score || a.similarity || 0))\n  .slice(0, 3);\n\nconst finalResults = bestResults.length > 0 ? bestResults : results.slice(0, 3);\n\nconst seen = new Set();\nconst sourceUrls = [], pageNumbers = [];\nconst excludeIds = results.map(r => r.id).filter(Boolean);\n\nfor (const r of finalResults) {\n  const src = r.metadata?.source_url || '';\n  const pn = r.metadata?.page_number || 0;\n  const key = `${src}|${pn}`;\n  if (src && !seen.has(key)) {\n    seen.add(key);\n    sourceUrls.push(src);\n    pageNumbers.push(pn);\n  }\n}\n\nreturn [{ json: {\n  originalResults: results,\n  relevantResults: finalResults,\n  needsExpansion: sourceUrls.length > 0,\n  expansionParams: {\n    p_source_urls: sourceUrls,\n    p_page_numbers: pageNumbers,\n    p_exclude_ids: excludeIds,\n    p_window: 1\n  }\n} }];"
+        "jsCode": "const results = $input.all().map(i => i.json).filter(r => r && r.id);\nconst meaningful = results.filter(r => (r.content || '').trim().length >= 40);\n\n// Enviamos el top 8 para reranking\nconst candidates = meaningful\n  .sort((a, b) => (b.combined_score || 0) - (a.combined_score || 0))\n  .slice(0, 8);\n\nconst formatted = candidates.map((c, i) => `[FRAGMENTO #${i}]\\n${c.content}`).join('\\n\\n');\n\nreturn [{ json: { \n  query: $('Extraer_Plan').item.json.querySearch || $('input').item.json.query,\n  candidates_text: formatted,\n  candidates_raw: candidates,\n  all_results: results\n} }];"
       },
       "id": "node-filtrar",
-      "name": "Filtrar_Resultados",
+      "name": "Filtrar_Candidatos",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [1696, 448]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "key",
+              "value": "AIzaSyDiro1_D0AHOLkATSV7jPsFjOV3CSC3Im8"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  contents: [{\n    parts: [{\n      text: `Eres un experto en filtrado de información técnica.\\n\\nCONSULTA DEL USUARIO: ${$json.query}\\n\\nFRAGMENTOS DISPONIBLES:\\n${$json.candidates_text}\\n\\nTAREA: Selecciona ÚNICAMENTE los números de los fragmentos que contienen la respuesta o información directamente relevante para la consulta.\\nSALIDA: Responde exclusivamente con un JSON que tenga el formato: {\\\"indices\\\": [n, n...]} donde 'n' es el número del fragmento (0-7). Si ninguno es relevante, responde {\\\"indices\\\": []}.`\n    }]\n  }],\n  generationConfig: { temperature: 0.1, response_mime_type: 'application/json' }\n}) }}",
+        "options": {}
+      },
+      "id": "node-reranker",
+      "name": "Agente_Reranker",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1920, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputData = $('Filtrar_Candidatos').item.json;\nconst candidates = inputData.candidates_raw;\nconst allResults = inputData.all_results;\n\ntry {\n  const cleanText = $json.candidates?.[0]?.content?.parts?.[0]?.text || '';\n  const data = JSON.parse(cleanText);\n  const selectedIndices = data.indices || [];\n  \n  const relevantResults = selectedIndices.map(i => candidates[i]).filter(Boolean);\n  if (relevantResults.length === 0 && candidates.length > 0) {\n    relevantResults.push(candidates[0]);\n  }\n\n  const seen = new Set();\n  const sourceUrls = [], pageNumbers = [], excludeIds = allResults.map(r => r.id).filter(Boolean);\n\n  for (const r of relevantResults) {\n    const src = r.metadata?.source_url || '';\n    const pn = r.metadata?.page_number || 0;\n    const key = `${src}|${pn}`;\n    if (src && !seen.has(key)) {\n      seen.add(key);\n      sourceUrls.push(src);\n      pageNumbers.push(pn);\n    }\n  }\n\n  return [{ json: {\n    originalResults: allResults,\n    relevantResults: relevantResults,\n    needsExpansion: sourceUrls.length > 0,\n    expansionParams: {\n      p_source_urls: sourceUrls,\n      p_page_numbers: pageNumbers,\n      p_exclude_ids: excludeIds,\n      p_window: 1\n    }\n  } }];\n} catch (e) {\n  return [{ json: {\n    originalResults: allResults,\n    relevantResults: [candidates[0]],\n    needsExpansion: !!candidates[0],\n    expansionParams: {\n      p_source_urls: candidates[0]?.metadata?.source_url ? [candidates[0].metadata.source_url] : [],\n      p_page_numbers: candidates[0]?.metadata?.page_number ? [candidates[0].metadata.page_number] : [],\n      p_exclude_ids: allResults.map(r => r.id).filter(Boolean),\n      p_window: 1\n    }\n  } }];\n}"
+      },
+      "id": "node-procesar-seleccion",
+      "name": "Procesar_Seleccion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2144, 320]
     },
     {
       "parameters": {
@@ -223,27 +266,27 @@
       "name": "Supabase_Adjacent",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1920, 448]
+      "position": [2368, 320]
     },
     {
       "parameters": {
-        "jsCode": "const filterData = $('Filtrar_Resultados').item.json;\nconst initialResults = filterData.originalResults || [];\nconst relevantResults = filterData.relevantResults || [];\nconst input = $('Extraer_Plan').item.json;\nlet adjacentChunks = [];\ntry { adjacentChunks = $input.all().map(i => i.json).filter(r => r && r.id); } catch (_) { adjacentChunks = []; }\nif (initialResults.length === 0 && adjacentChunks.length === 0) {\n  return [{ json: { contexto: '', images: [], sourceUrl: '', sinResultados: true, chat_id: input.chat_id, query: input.query } }];\n}\nconst seenContent = new Set();\nconst dedup = (arr) => arr.filter(r => { const key = (r.content || '').trim(); if (!key || seenContent.has(key)) return false; seenContent.add(key); return true; });\nconst textResults = dedup(initialResults).filter(r => r.type === 'text');\nconst imageResults = dedup(initialResults).filter(r => r.type === 'image');\nconst allTextChunks = [...textResults, ...dedup(adjacentChunks).filter(r => r.type === 'text')];\nconst grouped = {}, groupMeta = {};\nfor (const chunk of allTextChunks) {\n  const src = chunk.metadata?.source_url || 'unknown';\n  if (!grouped[src]) { grouped[src] = []; groupMeta[src] = { manual_name: chunk.metadata?.manual_name || '', article_title: chunk.metadata?.article_title || '', contextual_header: chunk.metadata?.contextual_header || '' }; }\n  grouped[src].push({ content: chunk.content, _pn: chunk.metadata?.page_number || 0, _ci: chunk.metadata?.chunk_index || 0 });\n}\nconst contextParts = [];\nfor (const [src, chunks] of Object.entries(grouped)) {\n  chunks.sort((a, b) => a._pn - b._pn || a._ci - b._ci);\n  const meta = groupMeta[src];\n  const headerParts = [meta.manual_name, meta.article_title, meta.contextual_header].filter(Boolean);\n  const headerLine = headerParts.length > 0 ? '[' + headerParts.join(' › ') + ']\\n' : '';\n  contextParts.push(headerLine + chunks.map(c => c.content).join('\\n'));\n}\nconst contexto = contextParts.join('\\n\\n---\\n\\n');\nconst images = imageResults.map((r, i) => ({ index: i+1, filename: r.metadata?.image_filename || ('imagen_'+(i+1)+'.jpg'), base64: r.metadata?.original_content || null, sourceUrl: r.metadata?.source_url || '' })).slice(0, 4);\nconst mainSourceUrl = relevantResults[0]?.metadata?.source_url || initialResults[0]?.metadata?.source_url || '';\nreturn [{ json: { contexto, images, sourceUrl: mainSourceUrl, sinResultados: false, chat_id: input.chat_id, query: input.query } }];"
+        "jsCode": "const selectionData = $('Procesar_Seleccion').item.json;\nconst initialResults = selectionData.originalResults || [];\nconst relevantResults = selectionData.relevantResults || [];\nconst input = $('Extraer_Plan').item.json;\nlet adjacentChunks = [];\ntry { adjacentChunks = $('Supabase_Adjacent').all().map(i => i.json).filter(r => r && r.id); } catch (_) { adjacentChunks = []; }\nif (initialResults.length === 0 && (adjacentChunks.length === 0 || !adjacentChunks[0]?.id)) {\n  return [{ json: { contexto: '', images: [], sourceUrl: '', sinResultados: true, chat_id: input.chat_id, query: input.query } }];\n}\nconst seenContent = new Set();\nconst dedup = (arr) => arr.filter(r => { const key = (r.content || '').trim(); if (!key || seenContent.has(key)) return false; seenContent.add(key); return true; });\nconst textResults = dedup(relevantResults).filter(r => r.type === 'text');\nconst imageResults = dedup(relevantResults).filter(r => r.type === 'image');\nconst allTextChunks = [...textResults, ...dedup(adjacentChunks).filter(r => r.type === 'text')];\nconst grouped = {}, groupMeta = {};\nfor (const chunk of allTextChunks) {\n  const src = chunk.metadata?.source_url || 'unknown';\n  if (!grouped[src]) { grouped[src] = []; groupMeta[src] = { manual_name: chunk.metadata?.manual_name || '', article_title: chunk.metadata?.article_title || '', contextual_header: chunk.metadata?.contextual_header || '' }; }\n  grouped[src].push({ content: chunk.content, _pn: chunk.metadata?.page_number || 0, _ci: chunk.metadata?.chunk_index || 0 });\n}\nconst contextParts = [];\nfor (const [src, chunks] of Object.entries(grouped)) {\n  chunks.sort((a, b) => a._pn - b._pn || a._ci - b._ci);\n  const meta = groupMeta[src];\n  const headerParts = [meta.manual_name, meta.article_title, meta.contextual_header].filter(Boolean);\n  const headerLine = headerParts.length > 0 ? '[' + headerParts.join(' › ') + ']\\n' : '';\n  contextParts.push(headerLine + chunks.map(c => c.content).join('\\n'));\n}\nconst contexto = contextParts.join('\\n\\n---\\n\\n');\nconst images = imageResults.map((r, i) => ({ index: i+1, filename: r.metadata?.image_filename || ('imagen_'+(i+1)+'.jpg'), base64: r.metadata?.original_content || null, sourceUrl: r.metadata?.source_url || '' })).slice(0, 4);\nconst mainSourceUrl = relevantResults[0]?.metadata?.source_url || initialResults[0]?.metadata?.source_url || '';\nreturn [{ json: { contexto, images, sourceUrl: mainSourceUrl, sinResultados: false, chat_id: input.chat_id, query: input.query } }];"
       },
       "id": "node-procesar-rrf",
       "name": "Procesar_RRF",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2144, 448]
+      "position": [2592, 448]
     },
     {
       "parameters": {
-        "jsCode": "const { contexto, images, query, sourceUrl, chat_id } = $json;\nconst hasImage = !!$('input').item.json.image_base64;\nconst imageData = $('input').item.json.image_base64 || null;\nconst imageMimeType = $('input').item.json.image_mime_type || 'image/jpeg';\nconst vars = $('Get_Variables').item.json;\nconst userName = vars.Usuario?.name || vars.Usuario?.userName || 'Usuario';\nconst fecha = new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });\nconst imageListForPrompt = images && images.length > 0\n  ? '\\n\\nIMÁGENES DEL MANUAL DISPONIBLES:\\n' + images.map(img => '  [' + img.index + '] ' + img.filename).join('\\n') + '\\nSi alguna imagen es relevante, inclúyela con [ENVIAR_IMAGENES: N] al final.'\n  : '';\nconst systemInstruction = 'FECHA ACTUAL: ' + fecha + '\\nEres SARA, asistente técnica experta en manuales de Satcom. Eres conversacional, amable y precisa.\\nEstás hablando con ' + userName + '.\\nREGLAS:\\n1. Si recibes una imagen del usuario, analízala.\\n2. Cita la fuente solo cuando tu respuesta viene de la documentación.\\n3. Si es charla casual, responde naturalmente.\\n4. Para imágenes del manual relevantes: [ENVIAR_IMAGENES: N].\\n5. No inventes información.';\nconst userParts = [];\nif (hasImage) userParts.push({ inline_data: { mime_type: imageMimeType, data: imageData } });\nlet fullPrompt;\nif (contexto) {\n  fullPrompt = 'CONTEXTO DEL MANUAL:\\n' + contexto + imageListForPrompt + '\\n\\nCONSULTA: ' + query;\n} else {\n  fullPrompt = query;\n}\nuserParts.push({ text: fullPrompt });\nreturn [{ json: {\n  gemini_body: {\n    system_instruction: { parts: [{ text: systemInstruction }] },\n    contents: [{ role: 'user', parts: userParts }],\n    generationConfig: { temperature: 0.2, maxOutputTokens: 2048 }\n  },\n  images: images || [],\n  sourceUrl: sourceUrl || '',\n  chat_id\n} }];"
+        "jsCode": "const { contexto, images, query, sourceUrl, chat_id } = $json;\nconst hasImage = !!$('input').item.json.image_base64;\nconst imageData = $('input').item.json.image_base64 || null;\nconst imageMimeType = $('input').item.json.image_mime_type || 'image/jpeg';\nconst vars = $('Get_Variables').item.json;\nconst userName = vars.Usuario?.name || vars.Usuario?.userName || 'Usuario';\nconst fecha = new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });\n\nconst imageListForPrompt = images && images.length > 0\n  ? '\\n\\nIMÁGENES TÉCNICAS DISPONIBLES EN EL MANUAL:\\n' + images.map(img => '  [' + img.index + '] ' + img.filename).join('\\n') + '\\nSi el usuario solicita visuales o si una imagen ayuda a explicar, inclúyela usando: [ENVIAR_IMAGENES: N].'\n  : '';\n\nconst systemInstruction = `FECHA ACTUAL: ${fecha}\nEres SARA, la asistente técnica experta de Satcom. Tu objetivo es resolver dudas del usuario utilizando la documentación técnica proporcionada.\n\nINSTRUCCIONES DE CONOCIMIENTO:\n1. Se te entregará información bajo 'DOCUMENTACIÓN DE APOYO'. Este es tu conocimiento interno. NO agradezcas al usuario por esta información.\n2. Responde directamente a la consulta del usuario basándote en dicha documentación.\n3. Si la respuesta no está en la documentación, indícalo de forma profesional.\n4. Estás hablando con ${userName}.\n\nREGLAS DE FORMATO:\n- Si recibes una imagen del usuario, analízala para complementar tu respuesta.\n- Cita la fuente (Manual/Sección) solo cuando la respuesta provenga de la documentación.\n- Para imágenes del manual que aporten valor: [ENVIAR_IMAGENES: N].\n- NO inventes información. Si no sabes algo, admítelo.`;\n\nconst userParts = [];\nif (hasImage) userParts.push({ inline_data: { mime_type: imageMimeType, data: imageData } });\n\nlet fullPrompt;\nif (contexto) {\n  fullPrompt = `DOCUMENTACIÓN DE APOYO (Tu base de conocimientos):\n${contexto}\n${imageListForPrompt}\n\n________________________________\nCONSULTA DEL USUARIO:\n${query}`;\n} else {\n  fullPrompt = query;\n}\n\nuserParts.push({ text: fullPrompt });\n\nreturn [{ json: {\n  gemini_body: {\n    system_instruction: { parts: [{ text: systemInstruction }] },\n    contents: [{ role: 'user', parts: userParts }],\n    generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }\n  },\n  images: images || [],\n  sourceUrl: sourceUrl || '',\n  chat_id\n} }];"
       },
       "id": "node-preparar-body-llm",
       "name": "Preparar_Body_LLM",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2368, 448]
+      "position": [2816, 448]
     },
     {
       "parameters": {
@@ -258,7 +301,7 @@
       "name": "Agente_Respuesta",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3.1,
-      "position": [2592, 448]
+      "position": [3040, 448]
     },
     {
       "parameters": {
@@ -271,7 +314,7 @@
       "name": "Modelo_Respuesta",
       "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "typeVersion": 1,
-      "position": [2640, 688],
+      "position": [3040, 688],
       "credentials": {
         "googlePalmApi": {
           "id": "ZxM0IL5bSh5f0QXK",
@@ -292,7 +335,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.3,
-      "position": [2512, 688],
+      "position": [3040, 688],
       "id": "6719950b-ac97-42aa-be8a-ff59eab73369",
       "name": "OpenAI Chat Model2",
       "credentials": {
@@ -310,7 +353,7 @@
       "name": "Procesar_Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2816, 448]
+      "position": [3264, 448]
     },
     {
       "parameters": {
@@ -327,7 +370,7 @@
       "name": "Tiene_Imagen",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [3040, 448]
+      "position": [3488, 448]
     },
     {
       "parameters": {
@@ -340,7 +383,7 @@
       "name": "Telegram_Foto",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.1,
-      "position": [3264, 384],
+      "position": [3712, 320],
       "webhookId": "5dcf3b23-d554-472b-bd2d-12952f535b91",
       "credentials": {
         "telegramApi": {
@@ -358,7 +401,7 @@
       "name": "Devolver_Cerebro",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3488, 448]
+      "position": [3936, 448]
     }
   ],
   "connections": {
@@ -381,9 +424,15 @@
       "main": [[{ "node": "Supabase_Search", "type": "main", "index": 0 }]]
     },
     "Supabase_Search": {
-      "main": [[{ "node": "Filtrar_Resultados", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Filtrar_Candidatos", "type": "main", "index": 0 }]]
     },
-    "Filtrar_Resultados": {
+    "Filtrar_Candidatos": {
+      "main": [[{ "node": "Agente_Reranker", "type": "main", "index": 0 }]]
+    },
+    "Agente_Reranker": {
+      "main": [[{ "node": "Procesar_Seleccion", "type": "main", "index": 0 }]]
+    },
+    "Procesar_Seleccion": {
       "main": [[{ "node": "Supabase_Adjacent", "type": "main", "index": 0 }]]
     },
     "Supabase_Adjacent": {
