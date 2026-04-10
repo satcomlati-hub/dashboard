@@ -1,0 +1,438 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            { "name": "query" },
+            { "name": "chat_id" }
+          ]
+        }
+      },
+      "id": "node-input",
+      "name": "input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 448]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "fKeeBQyHOdY0eKQl",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/fKeeBQyHOdY0eKQl",
+          "cachedResultName": "SUB_GetVariables"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": { "chat_id": "11111" },
+          "matchingColumns": ["chat_id"],
+          "schema": [
+            {
+              "id": "chat_id",
+              "displayName": "chat_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "node-get-variables",
+      "name": "Get_Variables",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [224, 448]
+    },
+    {
+      "parameters": {
+        "jsCode": "const query = $('input').item.json.query || '[imagen adjunta sin texto]';\nconst hasImage = !!$('input').item.json.image_base64;\nconst vars = $('Get_Variables').item.json;\nconst fecha = new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });\nconst imgNota = hasImage ? '\\nNOTA: El usuario adjuntó una imagen; incluye búsqueda aunque sea charla casual.' : '';\nconst prompt = 'FECHA Y HORA ACTUAL: ' + fecha +\n  '\\n\\nNUEVA CONSULTA: ' + query + imgNota +\n  '\\n\\nClasifica esta consulta para búsqueda en la base de conocimientos.\\n' +\n  'REGLA CLAVE: Si la consulta tiene referencias temporales (\"hoy\", \"esta semana\", \"este mes\", \"quién está de soporte/guardia/turno\"), ' +\n  'DEBES incluir la fecha actual (' + fecha + ') en las queries.\\n\\n' +\n  'CLASIFICACIÓN DE QUERY:\\n' +\n  '- exact_id: códigos, IDs, tickets, errores específicos → semantic_weight=0.2, keyword_weight=0.8\\n' +\n  '- conceptual: cómo hacer algo, explicaciones → semantic_weight=0.7, keyword_weight=0.3\\n' +\n  '- mixed: conceptual + términos técnicos → semantic_weight=0.5, keyword_weight=0.5\\n\\n' +\n  'Expande términos con sinónimos técnicos relevantes.\\n\\n' +\n  'Responde SOLO con JSON válido sin markdown:\\n' +\n  '{\"queries\": [\"query expandida\"], \"query_type\": \"conceptual|exact_id|mixed\", \"semantic_weight\": 0.7, \"keyword_weight\": 0.3}';\nreturn [{ json: { prompt } }];"
+      },
+      "id": "node-preparar-planificador",
+      "name": "Preparar_Planificador",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [448, 448]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "Eres el planificador de consultas de SARA. Clasificas consultas para búsqueda en la base de conocimientos.\n\nCLASIFICACIÓN DE QUERY:\n- exact_id: códigos, IDs, tickets, errores específicos → semantic_weight=0.2, keyword_weight=0.8\n- conceptual: cómo hacer algo, explicaciones → semantic_weight=0.7, keyword_weight=0.3\n- mixed: conceptual + términos técnicos → semantic_weight=0.5, keyword_weight=0.5\n\nExpande términos con sinónimos técnicos relevantes.\nResponde ÚNICAMENTE con JSON válido sin markdown."
+        }
+      },
+      "id": "44944004-73cc-4c7c-98d6-10bc3a46592d",
+      "name": "Agente_Planificador",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [672, 448]
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash-lite",
+        "options": { "temperature": 0 }
+      },
+      "id": "97c2a5c9-ffde-43b1-ac1e-1d8512a79d95",
+      "name": "Modelo_Planificador",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [688, 704],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "mMMNu6JhrqIAX7Q7",
+          "name": "Vertex"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-3.5-turbo",
+          "mode": "list",
+          "cachedResultName": "gpt-3.5-turbo"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [512, 704],
+      "id": "593dc531-5227-4d70-87dc-316f10f45d3d",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "ovGsSIf2aiqz6ETu",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Respuesta cruda del agente (viene como texto)\nconst raw = $json.output || $json.text || '';\nlet plan = { queries: [], query_type: 'conceptual', semantic_weight: 0.7, keyword_weight: 0.3 };\n\ntry {\n  let jsonStr = raw;\n  if (typeof jsonStr === 'string') {\n    jsonStr = jsonStr.replace(/```json\\s*/gi, '').replace(/```\\s*/gi, '').trim();\n    const start = jsonStr.indexOf('{');\n    const end = jsonStr.lastIndexOf('}');\n    if (start !== -1 && end !== -1) {\n      jsonStr = jsonStr.substring(start, end + 1);\n    }\n    plan = JSON.parse(jsonStr);\n  } else if (typeof raw === 'object') {\n    plan = raw;\n  }\n} catch (e) {\n  // Fallback: usar la query original\n  plan = {\n    queries: [$('input').item.json.query || ''],\n    query_type: 'conceptual',\n    semantic_weight: 0.7,\n    keyword_weight: 0.3\n  };\n}\n\nconst processInput = {\n  query: $('input').item.json.query || '',\n  hasImage: !!$('input').item.json.image_base64,\n  imageData: $('input').item.json.image_base64 || null,\n  imageMimeType: $('input').item.json.image_mime_type || 'image/jpeg',\n  chat_id: $('input').item.json.chat_id\n};\n\n// Siempre buscar - asegurar que hay queries\nconst queries = (plan.queries && plan.queries.length > 0) ? plan.queries : [processInput.query || 'consulta'];\nconst querySearch = queries.slice(0, 2).join(' ');\n\nreturn [{ json: {\n  ...processInput,\n  querySearch,\n  queries,\n  queryType: plan.query_type || 'conceptual',\n  detectedManual: null,\n  semanticWeight: plan.semantic_weight ?? 0.7,\n  keywordWeight: plan.keyword_weight ?? 0.3\n} }];"
+      },
+      "id": "node-extraer-plan",
+      "name": "Extraer_Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1024, 448]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2-preview:embedContent",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "key",
+              "value": "AIzaSyDiro1_D0AHOLkATSV7jPsFjOV3CSC3Im8"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: 'models/gemini-embedding-2-preview',\n  content: {\n    parts: [\n      ...($('Extraer_Plan').item.json.hasImage ? [{ inline_data: { mime_type: $('Extraer_Plan').item.json.imageMimeType, data: $('Extraer_Plan').item.json.imageData } }] : []),\n      ...($('Extraer_Plan').item.json.querySearch ? [{ text: $('Extraer_Plan').item.json.querySearch }] : [])\n    ]\n  },\n  outputDimensionality: 3072\n}) }}",
+        "options": { "timeout": 30000 }
+      },
+      "id": "node-multimodal-embedding",
+      "name": "Multimodal_Embedding",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1248, 448]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://wpzfbpvtxrfyejoqjecu.supabase.co/rest/v1/rpc/match_mm_base_publica",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndwemZicHZ0eHJmeWVqb3FqZWN1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDE2ODUzOSwiZXhwIjoyMDg1NzQ0NTM5fQ.T9bP7igJpyZIKZOZwXzLKNUHRxDw0NIg0DBBsjVtl3Q"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndwemZicHZ0eHJmeWVqb3FqZWN1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDE2ODUzOSwiZXhwIjoyMDg1NzQ0NTM5fQ.T9bP7igJpyZIKZOZwXzLKNUHRxDw0NIg0DBBsjVtl3Q"
+            },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  query_embedding: '[' + $json.embedding.values.join(',') + ']',\n  query_text: $('Extraer_Plan').item.json.querySearch || 'Consulta visual',\n  match_threshold: 0.25,\n  match_count: 7,\n  semantic_weight: $('Extraer_Plan').item.json.semanticWeight ?? 0.7,\n  keyword_weight: $('Extraer_Plan').item.json.keywordWeight ?? 0.3,\n  filter_type: 'text'\n}) }}",
+        "options": {}
+      },
+      "id": "node-supabase-search",
+      "name": "Supabase_Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1472, 448],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = $input.all().map(i => i.json).filter(r => r && r.id);\nconst MIN_CONTENT = 50;\nconst meaningful = results.filter(r => (r.content || '').trim().length >= MIN_CONTENT);\n\n// Filtrar por score directamente (sin LLM)\nconst bestResults = meaningful\n  .sort((a, b) => (b.combined_score || b.similarity || 0) - (a.combined_score || a.similarity || 0))\n  .slice(0, 3);\n\nconst finalResults = bestResults.length > 0 ? bestResults : results.slice(0, 3);\n\nconst seen = new Set();\nconst sourceUrls = [], pageNumbers = [];\nconst excludeIds = results.map(r => r.id).filter(Boolean);\n\nfor (const r of finalResults) {\n  const src = r.metadata?.source_url || '';\n  const pn = r.metadata?.page_number || 0;\n  const key = `${src}|${pn}`;\n  if (src && !seen.has(key)) {\n    seen.add(key);\n    sourceUrls.push(src);\n    pageNumbers.push(pn);\n  }\n}\n\nreturn [{ json: {\n  originalResults: results,\n  relevantResults: finalResults,\n  needsExpansion: sourceUrls.length > 0,\n  expansionParams: {\n    p_source_urls: sourceUrls,\n    p_page_numbers: pageNumbers,\n    p_exclude_ids: excludeIds,\n    p_window: 1\n  }\n} }];"
+      },
+      "id": "node-filtrar",
+      "name": "Filtrar_Resultados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1696, 448]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://wpzfbpvtxrfyejoqjecu.supabase.co/rest/v1/rpc/get_adjacent_chunks_mm",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndwemZicHZ0eHJmeWVqb3FqZWN1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDE2ODUzOSwiZXhwIjoyMDg1NzQ0NTM5fQ.T9bP7igJpyZIKZOZwXzLKNUHRxDw0NIg0DBBsjVtl3Q"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndwemZicHZ0eHJmeWVqb3FqZWN1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDE2ODUzOSwiZXhwIjoyMDg1NzQ0NTM5fQ.T9bP7igJpyZIKZOZwXzLKNUHRxDw0NIg0DBBsjVtl3Q"
+            },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.expansionParams) }}",
+        "options": {}
+      },
+      "id": "node-supabase-adjacent",
+      "name": "Supabase_Adjacent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1920, 448]
+    },
+    {
+      "parameters": {
+        "jsCode": "const filterData = $('Filtrar_Resultados').item.json;\nconst initialResults = filterData.originalResults || [];\nconst relevantResults = filterData.relevantResults || [];\nconst input = $('Extraer_Plan').item.json;\nlet adjacentChunks = [];\ntry { adjacentChunks = $input.all().map(i => i.json).filter(r => r && r.id); } catch (_) { adjacentChunks = []; }\nif (initialResults.length === 0 && adjacentChunks.length === 0) {\n  return [{ json: { contexto: '', images: [], sourceUrl: '', sinResultados: true, chat_id: input.chat_id, query: input.query } }];\n}\nconst seenContent = new Set();\nconst dedup = (arr) => arr.filter(r => { const key = (r.content || '').trim(); if (!key || seenContent.has(key)) return false; seenContent.add(key); return true; });\nconst textResults = dedup(initialResults).filter(r => r.type === 'text');\nconst imageResults = dedup(initialResults).filter(r => r.type === 'image');\nconst allTextChunks = [...textResults, ...dedup(adjacentChunks).filter(r => r.type === 'text')];\nconst grouped = {}, groupMeta = {};\nfor (const chunk of allTextChunks) {\n  const src = chunk.metadata?.source_url || 'unknown';\n  if (!grouped[src]) { grouped[src] = []; groupMeta[src] = { manual_name: chunk.metadata?.manual_name || '', article_title: chunk.metadata?.article_title || '', contextual_header: chunk.metadata?.contextual_header || '' }; }\n  grouped[src].push({ content: chunk.content, _pn: chunk.metadata?.page_number || 0, _ci: chunk.metadata?.chunk_index || 0 });\n}\nconst contextParts = [];\nfor (const [src, chunks] of Object.entries(grouped)) {\n  chunks.sort((a, b) => a._pn - b._pn || a._ci - b._ci);\n  const meta = groupMeta[src];\n  const headerParts = [meta.manual_name, meta.article_title, meta.contextual_header].filter(Boolean);\n  const headerLine = headerParts.length > 0 ? '[' + headerParts.join(' › ') + ']\\n' : '';\n  contextParts.push(headerLine + chunks.map(c => c.content).join('\\n'));\n}\nconst contexto = contextParts.join('\\n\\n---\\n\\n');\nconst images = imageResults.map((r, i) => ({ index: i+1, filename: r.metadata?.image_filename || ('imagen_'+(i+1)+'.jpg'), base64: r.metadata?.original_content || null, sourceUrl: r.metadata?.source_url || '' })).slice(0, 4);\nconst mainSourceUrl = relevantResults[0]?.metadata?.source_url || initialResults[0]?.metadata?.source_url || '';\nreturn [{ json: { contexto, images, sourceUrl: mainSourceUrl, sinResultados: false, chat_id: input.chat_id, query: input.query } }];"
+      },
+      "id": "node-procesar-rrf",
+      "name": "Procesar_RRF",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2144, 448]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { contexto, images, query, sourceUrl, chat_id } = $json;\nconst hasImage = !!$('input').item.json.image_base64;\nconst imageData = $('input').item.json.image_base64 || null;\nconst imageMimeType = $('input').item.json.image_mime_type || 'image/jpeg';\nconst vars = $('Get_Variables').item.json;\nconst userName = vars.Usuario?.name || vars.Usuario?.userName || 'Usuario';\nconst fecha = new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });\nconst imageListForPrompt = images && images.length > 0\n  ? '\\n\\nIMÁGENES DEL MANUAL DISPONIBLES:\\n' + images.map(img => '  [' + img.index + '] ' + img.filename).join('\\n') + '\\nSi alguna imagen es relevante, inclúyela con [ENVIAR_IMAGENES: N] al final.'\n  : '';\nconst systemInstruction = 'FECHA ACTUAL: ' + fecha + '\\nEres SARA, asistente técnica experta en manuales de Satcom. Eres conversacional, amable y precisa.\\nEstás hablando con ' + userName + '.\\nREGLAS:\\n1. Si recibes una imagen del usuario, analízala.\\n2. Cita la fuente solo cuando tu respuesta viene de la documentación.\\n3. Si es charla casual, responde naturalmente.\\n4. Para imágenes del manual relevantes: [ENVIAR_IMAGENES: N].\\n5. No inventes información.';\nconst userParts = [];\nif (hasImage) userParts.push({ inline_data: { mime_type: imageMimeType, data: imageData } });\nlet fullPrompt;\nif (contexto) {\n  fullPrompt = 'CONTEXTO DEL MANUAL:\\n' + contexto + imageListForPrompt + '\\n\\nCONSULTA: ' + query;\n} else {\n  fullPrompt = query;\n}\nuserParts.push({ text: fullPrompt });\nreturn [{ json: {\n  gemini_body: {\n    system_instruction: { parts: [{ text: systemInstruction }] },\n    contents: [{ role: 'user', parts: userParts }],\n    generationConfig: { temperature: 0.2, maxOutputTokens: 2048 }\n  },\n  images: images || [],\n  sourceUrl: sourceUrl || '',\n  chat_id\n} }];"
+      },
+      "id": "node-preparar-body-llm",
+      "name": "Preparar_Body_LLM",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2368, 448]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.gemini_body.contents[0].parts }}",
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "={{ $json.gemini_body.system_instruction.parts[0].text }}"
+        }
+      },
+      "id": "b267447e-6a72-4a65-8f8e-b5dcb7f53026",
+      "name": "Agente_Respuesta",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [2592, 448]
+    },
+    {
+      "parameters": {
+        "options": {
+          "maxOutputTokens": 2048,
+          "temperature": 0.2
+        }
+      },
+      "id": "83d408e3-c42c-4f98-aa1f-e723cf87fb7b",
+      "name": "Modelo_Respuesta",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [2640, 688],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "ZxM0IL5bSh5f0QXK",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-3.5-turbo",
+          "mode": "list",
+          "cachedResultName": "gpt-3.5-turbo"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [2512, 688],
+      "id": "6719950b-ac97-42aa-be8a-ff59eab73369",
+      "name": "OpenAI Chat Model2",
+      "credentials": {
+        "openAiApi": {
+          "id": "ovGsSIf2aiqz6ETu",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const preparador = $('Preparar_Body_LLM').item.json;\nconst imagesFromRAG = preparador.images || [];\nconst sourceUrl = preparador.source_url || preparador.sourceUrl || '';\nconst chat_id = preparador.chat_id || $('input').item.json.chat_id;\nlet finalResponse = $json.output || '';\nif (!finalResponse) {\n  return [{ json: { chat_id, final_response: 'SARA generó una respuesta vacía. Por favor reformula tu pregunta.', source_url: sourceUrl, send_image: false } }];\n}\nconst regex = /\\[ENVIAR_IMAGENES:\\s*([\\d,\\s]+)\\]/i;\nconst match = finalResponse.match(regex);\nlet imageToSend = null;\nif (match && imagesFromRAG.length > 0) {\n  const indices = match[1].split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));\n  for (const idx of indices) {\n    const img = imagesFromRAG[idx - 1];\n    if (img && img.base64) { imageToSend = img.base64; break; }\n  }\n  finalResponse = finalResponse.replace(regex, '').trim();\n}\nconst output = { json: { chat_id, final_response: finalResponse, source_url: sourceUrl, send_image: !!imageToSend } };\nif (imageToSend) { output.binary = { data: { data: imageToSend, mimeType: 'image/jpeg', fileName: 'imagen_manual.jpg' } }; }\nreturn [output];"
+      },
+      "id": "node-procesar-output",
+      "name": "Procesar_Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2816, 448]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.send_image }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "node-tiene-imagen",
+      "name": "Tiene_Imagen",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [3040, 448]
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "={{ $json.chat_id }}",
+        "binaryData": true,
+        "additionalFields": {}
+      },
+      "id": "node-telegram-foto",
+      "name": "Telegram_Foto",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [3264, 384],
+      "webhookId": "5dcf3b23-d554-472b-bd2d-12952f535b91",
+      "credentials": {
+        "telegramApi": {
+          "id": "NI5ekmJ0uQSRq842",
+          "name": "Telegram account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('Procesar_Output').first().json;\nconst response = data.final_response || 'No encontré información relevante en los manuales.';\nconst sourceUrl = data.source_url || '';\nconst withLink = sourceUrl ? `${response}\\n\\n🔗 [Ver en el Manual Original](${sourceUrl})` : response;\nreturn [{ json: { response: withLink } }];"
+      },
+      "id": "node-devolver-cerebro",
+      "name": "Devolver_Cerebro",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3488, 448]
+    }
+  ],
+  "connections": {
+    "input": {
+      "main": [[{ "node": "Get_Variables", "type": "main", "index": 0 }]]
+    },
+    "Get_Variables": {
+      "main": [[{ "node": "Preparar_Planificador", "type": "main", "index": 0 }]]
+    },
+    "Preparar_Planificador": {
+      "main": [[{ "node": "Agente_Planificador", "type": "main", "index": 0 }]]
+    },
+    "Agente_Planificador": {
+      "main": [[{ "node": "Extraer_Plan", "type": "main", "index": 0 }]]
+    },
+    "Extraer_Plan": {
+      "main": [[{ "node": "Multimodal_Embedding", "type": "main", "index": 0 }]]
+    },
+    "Multimodal_Embedding": {
+      "main": [[{ "node": "Supabase_Search", "type": "main", "index": 0 }]]
+    },
+    "Supabase_Search": {
+      "main": [[{ "node": "Filtrar_Resultados", "type": "main", "index": 0 }]]
+    },
+    "Filtrar_Resultados": {
+      "main": [[{ "node": "Supabase_Adjacent", "type": "main", "index": 0 }]]
+    },
+    "Supabase_Adjacent": {
+      "main": [[{ "node": "Procesar_RRF", "type": "main", "index": 0 }]]
+    },
+    "Procesar_RRF": {
+      "main": [[{ "node": "Preparar_Body_LLM", "type": "main", "index": 0 }]]
+    },
+    "Preparar_Body_LLM": {
+      "main": [[{ "node": "Agente_Respuesta", "type": "main", "index": 0 }]]
+    },
+    "Agente_Respuesta": {
+      "main": [[{ "node": "Procesar_Output", "type": "main", "index": 0 }]]
+    },
+    "Procesar_Output": {
+      "main": [[{ "node": "Tiene_Imagen", "type": "main", "index": 0 }]]
+    },
+    "Tiene_Imagen": {
+      "main": [
+        [{ "node": "Telegram_Foto", "type": "main", "index": 0 }],
+        [{ "node": "Devolver_Cerebro", "type": "main", "index": 0 }]
+      ]
+    },
+    "Telegram_Foto": {
+      "main": [[{ "node": "Devolver_Cerebro", "type": "main", "index": 0 }]]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [[{ "node": "Agente_Planificador", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Modelo_Planificador": {
+      "ai_languageModel": [[{ "node": "Agente_Planificador", "type": "ai_languageModel", "index": 1 }]]
+    },
+    "OpenAI Chat Model2": {
+      "ai_languageModel": [[{ "node": "Agente_Respuesta", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Modelo_Respuesta": {
+      "ai_languageModel": [[{ "node": "Agente_Respuesta", "type": "ai_languageModel", "index": 1 }]]
+    }
+  },
+  "pinData": {
+    "input": [
+      {
+        "query": "Como creo un producto en simphony en Ecuador",
+        "chat_id": null
+      }
+    ]
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "160646786e3ce04fb151bda0b500e5743a06432e2a8594b0f55e8d90a14a7e96"
+  }
+}

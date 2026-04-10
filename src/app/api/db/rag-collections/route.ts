@@ -102,17 +102,27 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 });
     }
 
-    if (typeof manual === 'string') {
+    if (typeof manual === 'string' && manual) {
       // Bulk update: todos los artículos del manual
       await pool.query(
         'UPDATE mm_collections_v2 SET is_public = $1 WHERE manual = $2',
         [is_public, manual]
       );
-    } else if (typeof source_url === 'string') {
+      // Sincronizar mm_base_publica automáticamente (inserta o borra según visibilidad)
+      await pool.query(
+        'SELECT sync_manual_visibility($1, $2)',
+        [manual, is_public]
+      );
+    } else if (typeof source_url === 'string' && source_url) {
       // Update individual por artículo
       await pool.query(
         'UPDATE mm_collections_v2 SET is_public = $1 WHERE source_url = $2',
         [is_public, source_url]
+      );
+      // Sincronizar mm_base_publica automáticamente (inserta o borra según visibilidad)
+      await pool.query(
+        'SELECT sync_article_visibility($1, $2)',
+        [source_url, is_public]
       );
     } else {
       return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 });
