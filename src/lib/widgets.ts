@@ -30,10 +30,22 @@ export const WIDGET_REGISTRY: WidgetDefinition[] = [
     defaultSize: 'col-span-2',
   },
   {
+    id: 'monitoreo-chart',
+    name: 'Gráfico Monitoreo',
+    description: 'Gráfico de barras de volumen de eventos de monitoreo',
+    defaultSize: 'col-span-2',
+  },
+  {
     id: 'monitoreo-widget',
     name: 'Bitácora Eventos',
     description: 'Tabla de eventos recientes de monitoreo',
     defaultSize: 'full',
+  },
+  {
+    id: 'analytics-links',
+    name: 'Analytics',
+    description: 'Accesos directos a los paneles de análisis disponibles',
+    defaultSize: 'third',
   },
   {
     id: 'quick-links',

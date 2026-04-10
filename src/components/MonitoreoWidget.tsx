@@ -38,8 +38,22 @@ export default function MonitoreoWidget({ initialData, initialLoading = false, i
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  // Auto-fetch when used as standalone dashboard widget (no initialData provided)
   useEffect(() => {
-    if (initialData) {
+    if (initialData !== undefined) return;
+    setLoading(true);
+    fetch('/api/db/monitoreo?limit=200')
+      .then(res => res.json())
+      .then(json => {
+        setData(json.data || []);
+        setError(null);
+      })
+      .catch(() => setError('Error al cargar la bitácora de eventos'))
+      .finally(() => setLoading(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (initialData !== undefined) {
       setData(initialData);
       setLoading(false);
     }

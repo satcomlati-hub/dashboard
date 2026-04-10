@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { WidgetLayoutItem, WIDGET_REGISTRY, getWidgetById } from '@/lib/widgets';
 import WidgetWrapper from './WidgetWrapper';
@@ -10,11 +10,36 @@ import WidgetPicker from './WidgetPicker';
 const TopCards = dynamic(() => import('@/components/TopCards'));
 const ActiveTools = dynamic(() => import('@/components/ActiveTools'));
 const MonitoreoWidget = dynamic(() => import('@/components/MonitoreoWidget'));
+const MonitoreoChart = dynamic(() => import('@/components/MonitoreoChart'));
 const QuickLinks = dynamic(() => import('./QuickLinks'));
+
+// Wrapper que auto-carga datos para MonitoreoChart
+function MonitoreoChartWidget() {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/db/monitoreo?limit=200')
+      .then(r => r.json())
+      .then(j => { setData(j.data || []); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-3xl shadow-xl p-8 h-[350px] flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[#71BF44]/20 border-t-[#71BF44] rounded-full animate-spin" />
+      </div>
+    );
+  }
+  return <MonitoreoChart data={data} />;
+}
 
 const WIDGET_COMPONENTS: Record<string, React.ComponentType> = {
   'top-cards': TopCards,
   'active-tools': ActiveTools,
+  'monitoreo-chart': MonitoreoChartWidget,
   'monitoreo-widget': MonitoreoWidget as React.ComponentType,
   'quick-links': QuickLinks,
 };
@@ -35,6 +60,9 @@ function UsagePlaceholder() {
 }
 
 WIDGET_COMPONENTS['usage-placeholder'] = UsagePlaceholder;
+
+const AnalyticsLinksWidget = dynamic(() => import('./AnalyticsLinksWidget'));
+WIDGET_COMPONENTS['analytics-links'] = AnalyticsLinksWidget as React.ComponentType;
 
 const SIZE_CLASSES: Record<string, string> = {
   'full': 'lg:col-span-3',
