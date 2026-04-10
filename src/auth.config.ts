@@ -1,5 +1,5 @@
 import type { NextAuthConfig } from "next-auth"
-import { getRequiredPermission } from "./lib/permissions"
+import { getRequiredPermission } from "./lib/route-permissions"
 
 export const authConfig = {
   pages: {
