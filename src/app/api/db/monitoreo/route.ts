@@ -20,13 +20,14 @@ export async function GET(request: NextRequest) {
           pais,
           detalle_evento
       FROM mySatcom.bitacora_eventos
+      WHERE evento = 'Desconexión Autorizador'
       ORDER BY created_at DESC
       LIMIT $1 OFFSET $2`,
       [limit, offset]
     );
 
     const countResult = await pool.query(
-      `SELECT COUNT(*) AS total FROM mySatcom.bitacora_eventos`
+      `SELECT COUNT(*) AS total FROM mySatcom.bitacora_eventos WHERE evento = 'Desconexión Autorizador'`
     );
 
     return NextResponse.json({
