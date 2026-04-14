@@ -1,31 +1,34 @@
 'use client';
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import {
-  Send, Link as LinkIcon, Mail, Loader2, CheckCircle, AlertCircle,
-  Upload, FileText, X, FileUp, Globe, BookMarked, Plus, Search
+  Send, Link as LinkIcon, Loader2, CheckCircle, AlertCircle,
+  Upload, FileText, X, FileUp, Globe, BookMarked, Plus, Search, AlertTriangle,
 } from 'lucide-react';
 
 type Tab = 'zoho' | 'pdf';
 type Status = 'idle' | 'loading' | 'success' | 'error';
 
 export default function IngestTabs() {
+  const { data: session } = useSession();
+  const userEmail = session?.user?.email ?? '';
+
   const [activeTab, setActiveTab] = useState<Tab>('zoho');
 
   // ─── Zoho state ───
   const [links, setLinks] = useState('');
-  const [email, setEmail] = useState('');
   const [zohoStatus, setZohoStatus] = useState<Status>('idle');
   const [zohoError, setZohoError] = useState('');
 
   // ─── PDF state ───
   const [file, setFile] = useState<File | null>(null);
-  const [pdfUser, setPdfUser] = useState('');
   const [manual, setManual] = useState('Ecuador');
   const [customManual, setCustomManual] = useState('');
   const [articuloName, setArticuloName] = useState('');
   const [pdfStatus, setPdfStatus] = useState<Status>('idle');
   const [pdfError, setPdfError] = useState('');
   const [dragActive, setDragActive] = useState(false);
+  const [isDuplicate, setIsDuplicate] = useState(false);
   
   // ─── Autocomplete state ───
   const [existingArticulos, setExistingArticulos] = useState<{articulo: string; manual: string}[]>([]);
@@ -89,10 +92,13 @@ export default function IngestTabs() {
 
   const handleArticuloChange = (val: string) => {
     setArticuloName(val);
+    const q = val.toLowerCase().trim();
+    // Detectar duplicado exacto
+    setIsDuplicate(q.length > 2 && existingArticulos.some(a => a.articulo.toLowerCase() === q));
     if (val.length > 1) {
-      const filtered = existingArticulos.filter(item => 
+      const filtered = existingArticulos.filter(item =>
         item.articulo.toLowerCase().includes(val.toLowerCase())
-      ).slice(0, 8); // Limitar a 8 sugerencias
+      ).slice(0, 8);
       setFilteredSuggestions(filtered);
       setShowSuggestions(filtered.length > 0);
     } else {
@@ -102,17 +108,12 @@ export default function IngestTabs() {
 
   const selectSuggestion = (item: {articulo: string; manual: string}) => {
     setArticuloName(item.articulo);
-    
-    // Si el manual está en las opciones estándar, seleccionarlo
+    setIsDuplicate(true); // Al seleccionar una sugerencia existente, es duplicado
     if (MANUAL_OPTIONS.includes(item.manual)) {
-      setManual(item.manual);
-      setCustomManual('');
+      setManual(item.manual); setCustomManual('');
     } else {
-      // Si no, ponerlo como custom
-      setManual('custom');
-      setCustomManual(item.manual);
+      setManual('custom'); setCustomManual(item.manual);
     }
-    
     setShowSuggestions(false);
   };
 
@@ -167,7 +168,7 @@ export default function IngestTabs() {
     try {
       const payload = [{
         "Links de Zoho Learn": links,
-        "Correo del responsable": email,
+        "Correo del responsable": userEmail,
         "submittedAt": new Date().toISOString(),
         "formMode": "production"
       }];
@@ -239,18 +240,12 @@ export default function IngestTabs() {
     e.preventDefault();
     if (!file) return;
 
-    if (!pdfUser.trim() || !pdfUser.includes('@')) {
-      setPdfStatus('error');
-      setPdfError('Ingresa un correo electrónico válido.');
-      return;
-    }
-
     setPdfStatus('loading');
     setPdfError('');
 
     try {
       const finalManual = manual === 'custom' ? customManual : manual;
-      
+
       if (!finalManual.trim()) {
         setPdfStatus('error');
         setPdfError('Por favor selecciona o ingresa un manual.');
@@ -265,7 +260,7 @@ export default function IngestTabs() {
 
       const formData = new FormData();
       formData.append('data', file, file.name);
-      formData.append('user', pdfUser.trim());
+      formData.append('user', userEmail);
       formData.append('manual', finalManual.trim());
       formData.append('articulo', articuloName.trim());
 
@@ -278,9 +273,9 @@ export default function IngestTabs() {
 
       setPdfStatus('success');
       setFile(null);
-      setPdfUser('');
       setArticuloName('');
       setCustomManual('');
+      setIsDuplicate(false);
       if (inputRef.current) inputRef.current.value = '';
       setTimeout(() => setPdfStatus('idle'), 4000);
     } catch (error: any) {
@@ -361,19 +356,10 @@ export default function IngestTabs() {
               <p className="text-xs text-neutral-500 mt-1.5 ml-1">Separa los links por comas si son varios artículos.</p>
             </div>
 
-            <div>
-              <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-2 flex items-center gap-2">
-                <Mail className="w-4 h-4 text-neutral-400" />
-                Correo del responsable
-              </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="tu.correo@satcomla.com"
-                className="w-full bg-neutral-50 dark:bg-[#0A0A0A] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#71BF44]/50 dark:text-white transition-all"
-              />
+            {/* Responsable auto-completado desde sesión */}
+            <div className="flex items-center gap-2 px-3 py-2 bg-neutral-50 dark:bg-[#0A0A0A] border border-neutral-200 dark:border-neutral-800 rounded-xl text-sm text-neutral-500 dark:text-neutral-400">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Responsable:</span>
+              <span className="dark:text-neutral-200 font-medium">{userEmail || 'Cargando sesión...'}</span>
             </div>
 
             <div className="pt-2">
@@ -544,27 +530,27 @@ export default function IngestTabs() {
               )}
             </div>
 
-            {/* Email field */}
-            <div>
-              <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-2 flex items-center gap-2">
-                <Mail className="w-4 h-4 text-neutral-400" />
-                Correo del responsable
-              </label>
-              <input
-                type="email"
-                required
-                value={pdfUser}
-                onChange={(e) => setPdfUser(e.target.value)}
-                placeholder="tu.correo@satcomla.com"
-                className="w-full bg-neutral-50 dark:bg-[#0A0A0A] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#71BF44]/50 dark:text-white transition-all"
-              />
+            {/* Responsable auto + aviso de duplicado */}
+            <div className="flex items-center gap-2 px-3 py-2 bg-neutral-50 dark:bg-[#0A0A0A] border border-neutral-200 dark:border-neutral-800 rounded-xl text-sm text-neutral-500 dark:text-neutral-400">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Responsable:</span>
+              <span className="dark:text-neutral-200 font-medium">{userEmail || 'Cargando sesión...'}</span>
             </div>
+
+            {isDuplicate && (
+              <div className="flex items-start gap-3 p-3 bg-amber-400/10 border border-amber-400/20 rounded-xl text-amber-500 text-sm">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <p>
+                  <span className="font-semibold">Este artículo ya existe en la base de conocimiento.</span>{' '}
+                  Verifica que realmente necesitas re-ingesta antes de continuar. Si el archivo no ha cambiado, usa el botón <strong>Actualizar</strong> en la tabla.
+                </p>
+              </div>
+            )}
 
             <div className="pt-2">
               <StatusBanner status={pdfStatus} error={pdfError} successMsg="El PDF se ha enviado correctamente a SARA para procesamiento." />
               <button
                 type="submit"
-                disabled={pdfStatus === 'loading' || !file || !pdfUser.trim()}
+                disabled={pdfStatus === 'loading' || !file}
                 className="w-full bg-[#71BF44] hover:bg-[#60A339] text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-[0_0_15px_rgba(113,191,68,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {pdfStatus === 'loading' ? (
