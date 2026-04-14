@@ -1,29 +1,62 @@
 import pool from '@/lib/db';
+import { auth } from '@/lib/auth';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  try {
-    const query = `
-      SELECT
-        manual,
-        articulo,
-        source_url,
-        created_at,
-        created_by,
-        modified_at,
-        modified_by,
-        is_public
-      FROM mm_collections_v2
-      WHERE manual IS NOT NULL
-      ORDER BY manual ASC, articulo ASC;
-    `;
+  const session = await auth();
+  const userEmail = session?.user?.email ?? '';
+  const isAdmin = session?.user?.role === 'admin';
 
-    const result = await pool.query(query);
+  try {
+    // Admins tienen can_edit=true global; usuarios estándar: solo si son created_by o allowed_editors
+    let result;
+    if (isAdmin) {
+      result = await pool.query(`
+        SELECT
+          manual,
+          articulo,
+          source_url,
+          created_at,
+          created_by,
+          modified_at,
+          modified_by,
+          is_public,
+          true AS can_edit
+        FROM mm_collections_v2
+        WHERE manual IS NOT NULL
+        ORDER BY manual ASC, articulo ASC;
+      `);
+    } else {
+      result = await pool.query(`
+        SELECT
+          manual,
+          articulo,
+          source_url,
+          created_at,
+          created_by,
+          modified_at,
+          modified_by,
+          is_public,
+          (
+            created_by = $1
+            OR $1 = ANY(COALESCE(allowed_editors, ARRAY[]::text[]))
+          ) AS can_edit
+        FROM mm_collections_v2
+        WHERE manual IS NOT NULL
+        ORDER BY manual ASC, articulo ASC;
+      `, [userEmail]);
+    }
 
     // Agrupar por manual
-    const grouped: Record<string, { articulos: Array<{ articulo: string; source_url: string; created_at: string; created_by: string | null; modified_at: string | null; modified_by: string | null; is_public: boolean }> }> = {};
+    const grouped: Record<string, {
+      articulos: Array<{
+        articulo: string; source_url: string; created_at: string;
+        created_by: string | null; modified_at: string | null;
+        modified_by: string | null; is_public: boolean; can_edit: boolean;
+      }>
+    }> = {};
 
     for (const row of result.rows) {
       if (!grouped[row.manual]) {
@@ -37,6 +70,7 @@ export async function GET() {
         modified_at: row.modified_at,
         modified_by: row.modified_by,
         is_public: row.is_public ?? false,
+        can_edit: row.can_edit ?? false,
       });
     }
 
