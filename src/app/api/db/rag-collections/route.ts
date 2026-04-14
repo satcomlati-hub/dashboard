@@ -12,6 +12,8 @@ export async function GET() {
         source_url,
         created_at,
         created_by,
+        modified_at,
+        modified_by,
         is_public
       FROM mm_collections_v2
       WHERE manual IS NOT NULL
@@ -21,7 +23,7 @@ export async function GET() {
     const result = await pool.query(query);
 
     // Agrupar por manual
-    const grouped: Record<string, { articulos: Array<{ articulo: string; source_url: string; created_at: string; created_by: string | null; is_public: boolean }> }> = {};
+    const grouped: Record<string, { articulos: Array<{ articulo: string; source_url: string; created_at: string; created_by: string | null; modified_at: string | null; modified_by: string | null; is_public: boolean }> }> = {};
 
     for (const row of result.rows) {
       if (!grouped[row.manual]) {
@@ -32,6 +34,8 @@ export async function GET() {
         source_url: row.source_url,
         created_at: row.created_at,
         created_by: row.created_by,
+        modified_at: row.modified_at,
+        modified_by: row.modified_by,
         is_public: row.is_public ?? false,
       });
     }

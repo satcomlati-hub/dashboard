@@ -7,6 +7,8 @@ interface Articulo {
   source_url: string;
   created_at: string;
   created_by: string | null;
+  modified_at: string | null;
+  modified_by: string | null;
   is_public: boolean;
 }
 
@@ -368,7 +370,7 @@ export default function RAGCollectionsTable() {
                       {/* Cabecera de tabla */}
                       <div className="grid grid-cols-12 px-4 py-2 bg-white dark:bg-[#131313]">
                         <span className="col-span-4 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Artículo</span>
-                        <span className="col-span-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Fecha de Ingesta</span>
+                        <span className="col-span-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Historial</span>
                         <span className="col-span-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Visibilidad</span>
                         <span className="col-span-2 text-[10px] font-bold text-neutral-400 uppercase tracking-widest text-right">Acciones</span>
                       </div>
@@ -385,8 +387,17 @@ export default function RAGCollectionsTable() {
                                 {art.articulo}
                               </span>
                             </div>
-                            <div className="col-span-3 text-xs text-neutral-500 dark:text-neutral-400">
-                              {formatFecha(art.created_at)}
+                            <div className="col-span-3 text-xs text-neutral-500 dark:text-neutral-400 flex flex-col gap-1">
+                              <span title={`Subido por: ${art.created_by || 'Sistema'}`}>
+                                <span className="text-[9px] font-bold text-neutral-400 uppercase mr-1">Reg:</span>
+                                {formatFecha(art.created_at)}
+                              </span>
+                              {art.modified_at && (
+                                <span title={`Modificado por: ${art.modified_by || 'Sistema'}`}>
+                                  <span className="text-[9px] font-bold text-neutral-400 uppercase mr-1">Mod:</span>
+                                  {formatFecha(art.modified_at)}
+                                </span>
+                              )}
                             </div>
                             <div className="col-span-3">
                               <button
