@@ -6,42 +6,62 @@ export const dynamic = 'force-dynamic';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Ejecuta el query preferido con allowed_editors; si la columna aún no existe
- *  (migración pendiente) cae al query de respaldo sin ella. */
+/**
+ * Construye el query según las columnas opcionales que existan en la tabla.
+ * Nivel 1 (ideal):  is_active + allowed_editors
+ * Nivel 2 (actual): is_active sin allowed_editors
+ * Nivel 3 (legacy): sin ninguna columna opcional
+ */
 async function queryCollections(userEmail: string, isAdmin: boolean) {
-  const canEditExpr = isAdmin
-    ? 'true'
-    : `(created_by = $1 OR $1 = ANY(COALESCE(allowed_editors, ARRAY[]::text[])))`;
   const params = isAdmin ? [] : [userEmail];
 
-  // Intento principal: con allowed_editors + is_active (requiere migraciones aplicadas)
+  // ── Nivel 1: is_active + allowed_editors ──────────────────────────
   try {
+    const canEdit = isAdmin
+      ? 'true'
+      : `(created_by = $1 OR $1 = ANY(COALESCE(allowed_editors, ARRAY[]::text[])))`;
     return await pool.query(`
       SELECT
         manual, articulo, source_url, created_at, created_by,
         modified_at, modified_by, is_public,
         COALESCE(is_active, true) AS is_active,
         COALESCE(allowed_editors, ARRAY[]::text[]) AS allowed_editors,
-        ${canEditExpr} AS can_edit
+        ${canEdit} AS can_edit
       FROM mm_collections_v2
       WHERE manual IS NOT NULL
       ORDER BY manual ASC, articulo ASC;
     `, params);
-  } catch {
-    // Columnas opcionales inexistentes → fallback sin ellas
-    const canEditFallback = isAdmin ? 'true' : '(created_by = $1)';
+  } catch { /* allowed_editors inexistente — probar sin ella */ }
+
+  // ── Nivel 2: is_active sin allowed_editors ────────────────────────
+  try {
+    const canEdit = isAdmin ? 'true' : '(created_by = $1)';
     return await pool.query(`
       SELECT
         manual, articulo, source_url, created_at, created_by,
         modified_at, modified_by, is_public,
-        true AS is_active,
+        COALESCE(is_active, true) AS is_active,
         ARRAY[]::text[] AS allowed_editors,
-        ${canEditFallback} AS can_edit
+        ${canEdit} AS can_edit
       FROM mm_collections_v2
       WHERE manual IS NOT NULL
       ORDER BY manual ASC, articulo ASC;
     `, params);
-  }
+  } catch { /* is_active también inexistente — usar fallback total */ }
+
+  // ── Nivel 3: sin ninguna columna opcional (legacy) ─────────────────
+  const canEdit = isAdmin ? 'true' : '(created_by = $1)';
+  return await pool.query(`
+    SELECT
+      manual, articulo, source_url, created_at, created_by,
+      modified_at, modified_by, is_public,
+      true AS is_active,
+      ARRAY[]::text[] AS allowed_editors,
+      ${canEdit} AS can_edit
+    FROM mm_collections_v2
+    WHERE manual IS NOT NULL
+    ORDER BY manual ASC, articulo ASC;
+  `, params);
 }
 
 // ─── GET ──────────────────────────────────────────────────────────────────────
