@@ -4,7 +4,7 @@ import { useSession } from 'next-auth/react';
 import {
   BookOpen, ChevronDown, ChevronRight, ExternalLink, RefreshCw,
   BookMarked, FileText, Globe, Lock, Trash2, UploadCloud, X, Upload,
-  Info, UserPlus, UserMinus, Filter,
+  Info, UserPlus, UserMinus, Filter, Power,
 } from 'lucide-react';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
@@ -17,6 +17,7 @@ interface Articulo {
   modified_at: string | null;
   modified_by: string | null;
   is_public: boolean;
+  is_active: boolean;
   can_edit: boolean;
   allowed_editors: string[];
 }
@@ -305,6 +306,146 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+// ─── Modal: Detalles del manual (editores a nivel manual, solo Zoho) ──────────
+
+function ManualDetailsModal({ group, isAdmin, onClose, onEditorsChange }: {
+  group: ManualGroup; isAdmin: boolean;
+  onClose: () => void;
+  onEditorsChange: (manual: string, editors: string[]) => void;
+}) {
+  const zohoArts = group.articulos.filter(a => a.source_url.includes('zohopublic'));
+  const initEditors = [...new Set(zohoArts.flatMap(a => a.allowed_editors))];
+
+  const [localEditors, setLocalEditors] = useState<string[]>(initEditors);
+  const [newEmail,     setNewEmail]     = useState('');
+  const [adding,       setAdding]       = useState(false);
+  const [removing,     setRemoving]     = useState<string | null>(null);
+  const [addError,     setAddError]     = useState('');
+
+  const addEditor = async () => {
+    const email = newEmail.trim();
+    if (!email || !email.includes('@')) { setAddError('Correo inválido'); return; }
+    if (localEditors.includes(email))   { setAddError('Ya está en la lista'); return; }
+    setAdding(true); setAddError('');
+    try {
+      const res = await fetch('/api/db/rag-collections', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ manual: group.manual, editor_email: email, editors_action: 'add' }),
+      });
+      if (!res.ok) throw new Error();
+      const updated = [...localEditors, email];
+      setLocalEditors(updated);
+      onEditorsChange(group.manual, updated);
+      setNewEmail('');
+    } catch { setAddError('Error al agregar editor'); }
+    finally { setAdding(false); }
+  };
+
+  const removeEditor = async (email: string) => {
+    setRemoving(email);
+    try {
+      const res = await fetch('/api/db/rag-collections', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ manual: group.manual, editor_email: email, editors_action: 'remove' }),
+      });
+      if (!res.ok) throw new Error();
+      const updated = localEditors.filter(e => e !== email);
+      setLocalEditors(updated);
+      onEditorsChange(group.manual, updated);
+    } catch { /* silencioso */ }
+    finally { setRemoving(null); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-3xl shadow-2xl p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-5">
+          <div>
+            <h2 className="text-base font-bold dark:text-white flex items-center gap-2">
+              <Info className="w-4 h-4 text-[#71BF44]" /> Editores del manual
+            </h2>
+            <p className="text-xs text-neutral-500 mt-1 break-all">{group.manual}</p>
+            <p className="text-[10px] text-amber-400 mt-0.5">Solo aplica a artículos de Zoho Learn ({zohoArts.length})</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 shrink-0"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="space-y-5">
+          {/* Responsables */}
+          <section>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-2">
+              Editores con acceso al manual
+            </p>
+            <div className="bg-neutral-50 dark:bg-[#1A1A1A] rounded-2xl p-4 space-y-2">
+              {localEditors.map(email => (
+                <div key={email} className="flex items-center justify-between py-1">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center">
+                      <span className="text-[10px] font-bold text-blue-500">{email[0].toUpperCase()}</span>
+                    </div>
+                    <span className="text-xs text-neutral-700 dark:text-neutral-300">{email}</span>
+                  </div>
+                  {isAdmin && (
+                    <button
+                      onClick={() => removeEditor(email)}
+                      disabled={removing === email}
+                      className="p-1 rounded-lg text-neutral-400 hover:text-red-500 transition-colors disabled:opacity-50"
+                      title="Quitar editor del manual"
+                    >
+                      {removing === email
+                        ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        : <UserMinus className="w-3.5 h-3.5" />
+                      }
+                    </button>
+                  )}
+                </div>
+              ))}
+              {localEditors.length === 0 && (
+                <p className="text-xs text-neutral-400 italic">Ningún editor adicional asignado a este manual.</p>
+              )}
+            </div>
+          </section>
+
+          {/* Agregar editor (solo admin) */}
+          {isAdmin && (
+            <section>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-2">
+                Agregar editor al manual
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={newEmail}
+                  onChange={e => { setNewEmail(e.target.value); setAddError(''); }}
+                  onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addEditor())}
+                  placeholder="correo@satcomla.com"
+                  className="flex-1 bg-neutral-50 dark:bg-[#0A0A0A] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#71BF44]/30 focus:border-[#71BF44] dark:text-white transition-all"
+                />
+                <button
+                  onClick={addEditor}
+                  disabled={adding}
+                  className="px-3 py-2 rounded-xl bg-[#71BF44] hover:bg-[#60A339] text-white text-sm font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                >
+                  {adding ? <RefreshCw className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                </button>
+              </div>
+              {addError && <p className="text-xs text-red-500 mt-1">{addError}</p>}
+            </section>
+          )}
+        </div>
+
+        <button onClick={onClose}
+          className="mt-6 w-full py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-sm font-medium text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors">
+          Cerrar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function RAGCollectionsTable() {
@@ -323,10 +464,13 @@ export default function RAGCollectionsTable() {
   const [syncMsg,          setSyncMsg]          = useState<string | null>(null);
   const [deleting,         setDeleting]         = useState<Set<string>>(new Set());
   const [deletingManual,   setDeletingManual]   = useState<Set<string>>(new Set());
+  const [togglingActive,   setTogglingActive]   = useState<Set<string>>(new Set());
+  const [togglingManualActive, setTogglingManualActive] = useState<Set<string>>(new Set());
   const [searchTerm,       setSearchTerm]       = useState('');
   const [refreshingArt,    setRefreshingArt]    = useState<Set<string>>(new Set());
   const [pdfModal,         setPdfModal]         = useState<Articulo | null>(null);
   const [detailsModal,     setDetailsModal]     = useState<Articulo | null>(null);
+  const [manualModal,      setManualModal]      = useState<ManualGroup | null>(null);
   const [onlyEditable,     setOnlyEditable]     = useState(false);
 
   // ── Carga de datos ─────────────────────────────────────────────────
@@ -357,7 +501,7 @@ export default function RAGCollectionsTable() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  // ── Actualizar allowed_editors en estado local ─────────────────────
+  // ── Actualizar allowed_editors en estado local (artículo) ─────────
   const handleEditorsChange = (source_url: string, editors: string[]) => {
     setData(prev => prev.map(group => ({
       ...group,
@@ -365,8 +509,20 @@ export default function RAGCollectionsTable() {
         art.source_url === source_url ? { ...art, allowed_editors: editors } : art
       ),
     })));
-    // Actualizar también el modal de detalles si está abierto
     setDetailsModal(prev => prev?.source_url === source_url ? { ...prev, allowed_editors: editors } : prev);
+  };
+
+  // ── Actualizar allowed_editors en estado local (manual, solo Zoho) ─
+  const handleManualEditorsChange = (manual: string, editors: string[]) => {
+    setData(prev => prev.map(group => {
+      if (group.manual !== manual) return group;
+      return {
+        ...group,
+        articulos: group.articulos.map(art =>
+          art.source_url.includes('zohopublic') ? { ...art, allowed_editors: editors } : art
+        ),
+      };
+    }));
   };
 
   // ── Acordeón ───────────────────────────────────────────────────────
@@ -404,6 +560,36 @@ export default function RAGCollectionsTable() {
       setData(prev => prev.map(g => g.manual === manual ? { ...g, articulos: g.articulos.map(a => ({ ...a, is_public: allPublic })) } : g));
     } finally {
       setUpdatingManual(prev => { const n = new Set(prev); n.delete(manual); return n; });
+    }
+  };
+
+  // ── Activar / Desactivar artículo (RAG) ───────────────────────────
+  const toggleActive = async (source_url: string, current: boolean) => {
+    setData(prev => prev.map(g => ({ ...g, articulos: g.articulos.map(a => a.source_url === source_url ? { ...a, is_active: !current } : a) })));
+    setTogglingActive(prev => new Set(prev).add(source_url));
+    try {
+      const res = await fetch('/api/db/rag-collections', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source_url, is_active: !current }) });
+      if (!res.ok) throw new Error();
+    } catch {
+      setData(prev => prev.map(g => ({ ...g, articulos: g.articulos.map(a => a.source_url === source_url ? { ...a, is_active: current } : a) })));
+    } finally {
+      setTogglingActive(prev => { const n = new Set(prev); n.delete(source_url); return n; });
+    }
+  };
+
+  // ── Activar / Desactivar manual completo (solo admin) ─────────────
+  const toggleManualActive = async (manual: string, allActive: boolean, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const nv = !allActive;
+    setData(prev => prev.map(g => g.manual === manual ? { ...g, articulos: g.articulos.map(a => ({ ...a, is_active: nv })) } : g));
+    setTogglingManualActive(prev => new Set(prev).add(manual));
+    try {
+      const res = await fetch('/api/db/rag-collections', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ manual, is_active: nv }) });
+      if (!res.ok) throw new Error();
+    } catch {
+      setData(prev => prev.map(g => g.manual === manual ? { ...g, articulos: g.articulos.map(a => ({ ...a, is_active: allActive })) } : g));
+    } finally {
+      setTogglingManualActive(prev => { const n = new Set(prev); n.delete(manual); return n; });
     }
   };
 
@@ -464,9 +650,10 @@ export default function RAGCollectionsTable() {
   };
 
   // ── Estadísticas ───────────────────────────────────────────────────
-  const totalArticulos = data.reduce((s, m) => s + m.total, 0);
-  const totalPublicos  = data.reduce((s, m) => s + m.articulos.filter(a => a.is_public).length, 0);
-  const totalEditables = data.reduce((s, m) => s + m.articulos.filter(a => a.can_edit).length, 0);
+  const totalArticulos  = data.reduce((s, m) => s + m.total, 0);
+  const totalPublicos   = data.reduce((s, m) => s + m.articulos.filter(a => a.is_public).length, 0);
+  const totalEditables  = data.reduce((s, m) => s + m.articulos.filter(a => a.can_edit).length, 0);
+  const totalInactivos  = data.reduce((s, m) => s + m.articulos.filter(a => !a.is_active).length, 0);
 
   // ── Filtrado ───────────────────────────────────────────────────────
   const filteredData = data
@@ -485,8 +672,9 @@ export default function RAGCollectionsTable() {
   // ── Render ─────────────────────────────────────────────────────────
   return (
     <>
-      {pdfModal     && <PdfUpdateModal art={pdfModal}    userEmail={userEmail} onClose={() => setPdfModal(null)} />}
-      {detailsModal && <DetailsModal   art={detailsModal} isAdmin={isAdmin}    onClose={() => setDetailsModal(null)} onEditorsChange={handleEditorsChange} />}
+      {pdfModal     && <PdfUpdateModal art={pdfModal}     userEmail={userEmail} onClose={() => setPdfModal(null)} />}
+      {detailsModal && <DetailsModal   art={detailsModal} isAdmin={isAdmin}     onClose={() => setDetailsModal(null)} onEditorsChange={handleEditorsChange} />}
+      {manualModal  && <ManualDetailsModal group={manualModal} isAdmin={isAdmin} onClose={() => setManualModal(null)} onEditorsChange={handleManualEditorsChange} />}
 
       <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-3xl overflow-hidden shadow-xl ring-1 ring-black/5 dark:ring-white/5">
         {/* ── Header ── */}
@@ -509,6 +697,11 @@ export default function RAGCollectionsTable() {
                   {totalEditables > 0 && (
                     <span className="px-2 py-0.5 rounded-full bg-amber-400/10 text-amber-400 text-[10px] font-bold uppercase tracking-wider">
                       {totalEditables} editables
+                    </span>
+                  )}
+                  {totalInactivos > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                      <Power className="w-2.5 h-2.5" />{totalInactivos} inactivos
                     </span>
                   )}
                 </h3>
@@ -578,9 +771,12 @@ export default function RAGCollectionsTable() {
           ) : (
             <div className="space-y-2">
               {filteredData.map(group => {
-                const isOpen     = expanded.has(group.manual);
-                const allPublic  = group.articulos.length > 0 && group.articulos.every(a => a.is_public);
-                const isUpdating = updatingManual.has(group.manual);
+                const isOpen           = expanded.has(group.manual);
+                const allPublic        = group.articulos.length > 0 && group.articulos.every(a => a.is_public);
+                const allActive        = group.articulos.length > 0 && group.articulos.every(a => a.is_active);
+                const isUpdating       = updatingManual.has(group.manual);
+                const isTogglingActive = togglingManualActive.has(group.manual);
+                const hasZoho          = group.articulos.some(a => a.source_url.includes('zohopublic'));
 
                 return (
                   <div key={group.manual} className="border border-neutral-100 dark:border-neutral-800 rounded-2xl overflow-hidden">
@@ -599,6 +795,21 @@ export default function RAGCollectionsTable() {
                           {isUpdating ? <RefreshCw className="w-2.5 h-2.5 animate-spin" /> : allPublic ? <Globe className="w-2.5 h-2.5" /> : <Lock className="w-2.5 h-2.5" />}
                           {allPublic ? 'Todo público' : 'Todo privado'}
                         </button>
+                        {isAdmin && (
+                          <button onClick={e => toggleManualActive(group.manual, allActive, e)} disabled={isTogglingActive}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all disabled:opacity-60 ${allActive ? 'bg-[#71BF44]/15 text-[#71BF44] hover:bg-[#71BF44]/25' : 'bg-red-500/10 text-red-400 hover:bg-red-500/20'}`}
+                            title={allActive ? 'Desactivar todo del RAG' : 'Activar todo en el RAG'}>
+                            {isTogglingActive ? <RefreshCw className="w-2.5 h-2.5 animate-spin" /> : <Power className="w-2.5 h-2.5" />}
+                            {allActive ? 'RAG activo' : 'RAG inactivo'}
+                          </button>
+                        )}
+                        {isAdmin && hasZoho && (
+                          <button onClick={e => { e.stopPropagation(); setManualModal(group); }}
+                            className="flex items-center gap-1 text-[10px] font-medium text-neutral-400 hover:text-blue-400 transition-colors px-1"
+                            title="Gestionar editores del manual">
+                            <Info className="w-3 h-3" /> Editores
+                          </button>
+                        )}
                         <button onClick={e => deleteManual(group.manual, group.total, e)} disabled={deletingManual.has(group.manual)}
                           className="text-neutral-400 hover:text-red-500 disabled:opacity-50 p-1" title="Eliminar manual completo">
                           {deletingManual.has(group.manual) ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
@@ -612,30 +823,35 @@ export default function RAGCollectionsTable() {
                       <div className="divide-y divide-neutral-100 dark:divide-neutral-800/80">
                         {/* Cabecera tabla */}
                         <div className="grid grid-cols-12 px-4 py-2 bg-white dark:bg-[#131313]">
-                          <span className="col-span-5 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Artículo</span>
-                          <span className="col-span-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Visibilidad</span>
-                          <span className="col-span-4 text-[10px] font-bold text-neutral-400 uppercase tracking-widest text-right">Acciones</span>
+                          <span className="col-span-4 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Artículo</span>
+                          <span className="col-span-2 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Visibilidad</span>
+                          <span className="col-span-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Estado RAG</span>
+                          <span className="col-span-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest text-right">Acciones</span>
                         </div>
 
                         {group.articulos.map(art => {
-                          const isVizUpdating  = updating.has(art.source_url);
-                          const isRefreshing   = refreshingArt.has(art.source_url);
-                          const isZoho         = art.source_url.includes('zohopublic');
-                          const updateTooltip  = !art.can_edit
+                          const isVizUpdating     = updating.has(art.source_url);
+                          const isActiveToggling  = togglingActive.has(art.source_url);
+                          const isRefreshing      = refreshingArt.has(art.source_url);
+                          const isZoho            = art.source_url.includes('zohopublic');
+                          const updateTooltip     = !art.can_edit
                             ? 'Sin permisos para actualizar este artículo'
                             : isZoho ? 'Volver a ingestar desde Zoho Learn' : 'Subir nuevo PDF para este artículo';
+                          const activeTooltip     = !art.can_edit
+                            ? 'Sin permisos para cambiar el estado de este artículo'
+                            : art.is_active ? 'Desactivar del RAG' : 'Activar en el RAG';
 
                           return (
                             <div key={art.articulo}
-                              className="grid grid-cols-12 px-4 py-2.5 bg-white dark:bg-[#131313] hover:bg-neutral-50 dark:hover:bg-[#1A1A1A] transition-colors items-center">
+                              className={`grid grid-cols-12 px-4 py-2.5 transition-colors items-center ${art.is_active ? 'bg-white dark:bg-[#131313] hover:bg-neutral-50 dark:hover:bg-[#1A1A1A]' : 'bg-red-500/5 hover:bg-red-500/10 dark:bg-red-500/5 dark:hover:bg-red-500/10'}`}>
                               {/* Artículo */}
-                              <div className="col-span-5 flex items-center gap-2">
-                                <FileText className="w-3.5 h-3.5 text-neutral-300 dark:text-neutral-600 shrink-0" />
-                                <span className="text-sm text-neutral-700 dark:text-neutral-300 font-medium truncate">{art.articulo}</span>
+                              <div className="col-span-4 flex items-center gap-2">
+                                <FileText className={`w-3.5 h-3.5 shrink-0 ${art.is_active ? 'text-neutral-300 dark:text-neutral-600' : 'text-red-400/50'}`} />
+                                <span className={`text-sm font-medium truncate ${art.is_active ? 'text-neutral-700 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500 line-through'}`}>{art.articulo}</span>
                               </div>
 
                               {/* Visibilidad */}
-                              <div className="col-span-3">
+                              <div className="col-span-2">
                                 <button onClick={() => togglePublic(art.source_url, art.is_public)} disabled={isVizUpdating}
                                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all disabled:opacity-60 ${art.is_public ? 'bg-sky-400/15 text-sky-400 hover:bg-sky-400/25' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 hover:bg-neutral-200'}`}
                                   title={art.is_public ? 'Hacer privado' : 'Hacer público'}>
@@ -644,8 +860,29 @@ export default function RAGCollectionsTable() {
                                 </button>
                               </div>
 
+                              {/* Estado RAG */}
+                              <div className="col-span-3">
+                                <button
+                                  onClick={() => art.can_edit && toggleActive(art.source_url, art.is_active)}
+                                  disabled={isActiveToggling || !art.can_edit}
+                                  title={activeTooltip}
+                                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all disabled:cursor-not-allowed ${
+                                    !art.can_edit
+                                      ? 'opacity-40 bg-neutral-100 dark:bg-neutral-800 text-neutral-400 cursor-not-allowed'
+                                      : art.is_active
+                                        ? 'bg-[#71BF44]/15 text-[#71BF44] hover:bg-[#71BF44]/25'
+                                        : 'bg-red-500/10 text-red-400 hover:bg-red-500/20'
+                                  }`}>
+                                  {isActiveToggling
+                                    ? <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                                    : <Power className="w-2.5 h-2.5" />
+                                  }
+                                  {art.is_active ? 'Activo' : 'Inactivo'}
+                                </button>
+                              </div>
+
                               {/* Acciones: Ver | Actualizar | Detalles | Eliminar */}
-                              <div className="col-span-4 flex justify-end items-center gap-2">
+                              <div className="col-span-3 flex justify-end items-center gap-2">
                                 <a href={art.source_url} target="_blank" rel="noopener noreferrer"
                                   className="flex items-center gap-1 text-[10px] font-medium text-neutral-400 hover:text-[#71BF44] transition-colors" title="Ver fuente">
                                   <ExternalLink className="w-3 h-3" /> Ver

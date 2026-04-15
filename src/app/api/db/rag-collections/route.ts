@@ -14,12 +14,13 @@ async function queryCollections(userEmail: string, isAdmin: boolean) {
     : `(created_by = $1 OR $1 = ANY(COALESCE(allowed_editors, ARRAY[]::text[])))`;
   const params = isAdmin ? [] : [userEmail];
 
-  // Intento principal: con allowed_editors (requiere migración aplicada)
+  // Intento principal: con allowed_editors + is_active (requiere migraciones aplicadas)
   try {
     return await pool.query(`
       SELECT
         manual, articulo, source_url, created_at, created_by,
         modified_at, modified_by, is_public,
+        COALESCE(is_active, true) AS is_active,
         COALESCE(allowed_editors, ARRAY[]::text[]) AS allowed_editors,
         ${canEditExpr} AS can_edit
       FROM mm_collections_v2
@@ -27,12 +28,13 @@ async function queryCollections(userEmail: string, isAdmin: boolean) {
       ORDER BY manual ASC, articulo ASC;
     `, params);
   } catch {
-    // Columna allowed_editors inexistente → fallback sin ella
+    // Columnas opcionales inexistentes → fallback sin ellas
     const canEditFallback = isAdmin ? 'true' : '(created_by = $1)';
     return await pool.query(`
       SELECT
         manual, articulo, source_url, created_at, created_by,
         modified_at, modified_by, is_public,
+        true AS is_active,
         ARRAY[]::text[] AS allowed_editors,
         ${canEditFallback} AS can_edit
       FROM mm_collections_v2
@@ -56,7 +58,7 @@ export async function GET() {
       articulos: Array<{
         articulo: string; source_url: string; created_at: string;
         created_by: string | null; modified_at: string | null;
-        modified_by: string | null; is_public: boolean;
+        modified_by: string | null; is_public: boolean; is_active: boolean;
         can_edit: boolean; allowed_editors: string[];
       }>
     }> = {};
@@ -71,6 +73,7 @@ export async function GET() {
         modified_at:      row.modified_at,
         modified_by:      row.modified_by,
         is_public:        row.is_public        ?? false,
+        is_active:        row.is_active        ?? true,
         can_edit:         row.can_edit         ?? false,
         allowed_editors:  row.allowed_editors  ?? [],
       });
@@ -135,27 +138,91 @@ export async function PATCH(req: NextRequest) {
         return NextResponse.json({ error: 'Solo administradores pueden gestionar editores' }, { status: 403 });
       }
 
-      const { source_url, editor_email, editors_action } = body as {
-        source_url: string; editor_email: string; editors_action: 'add' | 'remove';
+      const { source_url, manual, editor_email, editors_action } = body as {
+        source_url?: string; manual?: string;
+        editor_email: string; editors_action: 'add' | 'remove';
       };
 
-      if (!source_url || !editor_email || !['add', 'remove'].includes(editors_action)) {
+      if (!editor_email || !['add', 'remove'].includes(editors_action)) {
         return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 });
       }
 
-      if (editors_action === 'add') {
-        await pool.query(`
-          UPDATE mm_collections_v2
-          SET allowed_editors = array_append(COALESCE(allowed_editors, ARRAY[]::text[]), $1)
-          WHERE source_url = $2
-            AND NOT ($1 = ANY(COALESCE(allowed_editors, ARRAY[]::text[])))
-        `, [editor_email, source_url]);
+      if (manual) {
+        // ── Nivel manual: aplica solo a artículos Zoho del manual ──
+        if (editors_action === 'add') {
+          await pool.query(`
+            UPDATE mm_collections_v2
+            SET allowed_editors = array_append(COALESCE(allowed_editors, ARRAY[]::text[]), $1)
+            WHERE manual = $2
+              AND source_url LIKE '%zohopublic%'
+              AND NOT ($1 = ANY(COALESCE(allowed_editors, ARRAY[]::text[])))
+          `, [editor_email, manual]);
+        } else {
+          await pool.query(`
+            UPDATE mm_collections_v2
+            SET allowed_editors = array_remove(allowed_editors, $1)
+            WHERE manual = $2
+              AND source_url LIKE '%zohopublic%'
+          `, [editor_email, manual]);
+        }
+      } else if (source_url) {
+        // ── Nivel artículo individual ──────────────────────────────
+        if (editors_action === 'add') {
+          await pool.query(`
+            UPDATE mm_collections_v2
+            SET allowed_editors = array_append(COALESCE(allowed_editors, ARRAY[]::text[]), $1)
+            WHERE source_url = $2
+              AND NOT ($1 = ANY(COALESCE(allowed_editors, ARRAY[]::text[])))
+          `, [editor_email, source_url]);
+        } else {
+          await pool.query(`
+            UPDATE mm_collections_v2
+            SET allowed_editors = array_remove(allowed_editors, $1)
+            WHERE source_url = $2
+          `, [editor_email, source_url]);
+        }
       } else {
-        await pool.query(`
-          UPDATE mm_collections_v2
-          SET allowed_editors = array_remove(allowed_editors, $1)
-          WHERE source_url = $2
-        `, [editor_email, source_url]);
+        return NextResponse.json({ error: 'Se requiere source_url o manual' }, { status: 400 });
+      }
+
+      return NextResponse.json({ success: true });
+    }
+
+    // ── Estado activo (is_active) ─────────────────────────────────
+    if ('is_active' in body) {
+      const { source_url, manual, is_active } = body as {
+        source_url?: string; manual?: string; is_active: boolean;
+      };
+
+      if (typeof is_active !== 'boolean') {
+        return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 });
+      }
+
+      const userEmail = session?.user?.email ?? '';
+      const isAdmin   = session?.user?.role === 'admin';
+
+      if (typeof manual === 'string' && manual) {
+        // Nivel manual: solo admins
+        if (!isAdmin) {
+          return NextResponse.json({ error: 'Solo administradores pueden cambiar el estado del manual completo' }, { status: 403 });
+        }
+        await pool.query('UPDATE mm_collections_v2 SET is_active = $1 WHERE manual = $2', [is_active, manual]);
+      } else if (typeof source_url === 'string' && source_url) {
+        // Nivel artículo: admin o can_edit
+        if (!isAdmin) {
+          const check = await pool.query(
+            `SELECT 1 FROM mm_collections_v2
+             WHERE source_url = $1
+               AND (created_by = $2 OR $2 = ANY(COALESCE(allowed_editors, ARRAY[]::text[])))`,
+            [source_url, userEmail]
+          );
+          if (check.rowCount === 0) {
+            return NextResponse.json({ error: 'Sin permisos para modificar este artículo' }, { status: 403 });
+          }
+        }
+        await pool.query('UPDATE mm_collections_v2 SET is_active = $1 WHERE source_url = $2', [is_active, source_url]);
+      } else {
+        return NextResponse.json({ error: 'Se requiere source_url o manual' }, { status: 400 });
       }
 
       return NextResponse.json({ success: true });
