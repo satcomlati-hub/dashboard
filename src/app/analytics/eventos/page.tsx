@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { 
   ChevronLeft, 
+  ChevronDown,
   Calendar, 
   Filter, 
   RefreshCw, 
@@ -19,7 +20,11 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  X
+  X,
+  Globe,
+  MapPin,
+  Server,
+  FilterX
 } from 'lucide-react';
 import { formatDate } from '@/lib/formatters';
 import { 
@@ -56,17 +61,120 @@ interface SortConfig {
   direction: 'asc' | 'desc';
 }
 
+// Reusable MultiSelect Dropdown Component
+function MultiSelectDropdown({ 
+  label, 
+  options, 
+  selected, 
+  onChange, 
+  icon: Icon,
+  colorClass = "text-[#71BF44]"
+}: { 
+  label: string;
+  options: string[];
+  selected: string[];
+  onChange: (vals: string[]) => void;
+  icon: any;
+  colorClass?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const toggleOption = (val: string) => {
+    if (selected.includes(val)) {
+      onChange(selected.filter(v => v !== val));
+    } else {
+      onChange([...selected, val]);
+    }
+  };
+
+  const isAllSelected = selected.length === 0;
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`flex items-center justify-between gap-3 px-4 py-2.5 bg-white dark:bg-[#131313] border ${isOpen ? 'border-[#71BF44] ring-1 ring-[#71BF44]/20' : 'border-neutral-200 dark:border-neutral-800'} rounded-xl transition-all hover:border-[#71BF44]/50 min-w-[180px] group`}
+      >
+        <div className="flex items-center gap-2.5">
+          <div className={`p-1.5 rounded-lg ${isOpen ? 'bg-[#71BF44]/10' : 'bg-neutral-100 dark:bg-neutral-800'}  group-hover:bg-[#71BF44]/10 transition-colors`}>
+            <Icon className={`w-3.5 h-3.5 ${isOpen ? colorClass : 'text-neutral-500'}`} />
+          </div>
+          <div className="flex flex-col items-start leading-tight">
+            <span className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">Filtrar por {label}</span>
+            <span className="text-sm font-bold text-neutral-900 dark:text-white truncate max-w-[120px]">
+              {isAllSelected ? 'Todos' : `${selected.length} seleccionados`}
+            </span>
+          </div>
+        </div>
+        <ChevronDown className={`w-4 h-4 text-neutral-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-2 w-64 bg-white dark:bg-[#1a1a1a] border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl z-50 p-2 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center justify-between p-2 mb-1 border-b border-neutral-100 dark:border-neutral-800/50">
+            <span className="text-xs font-black uppercase text-neutral-400">Opciones</span>
+            {selected.length > 0 && (
+              <button 
+                onClick={() => onChange([])}
+                className="text-[10px] font-bold text-[#71BF44] hover:underline"
+              >
+                Limpiar
+              </button>
+            )}
+          </div>
+          <div className="max-h-60 overflow-y-auto custom-scrollbar">
+            {options.map(opt => (
+              <label 
+                key={opt} 
+                className="flex items-center gap-3 px-3 py-2 hover:bg-neutral-50 dark:hover:bg-white/5 rounded-lg cursor-pointer transition-colors group"
+              >
+                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
+                  selected.includes(opt) 
+                  ? 'bg-[#71BF44] border-[#71BF44]' 
+                  : 'border-neutral-300 dark:border-neutral-700 group-hover:border-[#71BF44]'
+                }`}>
+                  {selected.includes(opt) && <X className="w-3 h-3 text-white" />}
+                </div>
+                <span className={`text-sm ${selected.includes(opt) ? 'font-bold text-neutral-900 dark:text-white' : 'text-neutral-500 dark:text-neutral-400'}`}>
+                  {opt}
+                </span>
+                <input 
+                  type="checkbox" 
+                  className="hidden" 
+                  checked={selected.includes(opt)}
+                  onChange={() => toggleOption(opt)}
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function EventHistoryPage() {
   const [data, setData] = useState<EventoRabbit[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   
-  // Filter States
-  const [selectedEstado, setSelectedEstado] = useState<string>('todos');
-  const [selectedEvento, setSelectedEvento] = useState<string>('todos');
-  const [selectedAmbiente, setSelectedAmbiente] = useState<string>('todos');
-  const [selectedPais, setSelectedPais] = useState<string>('todos');
+  // Filter States (Multiselect)
+  const [selectedEstados, setSelectedEstados] = useState<string[]>([]);
+  const [selectedEventos, setSelectedEventos] = useState<string[]>([]);
+  const [selectedAmbientes, setSelectedAmbientes] = useState<string[]>([]);
+  const [selectedPaises, setSelectedPaises] = useState<string[]>([]);
   const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('todos');
   const [searchQuery, setSearchQuery] = useState('');
   const [chartFilterDate, setChartFilterDate] = useState<string | null>(null);
@@ -132,11 +240,11 @@ export default function EventHistoryPage() {
         if (!matches) return false;
       }
 
-      // Dropdown Filters
-      if (selectedEstado !== 'todos' && item.estado !== selectedEstado) return false;
-      if (selectedEvento !== 'todos' && item.evento !== selectedEvento) return false;
-      if (selectedAmbiente !== 'todos' && item.ambiente !== selectedAmbiente) return false;
-      if (selectedPais !== 'todos' && item.pais !== selectedPais) return false;
+      // Dropdown Filters (Multiselect)
+      if (selectedEstados.length > 0 && !selectedEstados.includes(item.estado)) return false;
+      if (selectedEventos.length > 0 && !selectedEventos.includes(item.evento)) return false;
+      if (selectedAmbientes.length > 0 && !selectedAmbientes.includes(item.ambiente)) return false;
+      if (selectedPaises.length > 0 && !selectedPaises.includes(item.pais)) return false;
       
       // Time range filter
       if (selectedTimeRange !== 'todos' && item.fecha_evento) {
@@ -187,22 +295,22 @@ export default function EventHistoryPage() {
     });
 
     return result;
-  }, [data, selectedEstado, selectedEvento, selectedAmbiente, selectedPais, selectedTimeRange, searchQuery, chartFilterDate, columnFilters, sortConfig]);
+  }, [data, selectedEstados, selectedEventos, selectedAmbientes, selectedPaises, selectedTimeRange, searchQuery, chartFilterDate, columnFilters, sortConfig]);
 
-  // Unique values for filters
-  const estados = useMemo(() => ['todos', ...Array.from(new Set(data.map(d => d.estado).filter(Boolean)))], [data]);
-  const tiposEvento = useMemo(() => ['todos', ...Array.from(new Set(data.map(d => d.evento).filter(Boolean)))], [data]);
-  const ambientes = useMemo(() => ['todos', ...Array.from(new Set(data.map(d => d.ambiente).filter(Boolean)))], [data]);
-  const paises = useMemo(() => ['todos', ...Array.from(new Set(data.map(d => d.pais).filter(Boolean)))], [data]);
+  // Unique values for filters (Removed 'todos' as we handle empty array as 'todos')
+  const estados = useMemo(() => Array.from(new Set(data.map(d => d.estado).filter(Boolean))).sort(), [data]);
+  const tiposEvento = useMemo(() => Array.from(new Set(data.map(d => d.evento).filter(Boolean))).sort(), [data]);
+  const ambientes = useMemo(() => Array.from(new Set(data.map(d => d.ambiente).filter(Boolean))).sort(), [data]);
+  const paises = useMemo(() => Array.from(new Set(data.map(d => d.pais).filter(Boolean))).sort(), [data]);
 
   // Chart Data Processing
   const { chartData, eventTypes } = useMemo(() => {
     // We use all data for the chart but respect dropdown/time filters to determine lines
     const chartBase = data.filter(item => {
-        if (selectedEstado !== 'todos' && item.estado !== selectedEstado) return false;
-        if (selectedEvento !== 'todos' && item.evento !== selectedEvento) return false;
-        if (selectedAmbiente !== 'todos' && item.ambiente !== selectedAmbiente) return false;
-        if (selectedPais !== 'todos' && item.pais !== selectedPais) return false;
+        if (selectedEstados.length > 0 && !selectedEstados.includes(item.estado)) return false;
+        if (selectedEventos.length > 0 && !selectedEventos.includes(item.evento)) return false;
+        if (selectedAmbientes.length > 0 && !selectedAmbientes.includes(item.ambiente)) return false;
+        if (selectedPaises.length > 0 && !selectedPaises.includes(item.pais)) return false;
         if (selectedTimeRange !== 'todos' && item.fecha_evento) {
             const eventDate = new Date(item.fecha_evento);
             const now = new Date();
@@ -240,7 +348,7 @@ export default function EventHistoryPage() {
     });
 
     return { chartData: Object.values(timeMap), eventTypes: types };
-  }, [data, selectedEstado, selectedEvento, selectedAmbiente, selectedPais, selectedTimeRange]);
+  }, [data, selectedEstados, selectedEventos, selectedAmbientes, selectedPaises, selectedTimeRange]);
 
   const downloadCSV = () => {
     if (filteredData.length === 0) return;
@@ -258,8 +366,6 @@ export default function EventHistoryPage() {
       if (key === 'fecha_evento' || key === 'created_at') val = formatDate(val as string, true);
       if (val === null || val === undefined) val = '';
       
-      // Excel text format trick: prefix with \t or wrap in ="" 
-      // User asked for "string" format. \t is often cleaner as it doesn't show in the cell text but prevents numeric conversion.
       return `"\t${val.toString().replace(/"/g, '""').replace(/\n|\r/g, ' ')}"`;
     }));
 
@@ -331,120 +437,125 @@ export default function EventHistoryPage() {
         </div>
       </header>
 
-      {/* Filters Bar */}
-      <div className="flex flex-wrap items-center gap-4 mb-8">
-        {/* Search */}
-        <div className="relative group flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-          <input 
-            type="text" 
-            placeholder="Buscador global..." 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl pl-10 pr-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-[#71BF44] transition-all"
-          />
-        </div>
+      {/* Filters Bar - Premium Redesign */}
+      <div className="flex flex-col gap-6 mb-8">
+        <div className="flex flex-wrap items-center gap-4">
+          {/* Global Search - Main focus left */}
+          <div className="relative group max-w-sm w-full">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 group-focus-within:text-[#71BF44] transition-colors" />
+            <input 
+              type="text" 
+              placeholder="¿Qué estás buscando? (ID, Evento, País...)" 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-white dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-2xl pl-11 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#71BF44]/20 focus:border-[#71BF44] transition-all shadow-sm"
+            />
+          </div>
 
-        {/* Estado Dropdown */}
-        <div className="flex items-center gap-2 bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl px-3 py-1">
-          <CheckCircle2 className="w-4 h-4 text-neutral-400" />
-          <select 
-            value={selectedEstado}
-            onChange={(e) => setSelectedEstado(e.target.value)}
-            className="w-full bg-transparent text-sm font-semibold outline-none py-1.5 cursor-pointer capitalize"
-          >
-            {estados.map(est => (
-              <option key={est} value={est}>{est === 'todos' ? 'Estado: Todos' : `Estado: ${est}`}</option>
+          <div className="h-10 w-px bg-neutral-200 dark:bg-neutral-800 mx-2 hidden lg:block" />
+
+          {/* Core Filters - Order: Evento | Ambiente | País | Estado */}
+          <div className="flex flex-wrap items-center gap-4 flex-1">
+            <MultiSelectDropdown 
+              label="Evento" 
+              options={tiposEvento} 
+              selected={selectedEventos} 
+              onChange={setSelectedEventos}
+              icon={Activity}
+              colorClass="text-blue-500"
+            />
+            <MultiSelectDropdown 
+              label="Ambiente" 
+              options={ambientes} 
+              selected={selectedAmbientes} 
+              onChange={setSelectedAmbientes}
+              icon={Server}
+              colorClass="text-orange-500"
+            />
+            <MultiSelectDropdown 
+              label="País" 
+              options={paises} 
+              selected={selectedPaises} 
+              onChange={setSelectedPaises}
+              icon={Globe}
+              colorClass="text-purple-500"
+            />
+            <MultiSelectDropdown 
+              label="Estado" 
+              options={estados} 
+              selected={selectedEstados} 
+              onChange={setSelectedEstados}
+              icon={CheckCircle2}
+              colorClass="text-[#71BF44]"
+            />
+          </div>
+
+          {/* Time Range - Pushed to right */}
+          <div className="flex items-center gap-1 bg-neutral-100 dark:bg-[#1a1a1a] p-1.5 rounded-2xl shadow-inner ml-auto">
+            {(['hoy', 'semana', 'mes', 'trimestre', 'todos'] as TimeRange[]).map((range) => (
+              <button
+                key={range}
+                onClick={() => { setSelectedTimeRange(range); setChartFilterDate(null); }}
+                className={`px-4 text-[10px] font-black uppercase tracking-widest py-2 rounded-xl transition-all ${
+                  selectedTimeRange === range 
+                  ? 'bg-[#71BF44] text-white shadow-lg scale-105' 
+                  : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
+                }`}
+              >
+                {range}
+              </button>
             ))}
-          </select>
+          </div>
         </div>
 
-        {/* Evento Dropdown */}
-        <div className="flex items-center gap-2 bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl px-3 py-1">
-          <Activity className="w-4 h-4 text-neutral-400" />
-          <select 
-            value={selectedEvento}
-            onChange={(e) => setSelectedEvento(e.target.value)}
-            className="w-full bg-transparent text-sm font-semibold outline-none py-1.5 cursor-pointer capitalize"
-          >
-            {tiposEvento.map(ev => (
-              <option key={ev} value={ev}>{ev === 'todos' ? 'Evento: Todos' : `Evento: ${ev}`}</option>
+        {/* Active Filters Tokens / Clear All */}
+        {(selectedEstados.length > 0 || selectedEventos.length > 0 || selectedAmbientes.length > 0 || selectedPaises.length > 0 || chartFilterDate || searchQuery) && (
+          <div className="flex flex-wrap items-center gap-2 p-3 bg-[#71BF44]/[0.02] dark:bg-white/[0.02] rounded-2xl border border-neutral-100 dark:border-neutral-800/50">
+            <span className="text-[10px] font-black uppercase text-neutral-400 mr-2 ml-1">Filtros Activos:</span>
+            
+            {selectedEventos.map(ev => (
+              <span key={ev} className="bg-blue-500/10 text-blue-600 dark:text-blue-400 px-3 py-1.5 rounded-xl text-[10px] font-bold flex items-center gap-2 border border-blue-500/20">
+                Evento: {ev} <X className="w-3 h-3 cursor-pointer hover:scale-125 transition-transform" onClick={() => setSelectedEventos(selectedEventos.filter(v => v !== ev))} />
+              </span>
             ))}
-          </select>
-        </div>
-
-        {/* Ambiente Dropdown */}
-        <div className="flex items-center gap-2 bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl px-3 py-1">
-          <Activity className="w-4 h-4 text-neutral-400" />
-          <select 
-            value={selectedAmbiente}
-            onChange={(e) => setSelectedAmbiente(e.target.value)}
-            className="w-full bg-transparent text-sm font-semibold outline-none py-1.5 cursor-pointer capitalize"
-          >
-            {ambientes.map(amb => (
-              <option key={amb} value={amb}>{amb === 'todos' ? 'Ambiente: Todos' : `Ambiente: ${amb}`}</option>
+            {selectedAmbientes.map(amb => (
+              <span key={amb} className="bg-orange-500/10 text-orange-600 dark:text-orange-400 px-3 py-1.5 rounded-xl text-[10px] font-bold flex items-center gap-2 border border-orange-500/20">
+                Ambiente: {amb} <X className="w-3 h-3 cursor-pointer hover:scale-125 transition-transform" onClick={() => setSelectedAmbientes(selectedAmbientes.filter(v => v !== amb))} />
+              </span>
             ))}
-          </select>
-        </div>
-
-        {/* País Dropdown */}
-        <div className="flex items-center gap-2 bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl px-3 py-1">
-          <Activity className="w-4 h-4 text-neutral-400" />
-          <select 
-            value={selectedPais}
-            onChange={(e) => setSelectedPais(e.target.value)}
-            className="w-full bg-transparent text-sm font-semibold outline-none py-1.5 cursor-pointer capitalize"
-          >
-            {paises.map(p => (
-              <option key={p} value={p}>{p === 'todos' ? 'País: Todos' : `País: ${p}`}</option>
+            {selectedPaises.map(p => (
+              <span key={p} className="bg-purple-500/10 text-purple-600 dark:text-purple-400 px-3 py-1.5 rounded-xl text-[10px] font-bold flex items-center gap-2 border border-purple-500/20">
+                País: {p} <X className="w-3 h-3 cursor-pointer hover:scale-125 transition-transform" onClick={() => setSelectedPaises(selectedPaises.filter(v => v !== p))} />
+              </span>
             ))}
-          </select>
-        </div>
-
-        {/* Time Range */}
-        <div className="flex items-center gap-1 bg-neutral-100 dark:bg-[#1a1a1a] p-1 rounded-xl">
-          {(['hoy', 'semana', 'mes', 'trimestre', 'todos'] as TimeRange[]).map((range) => (
-            <button
-              key={range}
-              onClick={() => { setSelectedTimeRange(range); setChartFilterDate(null); }}
-              className={`px-4 text-[9px] font-black uppercase tracking-widest py-2.5 rounded-lg transition-all ${selectedTimeRange === range ? 'bg-[#71BF44] text-white shadow-md' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
+            {selectedEstados.map(est => (
+              <span key={est} className="bg-[#71BF44]/10 text-[#71BF44] px-3 py-1.5 rounded-xl text-[10px] font-bold flex items-center gap-2 border border-[#71BF44]/20">
+                Estado: {est} <X className="w-3 h-3 cursor-pointer hover:scale-125 transition-transform" onClick={() => setSelectedEstados(selectedEstados.filter(v => v !== est))} />
+              </span>
+            ))}
+            {chartFilterDate && (
+              <span className="bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 px-3 py-1.5 rounded-xl text-[10px] font-bold flex items-center gap-2 border border-neutral-200 dark:border-neutral-700 shadow-sm transition-all duration-300 animate-pulse">
+                🕒 Pueriodo Chart: {chartFilterDate} <X className="w-3 h-3 cursor-pointer hover:scale-125" onClick={() => setChartFilterDate(null)} />
+              </span>
+            )}
+            
+            <button 
+              onClick={() => {
+                setSelectedEstados([]);
+                setSelectedEventos([]);
+                setSelectedAmbientes([]);
+                setSelectedPaises([]);
+                setSearchQuery('');
+                setChartFilterDate(null);
+              }}
+              className="ml-auto flex items-center gap-2 px-4 py-1.5 text-[10px] font-black uppercase text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all active:scale-95"
             >
-              {range}
+              <FilterX className="w-3.5 h-3.5" />
+              Limpiar Todo
             </button>
-          ))}
-        </div>
+          </div>
+        )}
       </div>
-
-      {/* Active Filters Visualization */}
-      {(selectedEstado !== 'todos' || selectedEvento !== 'todos' || selectedAmbiente !== 'todos' || selectedPais !== 'todos' || chartFilterDate) && (
-        <div className="flex flex-wrap items-center gap-2 mb-6 p-2 bg-neutral-50 dark:bg-black/20 rounded-xl border border-dashed border-neutral-200 dark:border-neutral-800">
-           {selectedEstado !== 'todos' && (
-             <span className="bg-[#71BF44]/10 text-[#71BF44] px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5">
-               Estado: {selectedEstado} <X className="w-3 h-3 cursor-pointer" onClick={() => setSelectedEstado('todos')} />
-             </span>
-           )}
-           {selectedEvento !== 'todos' && (
-             <span className="bg-blue-500/10 text-blue-500 px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5">
-               Evento: {selectedEvento} <X className="w-3 h-3 cursor-pointer" onClick={() => setSelectedEvento('todos')} />
-             </span>
-           )}
-           {selectedAmbiente !== 'todos' && (
-             <span className="bg-orange-500/10 text-orange-500 px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5">
-               Ambiente: {selectedAmbiente} <X className="w-3 h-3 cursor-pointer" onClick={() => setSelectedAmbiente('todos')} />
-             </span>
-           )}
-           {selectedPais !== 'todos' && (
-             <span className="bg-purple-500/10 text-purple-500 px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5">
-               País: {selectedPais} <X className="w-3 h-3 cursor-pointer" onClick={() => setSelectedPais('todos')} />
-             </span>
-           )}
-           {chartFilterDate && (
-             <span className="bg-rose-500/10 text-rose-500 px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5">
-               Fecha Chart: {chartFilterDate} <X className="w-3 h-3 cursor-pointer" onClick={() => setChartFilterDate(null)} />
-             </span>
-           )}
-        </div>
-      )}
 
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-4">
@@ -477,7 +588,11 @@ export default function EventHistoryPage() {
                     wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', paddingBottom: '30px' }}
                     onClick={(data) => {
                         const type = data.dataKey as string;
-                        setSelectedEvento(selectedEvento === type ? 'todos' : type);
+                        if (selectedEventos.includes(type)) {
+                          setSelectedEventos(selectedEventos.filter(v => v !== type));
+                        } else {
+                          setSelectedEventos([...selectedEventos, type]);
+                        }
                     }}
                   />
                   {eventTypes.map((type, index) => (
@@ -487,7 +602,7 @@ export default function EventHistoryPage() {
                       dataKey={type}
                       name={type}
                       stroke={COLORS[index % COLORS.length]}
-                      strokeWidth={selectedEvento === type ? 5 : 2}
+                      strokeWidth={selectedEventos.includes(type) ? 5 : 2}
                       dot={{ r: 4, fill: '#fff' }}
                       activeDot={{ r: 8, strokeWidth: 0 }}
                       animationDuration={1000}
@@ -516,7 +631,7 @@ export default function EventHistoryPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm border-collapse">
                   <thead>
-                    <tr className="bg-neutral-50 dark:bg-[#0c0c0c] border-b border-neutral-100 dark:border-neutral-800">
+                    <tr className="bg-neutral-50 dark:bg-[#0c0c0c] border-b border-neutral-100 dark:border-neutral-800 theme-table-row">
                       {[
                         { label: 'Fecha Evento', key: 'fecha_norm', minWidth: '180px' },
                         { label: 'Ambiente', key: 'ambiente', minWidth: '120px' },
@@ -562,7 +677,7 @@ export default function EventHistoryPage() {
                     {filteredData.slice(0, 200).map((ev, i) => (
                       <tr key={ev.created_at + i} className="group hover:bg-[#71BF44]/[0.02] transition-all">
                         <td className="px-6 py-5 whitespace-nowrap text-xs font-bold text-neutral-900 dark:text-neutral-200">
-                          {formatDate(ev.fecha_evento, true)}
+                           {formatDate(ev.fecha_evento, true)}
                         </td>
                         <td className="px-6 py-5">
                           <span className="text-[10px] font-black text-[#71BF44] uppercase">{ev.ambiente}</span>
@@ -601,7 +716,7 @@ export default function EventHistoryPage() {
                           <p className="text-[10px] font-medium text-neutral-400 line-clamp-1">{ev.mensaje || '-'}</p>
                         </td>
                         <td className="px-6 py-5 whitespace-nowrap text-[10px] text-neutral-500 uppercase font-bold">
-                          {formatDate(ev.created_at, true)}
+                           {formatDate(ev.created_at, true)}
                         </td>
                       </tr>
                     ))}
@@ -612,7 +727,7 @@ export default function EventHistoryPage() {
                  <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">
                    {filteredData.length > 200 ? 'Mostrando los últimos 200 registros. Usa los filtros o descarga para ver el resto.' : `Total de registros filtrados: ${filteredData.length}`}
                  </p>
-                 <button onClick={downloadCSV} className="text-[#71BF44] text-[10px] font-black uppercase hover:underline">Descargar {filteredData.length} registros</button>
+                 <button onClick={downloadCSV} className="text-[#71BF44] text-[10px] font-black uppercase hover:underline transition-all active:scale-95">Descargar {filteredData.length} registros</button>
               </div>
             </div>
           </section>
