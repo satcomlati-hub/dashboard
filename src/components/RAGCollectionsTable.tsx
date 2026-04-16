@@ -482,12 +482,6 @@ export default function RAGCollectionsTable() {
       setData(json.data || []);
       setLastUpdated(new Date());
       setError(null);
-      if (json.data?.length > 0) {
-        setExpanded(prev => prev.size === 0
-          ? new Set(json.data.map((m: ManualGroup) => m.manual))
-          : prev
-        );
-      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error desconocido');
     } finally {
