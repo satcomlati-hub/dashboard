@@ -472,6 +472,11 @@ export default function RAGCollectionsTable() {
   const [detailsModal,     setDetailsModal]     = useState<Articulo | null>(null);
   const [manualModal,      setManualModal]      = useState<ManualGroup | null>(null);
   const [onlyEditable,     setOnlyEditable]     = useState(false);
+  const [visibilityFilter, setVisibilityFilter] = useState<'all' | 'public' | 'private'>('all');
+  const [activeFilter,     setActiveFilter]     = useState<'all' | 'active' | 'inactive'>('all');
+  const [responsibleFilter, setResponsibleFilter] = useState<string>('all');
+  const [responsibles,     setResponsibles]     = useState<string[]>([]);
+
 
   // ── Carga de datos ─────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -494,6 +499,19 @@ export default function RAGCollectionsTable() {
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  // ── Extraer responsables únicos ────────────────────────────────────
+  useEffect(() => {
+    const emails = new Set<string>();
+    data.forEach(group => {
+      group.articulos.forEach(art => {
+        if (art.created_by) emails.add(art.created_by);
+        if (art.allowed_editors) art.allowed_editors.forEach(e => emails.add(e));
+      });
+    });
+    setResponsibles(Array.from(emails).sort());
+  }, [data]);
+
 
   // ── Actualizar allowed_editors en estado local (artículo) ─────────
   const handleEditorsChange = (source_url: string, editors: string[]) => {
@@ -654,6 +672,22 @@ export default function RAGCollectionsTable() {
     .map(group => {
       let arts = group.articulos;
       if (onlyEditable)  arts = arts.filter(a => a.can_edit);
+      
+      if (visibilityFilter !== 'all') {
+        const isPublic = visibilityFilter === 'public';
+        arts = arts.filter(a => a.is_public === isPublic);
+      }
+      if (activeFilter !== 'all') {
+        const isActive = activeFilter === 'active';
+        arts = arts.filter(a => a.is_active === isActive);
+      }
+      if (responsibleFilter !== 'all') {
+        arts = arts.filter(a => 
+          a.created_by === responsibleFilter || 
+          a.allowed_editors.includes(responsibleFilter)
+        );
+      }
+
       if (searchTerm) {
         const q = searchTerm.toLowerCase();
         const manualMatch = group.manual.toLowerCase().includes(q);
@@ -745,6 +779,87 @@ export default function RAGCollectionsTable() {
             </div>
           </div>
         </div>
+        
+        {/* ── Filtros Avanzados ── */}
+        <div className="bg-neutral-50/50 dark:bg-[#1A1A1A]/50 border-b border-neutral-200 dark:border-neutral-800 px-6 py-3 flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Visibilidad:</span>
+            <div className="flex bg-white dark:bg-[#131313] rounded-lg p-1 border border-neutral-200 dark:border-neutral-800">
+              <FilterButton 
+                active={visibilityFilter === 'all'} 
+                onClick={() => setVisibilityFilter('all')}
+                label="Todos"
+              />
+              <FilterButton 
+                active={visibilityFilter === 'public'} 
+                onClick={() => setVisibilityFilter('public')}
+                icon={<Globe className="w-3 h-3" />}
+                label="Públicos"
+              />
+              <FilterButton 
+                active={visibilityFilter === 'private'} 
+                onClick={() => setVisibilityFilter('private')}
+                icon={<Lock className="w-3 h-3" />}
+                label="Privados"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">RAG:</span>
+            <div className="flex bg-white dark:bg-[#131313] rounded-lg p-1 border border-neutral-200 dark:border-neutral-800">
+              <FilterButton 
+                active={activeFilter === 'all'} 
+                onClick={() => setActiveFilter('all')}
+                label="Todos"
+              />
+              <FilterButton 
+                active={activeFilter === 'active'} 
+                onClick={() => setActiveFilter('active')}
+                icon={<Power className="w-3 h-3" />}
+                label="Activos"
+                activeClass="text-[#71BF44] bg-[#71BF44]/10"
+              />
+              <FilterButton 
+                active={activeFilter === 'inactive'} 
+                onClick={() => setActiveFilter('inactive')}
+                icon={<Power className="w-3 h-3" />}
+                label="Inactivos"
+                activeClass="text-red-500 bg-red-500/10"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Responsable:</span>
+            <select 
+              value={responsibleFilter}
+              onChange={(e) => setResponsibleFilter(e.target.value)}
+              className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#71BF44] dark:text-neutral-300 min-w-[150px]"
+            >
+              <option value="all">Todos los responsables</option>
+              {responsibles.map(email => (
+                <option key={email} value={email}>{email}</option>
+              ))}
+            </select>
+          </div>
+
+          {(visibilityFilter !== 'all' || activeFilter !== 'all' || responsibleFilter !== 'all' || onlyEditable || searchTerm) && (
+            <button 
+              onClick={() => {
+                setVisibilityFilter('all');
+                setActiveFilter('all');
+                setResponsibleFilter('all');
+                setOnlyEditable(false);
+                setSearchTerm('');
+              }}
+              className="ml-auto text-[10px] font-bold text-red-500 hover:text-red-600 uppercase tracking-widest flex items-center gap-1 transition-colors"
+            >
+              <X className="w-3 h-3" /> Limpiar Filtros
+            </button>
+          )}
+        </div>
+
 
         {/* ── Body ── */}
         <div className="p-4 max-h-[420px] overflow-y-auto scroll-smooth">
@@ -913,3 +1028,28 @@ export default function RAGCollectionsTable() {
     </>
   );
 }
+
+// ── Componentes Pequeños ──────────────────────────────────────────────────────
+
+function FilterButton({ active, onClick, icon, label, activeClass = 'text-[#71BF44] bg-[#71BF44]/10' }: {
+  active: boolean;
+  onClick: () => void;
+  icon?: React.ReactNode;
+  label: string;
+  activeClass?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${
+        active 
+          ? activeClass 
+          : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200'
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
