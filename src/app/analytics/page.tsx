@@ -75,20 +75,20 @@ export default async function AnalyticsPage() {
       }
     },
     {
-      id: 'eventos',
-      name: 'Historial de Eventos',
-      description: 'Seguimiento cronológico de encolamientos, reprocesos y eventos de RabbitMQ.',
-      href: '/analytics/eventos',
+      id: 'resumen-mysatcom',
+      name: 'Resumen MySatcom',
+      description: 'Tablero consolidado de gestiones MySatcom con comparativa interanual y por ambiente.',
+      href: '/analytics/resumen-mysatcom',
       icon: (
         <svg className="w-6 h-6 text-[#71BF44]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
         </svg>
       ),
       connection: {
         type: 'n8n',
-        source: 'https://sara.mysatcomla.com/webhook/DetalleEventosRabbit',
-        flowName: 'API DetallesEventos',
-        flowId: 'GjKc3IP6gwn1U0kq'
+        source: 'https://sara.mysatcomla.com/webhook/GetData',
+        flowName: 'Consolidado MySatcom 2026',
+        flowId: 'MULTI_ENV'
       }
     }
   ];
