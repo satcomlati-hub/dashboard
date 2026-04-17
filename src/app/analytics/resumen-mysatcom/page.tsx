@@ -288,18 +288,32 @@ export default function ResumenMySatcomPage() {
   }, [data]);
 
   const growthSummary = useMemo(() => {
-    // Para una comparativa justa (Like-for-Like), solo sumamos los meses que tienen datos en el año base
-    // Esto evita comparar por ejemplo 4 meses de 2026 contra 12 meses de 2025.
-    const relevantMonths = yoyChartData.filter(m => m.current > 0);
+    const now = new Date();
+    const currentYear = now.getUTCFullYear();
+    const currentMonthIdx = now.getUTCMonth(); // 0-11
+
+    // Para una comparativa justa y "a mes vencido", filtramos los meses
+    const relevantMonths = yoyChartData.filter((m, idx) => {
+      // Si el año base es el actual, solo tomamos meses CERRADOS (anteriores al mes en curso)
+      if (baseYear === currentYear) {
+        return idx < currentMonthIdx && m.current > 0;
+      }
+      // Para años pasados, tomamos todos los que tengan datos
+      return m.current > 0;
+    });
     
     const baseTotal = relevantMonths.reduce((acc, curr) => acc + curr.current, 0);
     const compareTotal = relevantMonths.reduce((acc, curr) => acc + curr.previous, 0);
     
     const growth = compareTotal > 0 ? ((baseTotal - compareTotal) / compareTotal) * 100 : 0;
     const isPartial = relevantMonths.length < 12 && relevantMonths.length > 0;
+
+    const startMonth = relevantMonths.length > 0 ? relevantMonths[0].month : '';
+    const endMonth = relevantMonths.length > 0 ? relevantMonths[relevantMonths.length - 1].month : '';
+    const periodLabel = startMonth && endMonth ? `${startMonth} - ${endMonth}` : '';
     
-    return { baseTotal, compareTotal, growth, isPartial, monthCount: relevantMonths.length };
-  }, [yoyChartData]);
+    return { baseTotal, compareTotal, growth, isPartial, periodLabel };
+  }, [yoyChartData, baseYear]);
 
   const uniqueCountries = useMemo(() => {
     if (!data) return [];
@@ -624,7 +638,9 @@ export default function ResumenMySatcomPage() {
                        <span className="text-sm font-black tracking-tighter">{growthSummary.growth >= 0 ? '+' : ''}{growthSummary.growth.toFixed(1)}%</span>
                     </div>
                     {growthSummary.isPartial && (
-                       <span className="text-[8px] font-black uppercase opacity-60 tracking-tight">YTD (LFL)</span>
+                       <span className="text-[8px] font-black uppercase opacity-60 tracking-tight mt-0.5">
+                          {growthSummary.periodLabel} (Mes Vencido)
+                       </span>
                     )}
                  </div>
               </div>
