@@ -110,19 +110,34 @@ export default function ResumenMySatcomPage() {
       const results = await Promise.all(responses.map(res => res.json()));
       
       let combined: SatcomData[] = [];
-      results.forEach((json) => {
+      results.forEach((json, index) => {
+        if (!json) return;
+        
+        const env = index === 0 ? 'V5' : 'AWS';
+        let rawItems: any[] = [];
+        
         if (Array.isArray(json)) {
-          combined = [...combined, ...json];
+          rawItems = json;
         } else if (json.data && Array.isArray(json.data)) {
-          combined = [...combined, ...json.data];
+          rawItems = json.data;
         } else if (json.data && typeof json.data === 'string') {
           try {
             const parsed = JSON.parse(json.data);
-            if (Array.isArray(parsed)) combined = [...combined, ...parsed];
+            if (Array.isArray(parsed)) rawItems = parsed;
           } catch (e) {
             console.error('Error parsing nested data', e);
           }
         }
+
+        // Map and sanitize
+        const sanitized = rawItems.map(item => ({
+          ...item,
+          Ambiente: item.Ambiente || env,
+          Cantidad: Number(item.Cantidad) || 0,
+          Fecha: item.Fecha || item.fecha || ''
+        })).filter(item => item.Fecha && item.Fecha.length >= 7);
+
+        combined = [...combined, ...sanitized];
       });
 
       setData(combined);
@@ -142,6 +157,7 @@ export default function ResumenMySatcomPage() {
   // Data Filtering
   const filteredData = useMemo(() => {
     return data.filter(item => {
+      if (!item) return false;
       const matchAmbiente = selectedAmbiente === 'Todos' || item.Ambiente === selectedAmbiente;
       const matchPais = selectedPais === 'Todos' || String(item.Pais) === String(selectedPais);
       const matchEstado = selectedEstado === 'Todos' || String(item.Autorizado) === selectedEstado;
@@ -151,9 +167,9 @@ export default function ResumenMySatcomPage() {
 
   // Stats calculation
   const stats = useMemo(() => {
-    const total = filteredData.reduce((acc, curr) => acc + curr.Cantidad, 0);
-    const authorized = filteredData.filter(d => d.Autorizado === 1).reduce((acc, curr) => acc + curr.Cantidad, 0);
-    const unauthorized = total - authorized;
+    const total = filteredData.reduce((acc, curr) => acc + (curr.Cantidad || 0), 0);
+    const authorized = filteredData.filter(d => d.Autorizado === 1).reduce((acc, curr) => acc + (curr.Cantidad || 0), 0);
+    const unauthorized = Math.max(0, total - authorized);
     const authRate = total > 0 ? (authorized / total) * 100 : 0;
 
     return { total, authorized, unauthorized, authRate };
@@ -165,17 +181,18 @@ export default function ResumenMySatcomPage() {
     const categories = new Set<string>();
 
     filteredData.forEach(item => {
+      if (!item.Fecha) return;
       const dateKey = item.Fecha.substring(0, 7); // YYYY-MM
       if (!grouped[dateKey]) grouped[dateKey] = { date: dateKey };
       
-      const category = splitBy === 'Ambiente' ? item.Ambiente : (PAIS_MAP[item.Pais as any] || String(item.Pais));
+      const category = splitBy === 'Ambiente' ? (item.Ambiente || 'Unknown') : (PAIS_MAP[item.Pais as any] || String(item.Pais || 'Otros'));
       categories.add(category);
       
-      grouped[dateKey][category] = (grouped[dateKey][category] || 0) + item.Cantidad;
+      grouped[dateKey][category] = (grouped[dateKey][category] || 0) + (item.Cantidad || 0);
     });
 
     return {
-      data: Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date)),
+      data: Object.values(grouped).sort((a, b) => (a.date as string).localeCompare(b.date as string)),
       categories: Array.from(categories)
     };
   }, [filteredData, splitBy]);
@@ -190,14 +207,19 @@ export default function ResumenMySatcomPage() {
     }));
 
     filteredData.forEach(item => {
+      if (!item.Fecha) return;
       const date = new Date(item.Fecha);
+      if (isNaN(date.getTime())) return;
+      
       const year = date.getUTCFullYear();
       const monthIdx = date.getUTCMonth();
 
-      if (year === 2026) {
-        months[monthIdx].current += item.Cantidad;
-      } else if (year === 2025) {
-        months[monthIdx].previous += item.Cantidad;
+      if (monthIdx >= 0 && monthIdx < 12) {
+        if (year === 2026) {
+          months[monthIdx].current += (item.Cantidad || 0);
+        } else if (year === 2025) {
+          months[monthIdx].previous += (item.Cantidad || 0);
+        }
       }
     });
 
