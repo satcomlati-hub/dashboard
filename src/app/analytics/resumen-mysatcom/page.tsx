@@ -90,6 +90,8 @@ export default function ResumenMySatcomPage() {
   const [selectedPais, setSelectedPais] = useState<string | number>('Todos');
   const [selectedEstado, setSelectedEstado] = useState<string>('Todos'); // '1', '0', 'Todos'
   const [splitBy, setSplitBy] = useState<'Ambiente' | 'Pais'>('Ambiente');
+  const [baseYear, setBaseYear] = useState<number>(2026);
+  const [compareYear, setCompareYear] = useState<number>(2025);
 
   const fetchData = useCallback(async (isRefresh = false) => {
     try {
@@ -223,13 +225,14 @@ export default function ResumenMySatcomPage() {
     };
   }, [filteredData, splitBy]);
 
-  // Chart 2: YoY Comparison (2026 vs 2025)
+  // Chart 2: YoY Comparison (Selected Base vs Compare Year)
   const yoyChartData = useMemo(() => {
     const months: any[] = Array.from({ length: 12 }, (_, i) => ({
       month: MONTH_NAMES[i],
       monthNum: i + 1,
       current: 0,
-      previous: 0
+      previous: 0,
+      growth: 0
     }));
 
     filteredData.forEach(item => {
@@ -241,16 +244,55 @@ export default function ResumenMySatcomPage() {
       const monthIdx = date.getUTCMonth();
 
       if (monthIdx >= 0 && monthIdx < 12) {
-        if (year === 2026) {
+        if (year === baseYear) {
           months[monthIdx].current += (Number(item.Cantidad) || 0);
-        } else if (year === 2025) {
+        } else if (year === compareYear) {
           months[monthIdx].previous += (Number(item.Cantidad) || 0);
         }
       }
     });
 
+    // Calculate growth %
+    months.forEach(m => {
+      if (m.previous > 0) {
+        m.growth = ((m.current - m.previous) / m.previous) * 100;
+      } else if (m.current > 0) {
+        m.growth = 100; // 100% growth if previous was 0
+      } else {
+        m.growth = 0;
+      }
+    });
+
     return months;
-  }, [filteredData]);
+  }, [filteredData, baseYear, compareYear]);
+
+  const availableYears = useMemo(() => {
+    const yearsSet = new Set<number>();
+    data.forEach(item => {
+      if (item.Fecha) {
+        const y = new Date(item.Fecha).getUTCFullYear();
+        if (!isNaN(y)) yearsSet.add(y);
+      }
+    });
+    const years = Array.from(yearsSet).sort((a, b) => b - a);
+    
+    // Auto-select years if they exist in the dataset but weren't set yet
+    if (years.length >= 2 && baseYear === 2026 && compareYear === 2025) {
+      if (!yearsSet.has(2026) || !yearsSet.has(2025)) {
+        // Fallback to highest two years if default ones don't exist
+        // But usually we want to keep 2026/2025 as starting point if they exist
+      }
+    }
+    
+    return years;
+  }, [data]);
+
+  const growthSummary = useMemo(() => {
+    const baseTotal = yoyChartData.reduce((acc, curr) => acc + curr.current, 0);
+    const compareTotal = yoyChartData.reduce((acc, curr) => acc + curr.previous, 0);
+    const growth = compareTotal > 0 ? ((baseTotal - compareTotal) / compareTotal) * 100 : 0;
+    return { baseTotal, compareTotal, growth };
+  }, [yoyChartData]);
 
   const uniqueCountries = useMemo(() => {
     if (!data) return [];
@@ -420,14 +462,38 @@ export default function ResumenMySatcomPage() {
              </div>
              <select 
               value={selectedPais}
-              onChange={(e) => setSelectedPais(e.target.value)}
-              className="w-full bg-neutral-100 dark:bg-neutral-800 border-none rounded-xl px-4 py-2 text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#71BF44]/30"
-             >
-                <option value="Todos">TODOS LOS PAÍSES</option>
-                {uniqueCountries.map(p => (
-                   <option key={String(p)} value={String(p)}>{PAIS_MAP[p as any] || `ID: ${p}`}</option>
-                ))}
-             </select>
+              </select>
+          </div>
+
+          <div className="w-px h-10 bg-neutral-200 dark:bg-neutral-800 hidden lg:block" />
+
+          {/* Year Comparison Filters */}
+          <div className="flex flex-col gap-3">
+             <div className="flex items-center gap-2">
+                <Calendar className="w-3.5 h-3.5 text-[#71BF44]" />
+                <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Comparar Años</span>
+             </div>
+             <div className="flex items-center gap-2">
+                <select 
+                  value={baseYear}
+                  onChange={(e) => setBaseYear(parseInt(e.target.value))}
+                  className="bg-neutral-100 dark:bg-neutral-800 border-none rounded-xl px-3 py-1.5 text-[10px] font-black uppercase outline-none focus:ring-1 focus:ring-[#71BF44]/30"
+                >
+                  {availableYears.map(y => (
+                    <option key={`base-${y}`} value={y}>{y} (Base)</option>
+                  ))}
+                </select>
+                <span className="text-[10px] font-bold text-neutral-400">vs</span>
+                <select 
+                  value={compareYear}
+                  onChange={(e) => setCompareYear(parseInt(e.target.value))}
+                  className="bg-neutral-100 dark:bg-neutral-800 border-none rounded-xl px-3 py-1.5 text-[10px] font-black uppercase outline-none focus:ring-1 focus:ring-[#71BF44]/30"
+                >
+                  {availableYears.map(y => (
+                    <option key={`comp-${y}`} value={y}>{y} (Ref)</option>
+                  ))}
+                </select>
+             </div>
           </div>
         </div>
 
@@ -499,10 +565,9 @@ export default function ResumenMySatcomPage() {
                        axisLine={false} 
                        tickLine={false} 
                        tick={{ fill: '#666', fontSize: 10, fontWeight: 700 }}
-                    />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#000', border: 'none', borderRadius: '20px', padding: '15px' }}
-                      itemStyle={{ fontSize: '11px', fontWeight: '900', textTransform: 'uppercase' }}
+                                     <Tooltip 
+                      contentStyle={{ backgroundColor: '#000', border: '1px solid #333', borderRadius: '20px', padding: '15px' }}
+                      itemStyle={{ fontSize: '11px', fontWeight: '900', textTransform: 'uppercase', color: '#fff' }}
                       labelStyle={{ marginBottom: '10px', color: '#71BF44', fontWeight: '900' }}
                     />
                     <Legend iconType="circle" wrapperStyle={{ paddingTop: '30px', fontSize: '10px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.1em' }} />
@@ -534,8 +599,12 @@ export default function ResumenMySatcomPage() {
                  </div>
                  <div>
                     <h3 className="text-lg font-black text-neutral-900 dark:text-white tracking-tight">Comparativa Interanual</h3>
-                    <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Año 2026 vs 2025</p>
+                    <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Año {baseYear} vs {compareYear}</p>
                  </div>
+              </div>
+              <div className={`px-4 py-2 rounded-2xl flex items-center gap-2 ${growthSummary.growth >= 0 ? 'bg-[#71BF44]/10 text-[#71BF44]' : 'bg-red-500/10 text-red-500'}`}>
+                 {growthSummary.growth >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingUp className="w-4 h-4 rotate-180" />}
+                 <span className="text-xs font-black tracking-tighter">{growthSummary.growth >= 0 ? '+' : ''}{growthSummary.growth.toFixed(1)}%</span>
               </div>
            </div>
 
@@ -556,24 +625,29 @@ export default function ResumenMySatcomPage() {
                     />
                     <Tooltip 
                       cursor={{ fill: '#71BF44', opacity: 0.05 }}
-                      contentStyle={{ backgroundColor: '#000', border: 'none', borderRadius: '20px', padding: '15px' }}
-                      itemStyle={{ fontSize: '11px', fontWeight: '900', textTransform: 'uppercase' }}
+                      contentStyle={{ backgroundColor: '#000', border: '1px solid #333', borderRadius: '20px', padding: '15px' }}
+                      itemStyle={{ fontSize: '11px', fontWeight: '900', textTransform: 'uppercase', color: '#fff' }}
                       labelStyle={{ marginBottom: '10px', color: '#71BF44', fontWeight: '900' }}
+                      formatter={(value: any, name: string, props: any) => {
+                         if (name.includes('Crecimiento')) return [`${Number(value).toFixed(1)}%`, 'Variación'];
+                         return [Number(value).toLocaleString(), name];
+                      }}
                     />
                     <Legend iconType="circle" wrapperStyle={{ paddingTop: '30px', fontSize: '10px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.1em' }} />
                     <Bar 
-                      name="Año 2026 (Actual)" 
+                      name={`Año ${baseYear} (Base)`} 
                       dataKey="current" 
                       fill="#71BF44" 
                       radius={[6, 6, 0, 0]}
+                      animationDuration={1500}
                     />
                     <Bar 
-                      name="Año 2025 (Anterior)" 
+                      name={`Año ${compareYear} (Anterior)`} 
                       dataKey="previous" 
-                      fill="#222" 
+                      fill="#94a3b8" 
                       radius={[6, 6, 0, 0]}
-                    />
-                 </BarChart>
+                      animationDuration={1500}
+                  </BarChart>
               </ResponsiveContainer>
            </div>
         </div>
