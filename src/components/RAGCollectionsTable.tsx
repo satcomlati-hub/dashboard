@@ -136,14 +136,14 @@ function DetailsModal({ art, isAdmin, onClose, onEditorsChange, onCreatorChange 
   onCreatorChange: (source_url: string, newCreator: string) => void;
 }) {
   const [localEditors, setLocalEditors] = useState<string[]>(art.allowed_editors);
-  const [newEmail, setNewEmail] = useState('');
-  const [adding, setAdding] = useState(false);
-  const [removing, setRemoving] = useState<string | null>(null);
-  const [addError, setAddError] = useState('');
+  const [newEmail,     setNewEmail]     = useState('');
+  const [adding,       setAdding]       = useState(false);
+  const [removing,     setRemoving]     = useState<string | null>(null);
+  const [addError,     setAddError]     = useState('');
 
-  const [editingCreator, setEditingCreator] = useState(false);
-  const [newCreatorEmail, setNewCreatorEmail] = useState(art.created_by || '');
-  const [savingCreator, setSavingCreator] = useState(false);
+  const [newCreatorEmail, setNewCreatorEmail] = useState('');
+  const [savingCreator,   setSavingCreator]   = useState(false);
+  const [creatorMsg,      setCreatorMsg]      = useState('');
 
   const addEditor = async () => {
     const email = newEmail.trim();
@@ -167,8 +167,8 @@ function DetailsModal({ art, isAdmin, onClose, onEditorsChange, onCreatorChange 
 
   const saveCreator = async () => {
     const email = newCreatorEmail.trim();
-    if (!email || !email.includes('@')) { setAddError('Correo de creador inválido'); return; }
-    setSavingCreator(true); setAddError('');
+    if (!email || !email.includes('@')) { setCreatorMsg('Correo inválido'); return; }
+    setSavingCreator(true); setCreatorMsg('');
     try {
       const res = await fetch('/api/db/rag-collections', {
         method: 'PATCH',
@@ -177,9 +177,10 @@ function DetailsModal({ art, isAdmin, onClose, onEditorsChange, onCreatorChange 
       });
       if (!res.ok) throw new Error();
       onCreatorChange(art.source_url, email);
-      setEditingCreator(false);
-    } catch { setAddError('Error al cambiar responsable'); }
-    finally { setSavingCreator(false); }
+      setCreatorMsg('Responsable actualizado');
+      setNewCreatorEmail('');
+    } catch { setCreatorMsg('Error al cambiar responsable'); }
+    finally { setSavingCreator(false); setTimeout(() => setCreatorMsg(''), 3000); }
   };
 
   const removeEditor = async (email: string) => {
@@ -213,6 +214,33 @@ function DetailsModal({ art, isAdmin, onClose, onEditorsChange, onCreatorChange 
         </div>
 
         <div className="space-y-5">
+          {/* Reasignar Responsable (solo admin) */}
+          {isAdmin && (
+            <section>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-2">
+                Reasignar Responsable del Artículo
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={newCreatorEmail}
+                  onChange={e => { setNewCreatorEmail(e.target.value); setCreatorMsg(''); }}
+                  onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), saveCreator())}
+                  placeholder="nuevo.responsable@satcomla.com"
+                  className="flex-1 bg-neutral-50 dark:bg-[#0A0A0A] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#71BF44]/30 focus:border-[#71BF44] dark:text-white transition-all"
+                />
+                <button
+                  onClick={saveCreator}
+                  disabled={savingCreator}
+                  className="px-3 py-2 rounded-xl bg-[#71BF44] hover:bg-[#60A339] text-white text-sm font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                >
+                  {savingCreator ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Aplicar'}
+                </button>
+              </div>
+              {creatorMsg && <p className={`text-xs mt-1 ${creatorMsg.includes('actualizado') ? 'text-[#71BF44]' : 'text-red-500'}`}>{creatorMsg}</p>}
+            </section>
+          )}
+
           {/* Registro */}
           <section>
             <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-2">Registro</p>
@@ -246,22 +274,9 @@ function DetailsModal({ art, isAdmin, onClose, onEditorsChange, onCreatorChange 
                   <div className="w-6 h-6 rounded-full bg-[#71BF44]/20 flex items-center justify-center shrink-0">
                     <span className="text-[10px] font-bold text-[#71BF44]">{(art.created_by || 'S')[0].toUpperCase()}</span>
                   </div>
-                  {editingCreator ? (
-                    <div className="flex gap-2 flex-1 mr-2">
-                       <input type="email" value={newCreatorEmail} onChange={e => setNewCreatorEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveCreator()} className="flex-1 bg-white dark:bg-[#0A0A0A] border border-neutral-200 dark:border-neutral-700 rounded px-2 py-1 text-xs focus:outline-none focus:border-[#71BF44]" autoFocus />
-                       <button onClick={saveCreator} disabled={savingCreator} className="text-xs bg-[#71BF44] hover:bg-[#60A339] text-white px-2 py-1 rounded disabled:opacity-50">Guardar</button>
-                       <button onClick={() => setEditingCreator(false)} className="text-xs text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300">Cancelar</button>
-                    </div>
-                  ) : (
-                    <>
-                      <span className="text-xs text-neutral-700 dark:text-neutral-300">{art.created_by || 'Sistema'}</span>
-                      {isAdmin && (
-                        <button onClick={() => { setEditingCreator(true); setNewCreatorEmail(art.created_by || ''); }} className="text-[#71BF44] hover:underline text-[10px]">Editar</button>
-                      )}
-                    </>
-                  )}
+                  <span className="text-xs text-neutral-700 dark:text-neutral-300">{art.created_by || 'Sistema'}</span>
                 </div>
-                {!editingCreator && <span className="text-[9px] font-bold uppercase text-[#71BF44] bg-[#71BF44]/10 px-2 py-0.5 rounded-full shrink-0">Creador</span>}
+                <span className="text-[9px] font-bold uppercase text-[#71BF44] bg-[#71BF44]/10 px-2 py-0.5 rounded-full shrink-0">Creador</span>
               </div>
 
               {localEditors.map(email => (
@@ -1037,10 +1052,11 @@ export default function RAGCollectionsTable() {
                       <div className="divide-y divide-neutral-100 dark:divide-neutral-800/80">
                         {/* Cabecera tabla */}
                         <div className="grid grid-cols-12 px-4 py-2 bg-white dark:bg-[#131313]">
-                          <span className="col-span-4 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Artículo</span>
+                          <span className="col-span-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Artículo</span>
+                          <span className="col-span-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Responsable</span>
                           <span className="col-span-2 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Visibilidad</span>
-                          <span className="col-span-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Estado RAG</span>
-                          <span className="col-span-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest text-right">Acciones</span>
+                          <span className="col-span-2 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Estado RAG</span>
+                          <span className="col-span-2 text-[10px] font-bold text-neutral-400 uppercase tracking-widest text-right">Acciones</span>
                         </div>
 
                         {group.articulos.map(art => {
@@ -1059,9 +1075,19 @@ export default function RAGCollectionsTable() {
                             <div key={art.articulo}
                               className={`grid grid-cols-12 px-4 py-2.5 transition-colors items-center ${art.is_active ? 'bg-white dark:bg-[#131313] hover:bg-neutral-50 dark:hover:bg-[#1A1A1A]' : 'bg-red-500/5 hover:bg-red-500/10 dark:bg-red-500/5 dark:hover:bg-red-500/10'}`}>
                               {/* Artículo */}
-                              <div className="col-span-4 flex items-center gap-2">
+                              <div className="col-span-3 flex items-center gap-2">
                                 <FileText className={`w-3.5 h-3.5 shrink-0 ${art.is_active ? 'text-neutral-300 dark:text-neutral-600' : 'text-red-400/50'}`} />
                                 <span className={`text-sm font-medium truncate ${art.is_active ? 'text-neutral-700 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-500 line-through'}`}>{art.articulo}</span>
+                              </div>
+
+                              {/* Responsable */}
+                              <div className="col-span-3 flex items-center gap-1.5 truncate pr-2">
+                                <div className="w-4 h-4 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center shrink-0 border border-neutral-200 dark:border-neutral-700">
+                                   <span className="text-[8px] font-bold text-neutral-500">{(art.created_by || 'S')[0].toUpperCase()}</span>
+                                </div>
+                                <span className="text-[11px] text-neutral-500 truncate" title={art.created_by || 'Sistema'}>
+                                  {(art.created_by || 'Sistema').split('@')[0]}
+                                </span>
                               </div>
 
                               {/* Visibilidad */}
@@ -1075,7 +1101,7 @@ export default function RAGCollectionsTable() {
                               </div>
 
                               {/* Estado RAG */}
-                              <div className="col-span-3">
+                              <div className="col-span-2">
                                 <button
                                   onClick={() => art.can_edit && toggleActive(art.source_url, art.is_active)}
                                   disabled={isActiveToggling || !art.can_edit}
@@ -1096,26 +1122,25 @@ export default function RAGCollectionsTable() {
                               </div>
 
                               {/* Acciones: Ver | Actualizar | Detalles | Eliminar */}
-                              <div className="col-span-3 flex justify-end items-center gap-2">
+                              <div className="col-span-2 flex justify-end items-center gap-2">
                                 <a href={art.source_url} target="_blank" rel="noopener noreferrer"
-                                  className="flex items-center gap-1 text-[10px] font-medium text-neutral-400 hover:text-[#71BF44] transition-colors" title="Ver fuente">
-                                  <ExternalLink className="w-3 h-3" /> Ver
+                                  className="flex items-center text-neutral-400 hover:text-[#71BF44] transition-colors" title="Ver fuente">
+                                  <ExternalLink className="w-3.5 h-3.5" />
                                 </a>
 
                                 <button onClick={() => handleActualizar(art)} disabled={!art.can_edit || isRefreshing} title={updateTooltip}
-                                  className={`flex items-center gap-1 text-[10px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${art.can_edit ? 'text-neutral-400 hover:text-[#71BF44]' : 'text-neutral-300 dark:text-neutral-600'}`}>
-                                  {isRefreshing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <UploadCloud className="w-3 h-3" />}
-                                  {isRefreshing ? 'Enviando' : 'Actualizar'}
+                                  className={`flex items-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${art.can_edit ? 'text-neutral-400 hover:text-[#71BF44]' : 'text-neutral-300 dark:text-neutral-600'}`}>
+                                  {isRefreshing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
                                 </button>
 
                                 <button onClick={() => setDetailsModal(art)}
-                                  className="flex items-center gap-1 text-[10px] font-medium text-neutral-400 hover:text-blue-400 transition-colors" title="Ver detalles y responsables">
-                                  <Info className="w-3 h-3" /> Detalles
+                                  className="flex items-center text-neutral-400 hover:text-blue-400 transition-colors" title="Ver detalles y responsables">
+                                  <Info className="w-3.5 h-3.5" />
                                 </button>
 
                                 <button onClick={() => deleteArticulo(art.source_url)} disabled={deleting.has(art.source_url)}
                                   className="flex items-center text-neutral-400 hover:text-red-500 transition-colors disabled:opacity-50" title="Eliminar artículo">
-                                  {deleting.has(art.source_url) ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                                  {deleting.has(art.source_url) ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                                 </button>
                               </div>
                             </div>
