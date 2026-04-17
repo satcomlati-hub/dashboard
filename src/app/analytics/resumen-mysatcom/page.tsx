@@ -655,7 +655,8 @@ export default function ResumenMySatcomPage() {
                       fill="#94a3b8" 
                       radius={[6, 6, 0, 0]}
                       animationDuration={1500}
-                  </BarChart>
+                    />
+                 </BarChart>
               </ResponsiveContainer>
            </div>
         </div>
