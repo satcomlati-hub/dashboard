@@ -1006,6 +1006,7 @@ export default function RAGCollectionsTable() {
                 const isUpdating       = updatingManual.has(group.manual);
                 const isTogglingActive = togglingManualActive.has(group.manual);
                 const hasZoho          = group.articulos.some(a => a.source_url.includes('zohopublic'));
+                const canEditManual    = isAdmin || (group.articulos.length > 0 && group.articulos.every(a => a.can_edit));
 
                 return (
                   <div key={group.manual} className="border border-neutral-100 dark:border-neutral-800 rounded-2xl overflow-hidden">
@@ -1018,12 +1019,14 @@ export default function RAGCollectionsTable() {
                         <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500 text-[10px] font-bold">{group.total} art.</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button onClick={e => toggleManualPublic(group.manual, allPublic, e)} disabled={isUpdating}
-                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all disabled:opacity-60 ${allPublic ? 'bg-sky-400/15 text-sky-400 hover:bg-sky-400/25' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 hover:bg-neutral-200'}`}
-                          title={allPublic ? 'Hacer todo privado' : 'Hacer todo público'}>
-                          {isUpdating ? <RefreshCw className="w-2.5 h-2.5 animate-spin" /> : allPublic ? <Globe className="w-2.5 h-2.5" /> : <Lock className="w-2.5 h-2.5" />}
-                          {allPublic ? 'Todo público' : 'Todo privado'}
-                        </button>
+                        {canEditManual && (
+                          <button onClick={e => toggleManualPublic(group.manual, allPublic, e)} disabled={isUpdating}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all disabled:opacity-60 ${allPublic ? 'bg-sky-400/15 text-sky-400 hover:bg-sky-400/25' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 hover:bg-neutral-200'}`}
+                            title={allPublic ? 'Hacer todo privado' : 'Hacer todo público'}>
+                            {isUpdating ? <RefreshCw className="w-2.5 h-2.5 animate-spin" /> : allPublic ? <Globe className="w-2.5 h-2.5" /> : <Lock className="w-2.5 h-2.5" />}
+                            {allPublic ? 'Todo público' : 'Todo privado'}
+                          </button>
+                        )}
                         {isAdmin && (
                           <button onClick={e => toggleManualActive(group.manual, allActive, e)} disabled={isTogglingActive}
                             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all disabled:opacity-60 ${allActive ? 'bg-[#71BF44]/15 text-[#71BF44] hover:bg-[#71BF44]/25' : 'bg-red-500/10 text-red-400 hover:bg-red-500/20'}`}
@@ -1039,10 +1042,12 @@ export default function RAGCollectionsTable() {
                             <Info className="w-3 h-3" /> Editores
                           </button>
                         )}
-                        <button onClick={e => deleteManual(group.manual, group.total, e)} disabled={deletingManual.has(group.manual)}
-                          className="text-neutral-400 hover:text-red-500 disabled:opacity-50 p-1" title="Eliminar manual completo">
-                          {deletingManual.has(group.manual) ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                        </button>
+                        {canEditManual && (
+                          <button onClick={e => deleteManual(group.manual, group.total, e)} disabled={deletingManual.has(group.manual)}
+                            className="text-neutral-400 hover:text-red-500 disabled:opacity-50 p-1" title="Eliminar manual completo">
+                            {deletingManual.has(group.manual) ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
                         {isOpen ? <ChevronDown className="w-4 h-4 text-neutral-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-neutral-400 shrink-0" />}
                       </div>
                     </div>
@@ -1092,9 +1097,17 @@ export default function RAGCollectionsTable() {
 
                               {/* Visibilidad */}
                               <div className="col-span-2">
-                                <button onClick={() => togglePublic(art.source_url, art.is_public)} disabled={isVizUpdating}
-                                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all disabled:opacity-60 ${art.is_public ? 'bg-sky-400/15 text-sky-400 hover:bg-sky-400/25' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 hover:bg-neutral-200'}`}
-                                  title={art.is_public ? 'Hacer privado' : 'Hacer público'}>
+                                <button
+                                  onClick={() => art.can_edit && togglePublic(art.source_url, art.is_public)}
+                                  disabled={isVizUpdating || !art.can_edit}
+                                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all ${
+                                    !art.can_edit
+                                      ? 'opacity-40 bg-neutral-100 dark:bg-neutral-800 text-neutral-400 cursor-not-allowed'
+                                      : art.is_public
+                                        ? 'bg-sky-400/15 text-sky-400 hover:bg-sky-400/25'
+                                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 hover:bg-neutral-200'
+                                  }`}
+                                  title={!art.can_edit ? 'Sin permisos para cambiar la visibilidad' : art.is_public ? 'Hacer privado' : 'Hacer público'}>
                                   {isVizUpdating ? <RefreshCw className="w-2.5 h-2.5 animate-spin" /> : art.is_public ? <Globe className="w-2.5 h-2.5" /> : <Lock className="w-2.5 h-2.5" />}
                                   {art.is_public ? 'Público' : 'Privado'}
                                 </button>
@@ -1138,8 +1151,12 @@ export default function RAGCollectionsTable() {
                                   <Info className="w-3.5 h-3.5" />
                                 </button>
 
-                                <button onClick={() => deleteArticulo(art.source_url)} disabled={deleting.has(art.source_url)}
-                                  className="flex items-center text-neutral-400 hover:text-red-500 transition-colors disabled:opacity-50" title="Eliminar artículo">
+                                <button
+                                  onClick={() => art.can_edit && deleteArticulo(art.source_url)}
+                                  disabled={deleting.has(art.source_url) || !art.can_edit}
+                                  className={`flex items-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${art.can_edit ? 'text-neutral-400 hover:text-red-500' : 'text-neutral-300 dark:text-neutral-600'}`}
+                                  title={!art.can_edit ? 'Sin permisos para eliminar este artículo' : 'Eliminar artículo'}
+                                >
                                   {deleting.has(art.source_url) ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                                 </button>
                               </div>
