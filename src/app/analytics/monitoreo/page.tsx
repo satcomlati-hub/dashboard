@@ -32,7 +32,7 @@ export default function MonitoreoSubpage() {
   const [selectedDateFilter, setSelectedDateFilter] = useState<string | null>(null);
 
   // Active counter for highlight
-  const [activeCounter, setActiveCounter] = useState<'total' | 'mes' | 'semana' | 'hoy' | null>(null);
+  const [activeCounter, setActiveCounter] = useState<'total' | 'mes' | 'mesAnterior' | 'semana' | 'hoy' | null>(null);
 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -146,7 +146,7 @@ export default function MonitoreoSubpage() {
   const toDateString = (d: Date) => d.toISOString().split('T')[0];
 
   // Counter click: sets the date filter range matching the period
-  const handleCounterClick = useCallback((counter: 'total' | 'mes' | 'semana' | 'hoy') => {
+  const handleCounterClick = useCallback((counter: 'total' | 'mes' | 'mesAnterior' | 'semana' | 'hoy') => {
     // Toggle off if same counter clicked again
     if (activeCounter === counter) {
       setActiveCounter(null);
