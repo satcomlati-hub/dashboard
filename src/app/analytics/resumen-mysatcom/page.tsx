@@ -167,8 +167,10 @@ export default function ResumenMySatcomPage() {
 
   // Stats calculation
   const stats = useMemo(() => {
-    const total = filteredData.reduce((acc, curr) => acc + (curr.Cantidad || 0), 0);
-    const authorized = filteredData.filter(d => d.Autorizado === 1).reduce((acc, curr) => acc + (curr.Cantidad || 0), 0);
+    if (!filteredData || filteredData.length === 0) return { total: 0, authorized: 0, unauthorized: 0, authRate: 0 };
+    
+    const total = filteredData.reduce((acc, curr) => acc + (Number(curr?.Cantidad) || 0), 0);
+    const authorized = filteredData.filter(d => d?.Autorizado === 1).reduce((acc, curr) => acc + (Number(curr?.Cantidad) || 0), 0);
     const unauthorized = Math.max(0, total - authorized);
     const authRate = total > 0 ? (authorized / total) * 100 : 0;
 
@@ -181,18 +183,21 @@ export default function ResumenMySatcomPage() {
     const categories = new Set<string>();
 
     filteredData.forEach(item => {
-      if (!item.Fecha) return;
-      const dateKey = item.Fecha.substring(0, 7); // YYYY-MM
+      if (!item || !item.Fecha) return;
+      const dateKey = String(item.Fecha).substring(0, 7); // YYYY-MM
       if (!grouped[dateKey]) grouped[dateKey] = { date: dateKey };
       
-      const category = splitBy === 'Ambiente' ? (item.Ambiente || 'Unknown') : (PAIS_MAP[item.Pais as any] || String(item.Pais || 'Otros'));
-      categories.add(category);
+      const paisValue = item.Pais === null || item.Pais === undefined || item.Pais === 'NULL' ? 'NULL' : item.Pais;
+      const category = splitBy === 'Ambiente' 
+        ? (item.Ambiente || 'Unknown') 
+        : (PAIS_MAP[paisValue as any] || `ID: ${paisValue}`);
       
-      grouped[dateKey][category] = (grouped[dateKey][category] || 0) + (item.Cantidad || 0);
+      categories.add(category);
+      grouped[dateKey][category] = (grouped[dateKey][category] || 0) + (Number(item.Cantidad) || 0);
     });
 
     return {
-      data: Object.values(grouped).sort((a, b) => (a.date as string).localeCompare(b.date as string)),
+      data: Object.values(grouped).sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''))),
       categories: Array.from(categories)
     };
   }, [filteredData, splitBy]);
@@ -207,7 +212,7 @@ export default function ResumenMySatcomPage() {
     }));
 
     filteredData.forEach(item => {
-      if (!item.Fecha) return;
+      if (!item || !item.Fecha) return;
       const date = new Date(item.Fecha);
       if (isNaN(date.getTime())) return;
       
@@ -216,9 +221,9 @@ export default function ResumenMySatcomPage() {
 
       if (monthIdx >= 0 && monthIdx < 12) {
         if (year === 2026) {
-          months[monthIdx].current += (item.Cantidad || 0);
+          months[monthIdx].current += (Number(item.Cantidad) || 0);
         } else if (year === 2025) {
-          months[monthIdx].previous += (item.Cantidad || 0);
+          months[monthIdx].previous += (Number(item.Cantidad) || 0);
         }
       }
     });
@@ -227,7 +232,8 @@ export default function ResumenMySatcomPage() {
   }, [filteredData]);
 
   const uniqueCountries = useMemo(() => {
-    const set = new Set(data.map(d => d.Pais));
+    if (!data) return [];
+    const set = new Set(data.map(d => d?.Pais).filter(p => p !== undefined));
     return Array.from(set).filter(p => p !== null && p !== undefined);
   }, [data]);
 
