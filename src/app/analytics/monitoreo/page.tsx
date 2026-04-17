@@ -170,7 +170,7 @@ export default function MonitoreoSubpage() {
     }
 
     let start: Date;
-    const end: Date = today;
+    let end: Date = today;
 
     if (counter === 'hoy') {
       start = today;
