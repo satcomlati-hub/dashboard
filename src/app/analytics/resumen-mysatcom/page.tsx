@@ -110,32 +110,53 @@ export default function ResumenMySatcomPage() {
       const results = await Promise.all(responses.map(res => res.json()));
       
       let combined: SatcomData[] = [];
+      
       results.forEach((json, index) => {
         if (!json) return;
         
-        const env = index === 0 ? 'V5' : 'AWS';
+        const defaultEnv = index === 0 ? 'V5' : 'AWS';
         let rawItems: any[] = [];
         
-        if (Array.isArray(json)) {
-          rawItems = json;
-        } else if (json.data && Array.isArray(json.data)) {
-          rawItems = json.data;
-        } else if (json.data && typeof json.data === 'string') {
-          try {
-            const parsed = JSON.parse(json.data);
-            if (Array.isArray(parsed)) rawItems = parsed;
-          } catch (e) {
-            console.error('Error parsing nested data', e);
+        // Helper to flatten/extract data from the common webhook structures
+        const processJson = (obj: any) => {
+          if (Array.isArray(obj)) {
+            // Case: [ { data: "[...]" } ] or [ { Fecha: ... } ]
+            obj.forEach(item => {
+              if (item && item.data && typeof item.data === 'string') {
+                try {
+                  const parsed = JSON.parse(item.data);
+                  if (Array.isArray(parsed)) rawItems = [...rawItems, ...parsed];
+                } catch (e) {}
+              } else if (item && item.data && Array.isArray(item.data)) {
+                rawItems = [...rawItems, ...item.data];
+              } else if (item && (item.Fecha || item.fecha)) {
+                rawItems.push(item);
+              }
+            });
+          } else if (obj && typeof obj === 'object') {
+            // Case: { data: "[...]" } or { data: [...] }
+            if (obj.data && typeof obj.data === 'string') {
+              try {
+                const parsed = JSON.parse(obj.data);
+                if (Array.isArray(parsed)) rawItems = [...rawItems, ...parsed];
+              } catch (e) {}
+            } else if (obj.data && Array.isArray(obj.data)) {
+              rawItems = [...rawItems, ...obj.data];
+            } else if (obj.Fecha || obj.fecha) {
+              rawItems.push(obj);
+            }
           }
-        }
+        };
+
+        processJson(json);
 
         // Map and sanitize
         const sanitized = rawItems.map(item => ({
           ...item,
-          Ambiente: item.Ambiente || env,
+          Ambiente: item.Ambiente || defaultEnv,
           Cantidad: Number(item.Cantidad) || 0,
           Fecha: item.Fecha || item.fecha || ''
-        })).filter(item => item.Fecha && item.Fecha.length >= 7);
+        })).filter(item => item.Fecha && String(item.Fecha).length >= 7);
 
         combined = [...combined, ...sanitized];
       });
