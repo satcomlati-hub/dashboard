@@ -208,6 +208,29 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
+    // ── Cambio de responsable (created_by) (solo admin) ────────────
+    if ('new_creator_email' in body) {
+      if (session?.user?.role !== 'admin') {
+        return NextResponse.json({ error: 'Solo administradores pueden cambiar el responsable' }, { status: 403 });
+      }
+
+      const { source_url, manual, new_creator_email } = body;
+
+      if (!new_creator_email || typeof new_creator_email !== 'string' || !new_creator_email.includes('@')) {
+        return NextResponse.json({ error: 'Correo inválido' }, { status: 400 });
+      }
+
+      if (typeof manual === 'string' && manual) {
+        await pool.query('UPDATE mm_collections_v2 SET created_by = $1 WHERE manual = $2', [new_creator_email, manual]);
+      } else if (typeof source_url === 'string' && source_url) {
+        await pool.query('UPDATE mm_collections_v2 SET created_by = $1 WHERE source_url = $2', [new_creator_email, source_url]);
+      } else {
+        return NextResponse.json({ error: 'Se requiere source_url o manual' }, { status: 400 });
+      }
+
+      return NextResponse.json({ success: true });
+    }
+
     // ── Estado activo (is_active) ─────────────────────────────────
     if ('is_active' in body) {
       const { source_url, manual, is_active } = body as {

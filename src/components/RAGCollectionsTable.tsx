@@ -129,16 +129,21 @@ function PdfUpdateModal({ art, userEmail, onClose }: {
 
 // ─── Modal: Detalles del artículo ─────────────────────────────────────────────
 
-function DetailsModal({ art, isAdmin, onClose, onEditorsChange }: {
+function DetailsModal({ art, isAdmin, onClose, onEditorsChange, onCreatorChange }: {
   art: Articulo; isAdmin: boolean;
   onClose: () => void;
   onEditorsChange: (source_url: string, editors: string[]) => void;
+  onCreatorChange: (source_url: string, newCreator: string) => void;
 }) {
   const [localEditors, setLocalEditors] = useState<string[]>(art.allowed_editors);
   const [newEmail, setNewEmail] = useState('');
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const [addError, setAddError] = useState('');
+
+  const [editingCreator, setEditingCreator] = useState(false);
+  const [newCreatorEmail, setNewCreatorEmail] = useState(art.created_by || '');
+  const [savingCreator, setSavingCreator] = useState(false);
 
   const addEditor = async () => {
     const email = newEmail.trim();
@@ -158,6 +163,23 @@ function DetailsModal({ art, isAdmin, onClose, onEditorsChange }: {
       setNewEmail('');
     } catch { setAddError('Error al agregar editor'); }
     finally { setAdding(false); }
+  };
+
+  const saveCreator = async () => {
+    const email = newCreatorEmail.trim();
+    if (!email || !email.includes('@')) { setAddError('Correo de creador inválido'); return; }
+    setSavingCreator(true); setAddError('');
+    try {
+      const res = await fetch('/api/db/rag-collections', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source_url: art.source_url, new_creator_email: email }),
+      });
+      if (!res.ok) throw new Error();
+      onCreatorChange(art.source_url, email);
+      setEditingCreator(false);
+    } catch { setAddError('Error al cambiar responsable'); }
+    finally { setSavingCreator(false); }
   };
 
   const removeEditor = async (email: string) => {
@@ -220,13 +242,26 @@ function DetailsModal({ art, isAdmin, onClose, onEditorsChange }: {
             <div className="bg-neutral-50 dark:bg-[#1A1A1A] rounded-2xl p-4 space-y-2">
               {/* Creador siempre tiene permiso */}
               <div className="flex items-center justify-between py-1">
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-full bg-[#71BF44]/20 flex items-center justify-center">
+                <div className="flex items-center gap-2 flex-1">
+                  <div className="w-6 h-6 rounded-full bg-[#71BF44]/20 flex items-center justify-center shrink-0">
                     <span className="text-[10px] font-bold text-[#71BF44]">{(art.created_by || 'S')[0].toUpperCase()}</span>
                   </div>
-                  <span className="text-xs text-neutral-700 dark:text-neutral-300">{art.created_by || 'Sistema'}</span>
+                  {editingCreator ? (
+                    <div className="flex gap-2 flex-1 mr-2">
+                       <input type="email" value={newCreatorEmail} onChange={e => setNewCreatorEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveCreator()} className="flex-1 bg-white dark:bg-[#0A0A0A] border border-neutral-200 dark:border-neutral-700 rounded px-2 py-1 text-xs focus:outline-none focus:border-[#71BF44]" autoFocus />
+                       <button onClick={saveCreator} disabled={savingCreator} className="text-xs bg-[#71BF44] hover:bg-[#60A339] text-white px-2 py-1 rounded disabled:opacity-50">Guardar</button>
+                       <button onClick={() => setEditingCreator(false)} className="text-xs text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300">Cancelar</button>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="text-xs text-neutral-700 dark:text-neutral-300">{art.created_by || 'Sistema'}</span>
+                      {isAdmin && (
+                        <button onClick={() => { setEditingCreator(true); setNewCreatorEmail(art.created_by || ''); }} className="text-[#71BF44] hover:underline text-[10px]">Editar</button>
+                      )}
+                    </>
+                  )}
                 </div>
-                <span className="text-[9px] font-bold uppercase text-[#71BF44] bg-[#71BF44]/10 px-2 py-0.5 rounded-full">Creador</span>
+                {!editingCreator && <span className="text-[9px] font-bold uppercase text-[#71BF44] bg-[#71BF44]/10 px-2 py-0.5 rounded-full shrink-0">Creador</span>}
               </div>
 
               {localEditors.map(email => (
@@ -308,10 +343,11 @@ function Row({ label, value }: { label: string; value: string }) {
 
 // ─── Modal: Detalles del manual (editores a nivel manual, solo Zoho) ──────────
 
-function ManualDetailsModal({ group, isAdmin, onClose, onEditorsChange }: {
+function ManualDetailsModal({ group, isAdmin, onClose, onEditorsChange, onManualCreatorChange }: {
   group: ManualGroup; isAdmin: boolean;
   onClose: () => void;
   onEditorsChange: (manual: string, editors: string[]) => void;
+  onManualCreatorChange: (manual: string, newCreator: string) => void;
 }) {
   const zohoArts = group.articulos.filter(a => a.source_url.includes('zohopublic'));
   const initEditors = [...new Set(zohoArts.flatMap(a => a.allowed_editors))];
@@ -321,6 +357,10 @@ function ManualDetailsModal({ group, isAdmin, onClose, onEditorsChange }: {
   const [adding,       setAdding]       = useState(false);
   const [removing,     setRemoving]     = useState<string | null>(null);
   const [addError,     setAddError]     = useState('');
+
+  const [newManualCreator, setNewManualCreator] = useState('');
+  const [savingManualCreator, setSavingManualCreator] = useState(false);
+  const [creatorMsg, setCreatorMsg] = useState('');
 
   const addEditor = async () => {
     const email = newEmail.trim();
@@ -374,6 +414,33 @@ function ManualDetailsModal({ group, isAdmin, onClose, onEditorsChange }: {
         </div>
 
         <div className="space-y-5">
+          {/* Reasignar Responsable del manual (solo admin) */}
+          {isAdmin && (
+            <section>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-2">
+                Reasignar Responsable del Manual
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={newManualCreator}
+                  onChange={e => { setNewManualCreator(e.target.value); setCreatorMsg(''); }}
+                  onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), saveManualCreator())}
+                  placeholder="nuevo.responsable@satcomla.com"
+                  className="flex-1 bg-neutral-50 dark:bg-[#0A0A0A] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#71BF44]/30 focus:border-[#71BF44] dark:text-white transition-all"
+                />
+                <button
+                  onClick={saveManualCreator}
+                  disabled={savingManualCreator}
+                  className="px-3 py-2 rounded-xl bg-[#71BF44] hover:bg-[#60A339] text-white text-sm font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                >
+                  {savingManualCreator ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Aplicar'}
+                </button>
+              </div>
+              {creatorMsg && <p className={`text-xs mt-1 ${creatorMsg.includes('actualizado') ? 'text-[#71BF44]' : 'text-red-500'}`}>{creatorMsg}</p>}
+            </section>
+          )}
+
           {/* Responsables */}
           <section>
             <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-2">
@@ -533,6 +600,26 @@ export default function RAGCollectionsTable() {
         articulos: group.articulos.map(art =>
           art.source_url.includes('zohopublic') ? { ...art, allowed_editors: editors } : art
         ),
+      };
+    }));
+  };
+
+  const handleCreatorChange = (source_url: string, newCreator: string) => {
+    setData(prev => prev.map(group => ({
+      ...group,
+      articulos: group.articulos.map(art =>
+        art.source_url === source_url ? { ...art, created_by: newCreator } : art
+      ),
+    })));
+    setDetailsModal(prev => prev?.source_url === source_url ? { ...prev, created_by: newCreator } : prev);
+  };
+
+  const handleManualCreatorChange = (manual: string, newCreator: string) => {
+    setData(prev => prev.map(group => {
+      if (group.manual !== manual) return group;
+      return {
+        ...group,
+        articulos: group.articulos.map(art => ({ ...art, created_by: newCreator })),
       };
     }));
   };
@@ -701,8 +788,8 @@ export default function RAGCollectionsTable() {
   return (
     <>
       {pdfModal     && <PdfUpdateModal art={pdfModal}     userEmail={userEmail} onClose={() => setPdfModal(null)} />}
-      {detailsModal && <DetailsModal   art={detailsModal} isAdmin={isAdmin}     onClose={() => setDetailsModal(null)} onEditorsChange={handleEditorsChange} />}
-      {manualModal  && <ManualDetailsModal group={manualModal} isAdmin={isAdmin} onClose={() => setManualModal(null)} onEditorsChange={handleManualEditorsChange} />}
+      {detailsModal && <DetailsModal   art={detailsModal} isAdmin={isAdmin}     onClose={() => setDetailsModal(null)} onEditorsChange={handleEditorsChange} onCreatorChange={handleCreatorChange} />}
+      {manualModal  && <ManualDetailsModal group={manualModal} isAdmin={isAdmin} onClose={() => setManualModal(null)} onEditorsChange={handleManualEditorsChange} onManualCreatorChange={handleManualCreatorChange} />}
 
       <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-3xl overflow-hidden shadow-xl ring-1 ring-black/5 dark:ring-white/5">
         {/* ── Header ── */}
