@@ -92,6 +92,7 @@ export default function ResumenMySatcomPage() {
   const [splitBy, setSplitBy] = useState<'Ambiente' | 'Pais'>('Ambiente');
   const [baseYear, setBaseYear] = useState<number>(2026);
   const [compareYear, setCompareYear] = useState<number>(2025);
+  const [timelineStartYear, setTimelineStartYear] = useState<number>(2024);
 
   const fetchData = useCallback(async (isRefresh = false) => {
     try {
@@ -208,6 +209,11 @@ export default function ResumenMySatcomPage() {
     filteredData.forEach(item => {
       if (!item || !item.Fecha) return;
       const dateKey = String(item.Fecha).substring(0, 7); // YYYY-MM
+      const itemYear = parseInt(dateKey.split('-')[0]);
+      
+      // Aplicamos el filtro de inicio de línea de tiempo
+      if (timelineStartYear > 0 && itemYear < timelineStartYear) return;
+
       if (!grouped[dateKey]) grouped[dateKey] = { date: dateKey };
       
       const paisValue = item.Pais === null || item.Pais === undefined || item.Pais === 'NULL' ? 'NULL' : item.Pais;
@@ -493,7 +499,31 @@ export default function ResumenMySatcomPage() {
              </select>
           </div>
 
-          <div className="w-px h-10 bg-neutral-200 dark:bg-neutral-800 hidden lg:block" />
+          <div className="w-px h-10 bg-neutral-200 dark:border-neutral-800 hidden lg:block" />
+
+          {/* Histórico/Rango Filter */}
+          <div className="flex flex-col gap-3">
+             <div className="flex items-center gap-2">
+                <Layers className="w-3.5 h-3.5 text-[#71BF44]" />
+                <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Rango Evolución</span>
+             </div>
+             <div className="flex gap-2">
+                <button
+                  onClick={() => setTimelineStartYear(2024)}
+                  className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all ${timelineStartYear === 2024 ? 'bg-[#71BF44] text-white shadow-lg shadow-[#71BF44]/20' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:text-white hover:bg-neutral-700'}`}
+                >
+                  Desde 2024
+                </button>
+                <button
+                  onClick={() => setTimelineStartYear(0)}
+                  className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all ${timelineStartYear === 0 ? 'bg-neutral-900 dark:bg-white text-white dark:text-black shadow-lg' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:text-white hover:bg-neutral-700'}`}
+                >
+                  Ver Todo
+                </button>
+             </div>
+          </div>
+
+          <div className="w-px h-10 bg-neutral-200 dark:border-neutral-800 hidden lg:block" />
 
           {/* Year Comparison Filters */}
           <div className="flex flex-col gap-3">
