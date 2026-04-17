@@ -462,7 +462,14 @@ export default function ResumenMySatcomPage() {
              </div>
              <select 
               value={selectedPais}
-              </select>
+              onChange={(e) => setSelectedPais(e.target.value)}
+              className="w-full bg-neutral-100 dark:bg-neutral-800 border-none rounded-xl px-4 py-2 text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#71BF44]/30"
+             >
+                <option value="Todos">TODOS LOS PAÍSES</option>
+                {uniqueCountries.map(p => (
+                   <option key={String(p)} value={String(p)}>{PAIS_MAP[p as any] || `ID: ${p}`}</option>
+                ))}
+             </select>
           </div>
 
           <div className="w-px h-10 bg-neutral-200 dark:bg-neutral-800 hidden lg:block" />
