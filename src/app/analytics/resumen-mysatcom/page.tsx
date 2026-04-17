@@ -572,7 +572,8 @@ export default function ResumenMySatcomPage() {
                        axisLine={false} 
                        tickLine={false} 
                        tick={{ fill: '#666', fontSize: 10, fontWeight: 700 }}
-                                     <Tooltip 
+                    />
+                    <Tooltip 
                       contentStyle={{ backgroundColor: '#000', border: '1px solid #333', borderRadius: '20px', padding: '15px' }}
                       itemStyle={{ fontSize: '11px', fontWeight: '900', textTransform: 'uppercase', color: '#fff' }}
                       labelStyle={{ marginBottom: '10px', color: '#71BF44', fontWeight: '900' }}
