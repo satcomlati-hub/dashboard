@@ -9,7 +9,7 @@ export default async function AnalyticsPage() {
   const subsections = [
     {
       id: 'monitoreo',
-      name: 'Monitoreo de Eventos',
+      name: 'Intermitencias SRI-EC',
       description: 'Bitácora técnica de eventos, conteo de ejecuciones y detalles por país.',
       href: '/analytics/monitoreo',
       icon: (
@@ -21,6 +21,23 @@ export default async function AnalyticsPage() {
         type: 'Supabase',
         source: 'mySatcom.bitacora_eventos',
         method: 'Consulta Directa SQL'
+      }
+    },
+    {
+      id: 'eventos',
+      name: 'Historial de Eventos',
+      description: 'Seguimiento cronológico de encolamientos, reprocesos y eventos de RabbitMQ.',
+      href: '/analytics/eventos',
+      icon: (
+        <svg className="w-6 h-6 text-[#71BF44]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      ),
+      connection: {
+        type: 'n8n',
+        source: 'https://sara.mysatcomla.com/webhook/DetalleEventosRabbit',
+        flowName: 'API Detalle Eventos Rabbit',
+        flowId: 'MULTI_ENV'
       }
     },
     {

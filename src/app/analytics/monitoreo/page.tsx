@@ -121,8 +121,9 @@ export default function MonitoreoSubpage() {
     startOfWeek.setDate(today.getDate() - dayOfWeek + 1);
 
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const startOfPreviousMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
 
-    let total = 0, mes = 0, semana = 0, hoy = 0;
+    let total = 0, mes = 0, mesAnterior = 0, semana = 0, hoy = 0;
 
     data.forEach(item => {
       const val = Number(item.num_eventos) || 0;
@@ -135,9 +136,10 @@ export default function MonitoreoSubpage() {
       if (itemTime === today.getTime()) hoy += val;
       if (itemTime >= startOfWeek.getTime()) semana += val;
       if (itemTime >= startOfMonth.getTime()) mes += val;
+      if (itemTime >= startOfPreviousMonth.getTime() && itemTime < startOfMonth.getTime()) mesAnterior += val;
     });
 
-    return { total, mes, semana, hoy };
+    return { total, mes, mesAnterior, semana, hoy };
   }, [data]);
 
   // Helper: format Date as YYYY-MM-DD
@@ -176,6 +178,9 @@ export default function MonitoreoSubpage() {
       const dayOfWeek = today.getDay() || 7;
       start = new Date(today);
       start.setDate(today.getDate() - dayOfWeek + 1);
+    } else if (counter === 'mesAnterior') {
+      start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      end = new Date(today.getFullYear(), today.getMonth(), 0);
     } else {
       // mes
       start = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -220,7 +225,7 @@ export default function MonitoreoSubpage() {
               <BarChart2 className="w-7 h-7 text-[#71BF44]" />
             </div>
             <div>
-              <h2 className="text-2xl font-extrabold text-neutral-900 dark:text-white tracking-tight">Monitoreo de Eventos</h2>
+              <h2 className="text-2xl font-extrabold text-neutral-900 dark:text-white tracking-tight">Intermitencias SRI-EC</h2>
               <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">Bitácora técnica e indicadores de rendimiento de Satcom.</p>
             </div>
           </div>
@@ -310,6 +315,30 @@ export default function MonitoreoSubpage() {
               <div className="h-8 w-16 bg-neutral-200 dark:bg-neutral-700 rounded-lg animate-pulse mt-1" />
             ) : (
               <h4 className="text-2xl font-black text-neutral-900 dark:text-white">{metricas.mes.toLocaleString()}</h4>
+            )}
+            <p className="text-[10px] text-neutral-400 mt-0.5">Clic para filtrar</p>
+          </div>
+        </button>
+
+        {/* Mes Anterior */}
+        <button
+          onClick={() => handleCounterClick('mesAnterior')}
+          title="Filtrar por mes anterior"
+          className={`bg-indigo-500/5 border rounded-2xl p-6 flex items-center gap-4 transition-all hover:-translate-y-1 cursor-pointer text-left w-full group ${
+            activeCounter === 'mesAnterior'
+              ? 'border-indigo-500 ring-2 ring-indigo-500/40 shadow-lg'
+              : 'border-indigo-500/20 hover:border-indigo-500/50'
+          }`}
+        >
+          <div className="w-12 h-12 rounded-full bg-indigo-500 flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform">
+            <CalendarDays className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-indigo-500 uppercase tracking-wider">Mes Anterior</p>
+            {loading ? (
+              <div className="h-8 w-16 bg-neutral-200 dark:bg-neutral-700 rounded-lg animate-pulse mt-1" />
+            ) : (
+              <h4 className="text-2xl font-black text-neutral-900 dark:text-white">{metricas.mesAnterior.toLocaleString()}</h4>
             )}
             <p className="text-[10px] text-neutral-400 mt-0.5">Clic para filtrar</p>
           </div>
@@ -406,6 +435,7 @@ export default function MonitoreoSubpage() {
         {activeCounter && activeCounter !== 'total' && (
           <div className="flex items-center gap-2 px-3 py-2 bg-neutral-100 dark:bg-neutral-800 rounded-lg text-xs font-semibold text-neutral-600 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700">
             {activeCounter === 'mes' && <span>📅 Este Mes activo</span>}
+            {activeCounter === 'mesAnterior' && <span>📅 Mes Anterior activo</span>}
             {activeCounter === 'semana' && <span>📆 Esta Semana activa</span>}
             {activeCounter === 'hoy' && <span>🕐 Hoy activo</span>}
           </div>

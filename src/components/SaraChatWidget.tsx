@@ -126,7 +126,7 @@ export default function SaraChatWidget() {
       {/* ── Expanded panel ─────────────────────────────────────────────────── */}
       {open && (
         <div
-          className="fixed bottom-24 right-6 z-50 flex flex-col overflow-hidden"
+          className="fixed bottom-24 left-6 z-50 flex flex-col overflow-hidden"
           style={{
             width: '380px',
             height: '520px',
@@ -277,7 +277,7 @@ export default function SaraChatWidget() {
       {/* ── Float button ────────────────────────────────────────────────────── */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 flex items-center justify-center rounded-lg transition-all hover:scale-105 active:scale-95"
+        className="fixed bottom-6 left-6 z-50 w-14 h-14 flex items-center justify-center rounded-lg transition-all hover:scale-105 active:scale-95"
         style={{
           background: open ? '#131313' : 'linear-gradient(135deg, #63b037, #1a4500)',
           boxShadow: open ? '0 4px 16px rgba(0,0,0,0.4)' : '0 8px 24px rgba(113,191,68,0.3)',
