@@ -229,7 +229,7 @@ export default function ResumenMySatcomPage() {
       data: Object.values(grouped).sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''))),
       categories: Array.from(categories)
     };
-  }, [filteredData, splitBy]);
+  }, [filteredData, splitBy, timelineStartYear]);
 
   // Chart 2: YoY Comparison (Selected Base vs Compare Year)
   const yoyChartData = useMemo(() => {
