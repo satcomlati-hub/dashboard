@@ -288,10 +288,17 @@ export default function ResumenMySatcomPage() {
   }, [data]);
 
   const growthSummary = useMemo(() => {
-    const baseTotal = yoyChartData.reduce((acc, curr) => acc + curr.current, 0);
-    const compareTotal = yoyChartData.reduce((acc, curr) => acc + curr.previous, 0);
+    // Para una comparativa justa (Like-for-Like), solo sumamos los meses que tienen datos en el año base
+    // Esto evita comparar por ejemplo 4 meses de 2026 contra 12 meses de 2025.
+    const relevantMonths = yoyChartData.filter(m => m.current > 0);
+    
+    const baseTotal = relevantMonths.reduce((acc, curr) => acc + curr.current, 0);
+    const compareTotal = relevantMonths.reduce((acc, curr) => acc + curr.previous, 0);
+    
     const growth = compareTotal > 0 ? ((baseTotal - compareTotal) / compareTotal) * 100 : 0;
-    return { baseTotal, compareTotal, growth };
+    const isPartial = relevantMonths.length < 12 && relevantMonths.length > 0;
+    
+    return { baseTotal, compareTotal, growth, isPartial, monthCount: relevantMonths.length };
   }, [yoyChartData]);
 
   const uniqueCountries = useMemo(() => {
@@ -610,9 +617,16 @@ export default function ResumenMySatcomPage() {
                     <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Año {baseYear} vs {compareYear}</p>
                  </div>
               </div>
-              <div className={`px-4 py-2 rounded-2xl flex items-center gap-2 ${growthSummary.growth >= 0 ? 'bg-[#71BF44]/10 text-[#71BF44]' : 'bg-red-500/10 text-red-500'}`}>
-                 {growthSummary.growth >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingUp className="w-4 h-4 rotate-180" />}
-                 <span className="text-xs font-black tracking-tighter">{growthSummary.growth >= 0 ? '+' : ''}{growthSummary.growth.toFixed(1)}%</span>
+              <div className="flex items-center gap-3">
+                 <div className={`px-4 py-2 rounded-2xl flex flex-col items-center leading-none ${growthSummary.growth >= 0 ? 'bg-[#71BF44]/10 text-[#71BF44]' : 'bg-red-500/10 text-red-500'}`}>
+                    <div className="flex items-center gap-2 mb-1">
+                       {growthSummary.growth >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingUp className="w-4 h-4 rotate-180" />}
+                       <span className="text-sm font-black tracking-tighter">{growthSummary.growth >= 0 ? '+' : ''}{growthSummary.growth.toFixed(1)}%</span>
+                    </div>
+                    {growthSummary.isPartial && (
+                       <span className="text-[8px] font-black uppercase opacity-60 tracking-tight">YTD (LFL)</span>
+                    )}
+                 </div>
               </div>
            </div>
 
