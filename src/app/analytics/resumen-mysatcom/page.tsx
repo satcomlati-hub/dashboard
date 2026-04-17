@@ -636,9 +636,10 @@ export default function ResumenMySatcomPage() {
                       contentStyle={{ backgroundColor: '#000', border: '1px solid #333', borderRadius: '20px', padding: '15px' }}
                       itemStyle={{ fontSize: '11px', fontWeight: '900', textTransform: 'uppercase', color: '#fff' }}
                       labelStyle={{ marginBottom: '10px', color: '#71BF44', fontWeight: '900' }}
-                      formatter={(value: any, name: string, props: any) => {
-                         if (name.includes('Crecimiento')) return [`${Number(value).toFixed(1)}%`, 'Variación'];
-                         return [Number(value).toLocaleString(), name];
+                      formatter={(value: any, name?: string) => {
+                         const n = name || '';
+                         if (n.includes('Crecimiento')) return [`${Number(value).toFixed(1)}%`, 'Variación'];
+                         return [Number(value).toLocaleString(), n];
                       }}
                     />
                     <Legend iconType="circle" wrapperStyle={{ paddingTop: '30px', fontSize: '10px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.1em' }} />
