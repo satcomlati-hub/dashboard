@@ -112,7 +112,7 @@ export default function PendientesReportePage() {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       
-      const res = await fetch(`https://sara.mysatcomla.com/webhook/MonitoreoNoAutorizados?Ambiente=${selectedAmbiente}&Proceso=consulta_tablero_pendiente_info_reportes_2026`);
+      const res = await fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=${selectedAmbiente}&Proceso=consulta_tablero_pendiente_info_reportes_2026`);
 
       if (!res.ok) throw new Error('Error al obtener datos');
       

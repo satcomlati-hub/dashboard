@@ -130,7 +130,7 @@ export default function UnauthorizedVouchersPage() {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       
-      const res = await fetch(`https://sara.mysatcomla.com/webhook/MonitoreoNoAutorizados?Ambiente=${ambiente}`);
+      const res = await fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=${ambiente}`);
 
       if (!res.ok) throw new Error('Error al obtener datos');
       

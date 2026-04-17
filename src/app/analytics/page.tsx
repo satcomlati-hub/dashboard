@@ -52,7 +52,7 @@ export default async function AnalyticsPage() {
       ),
       connection: {
         type: 'n8n',
-        source: 'https://sara.mysatcomla.com/webhook/MonitoreoNoAutorizados',
+        source: 'https://sara.mysatcomla.com/webhook/GetData',
         flowName: 'Monitoreo Procesos Consulta SP',
         flowId: 'VOfL2rAriW1s0TeQ'
       }
@@ -69,7 +69,7 @@ export default async function AnalyticsPage() {
       ),
       connection: {
         type: 'n8n',
-        source: 'https://sara.mysatcomla.com/webhook/MonitoreoNoAutorizados',
+        source: 'https://sara.mysatcomla.com/webhook/GetData',
         flowName: 'Monitoreo Procesos Consulta SP',
         flowId: 'VOfL2rAriW1s0TeQ'
       }
