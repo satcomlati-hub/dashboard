@@ -398,6 +398,24 @@ function ManualDetailsModal({ group, isAdmin, onClose, onEditorsChange, onManual
     finally { setRemoving(null); }
   };
 
+  const saveManualCreator = async () => {
+    const email = newManualCreator.trim();
+    if (!email || !email.includes('@')) { setCreatorMsg('Correo inválido'); return; }
+    setSavingManualCreator(true); setCreatorMsg('');
+    try {
+      const res = await fetch('/api/db/rag-collections', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ manual: group.manual, new_creator_email: email }),
+      });
+      if (!res.ok) throw new Error();
+      onManualCreatorChange(group.manual, email);
+      setCreatorMsg('Responsable actualizado');
+      setNewManualCreator('');
+    } catch { setCreatorMsg('Error al cambiar responsable'); }
+    finally { setSavingManualCreator(false); setTimeout(() => setCreatorMsg(''), 3000); }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-3xl shadow-2xl p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
