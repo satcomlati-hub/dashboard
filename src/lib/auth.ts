@@ -31,9 +31,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async jwt({ token }) {
       if (token.email && !token.permissions) {
-        const { role, permissions } = await getUserPermissions(token.email);
-        token.role = role;
-        token.permissions = permissions;
+        try {
+          const { role, permissions } = await getUserPermissions(token.email as string);
+          token.role = role;
+          token.permissions = permissions;
+        } catch (err) {
+          console.error("[auth] Error obteniendo permisos para", token.email, err);
+          token.role = "operator";
+          token.permissions = [];
+        }
       }
       return token;
     },

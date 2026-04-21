@@ -75,9 +75,14 @@ export async function getUserPermissions(email: string): Promise<UserPermissions
     [email]
   );
 
+  if (result.rows.length === 0) {
+    // La tabla roles o role_permissions está vacía; devolver fallback seguro
+    return { role: defaultRole, permissions: [] };
+  }
+
   const perms: UserPermissions = {
     role: result.rows[0].role,
-    permissions: result.rows[0].permissions,
+    permissions: result.rows[0].permissions ?? [],
   };
   await cachePermissions(email, perms);
   return perms;

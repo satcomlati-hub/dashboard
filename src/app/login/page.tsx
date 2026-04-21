@@ -1,6 +1,15 @@
 import { signIn } from "@/lib/auth"
 
-export default function LoginPage() {
+const ERROR_MESSAGES: Record<string, string> = {
+  AccessDenied: "Acceso denegado. Tu cuenta no pertenece a un dominio autorizado (@satcomla.com / @somoshora.com).",
+  Configuration: "Error de configuración del servidor. Contacta al administrador.",
+  Default: "Error al iniciar sesión. Intenta de nuevo.",
+}
+
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  const { error } = await searchParams
+  const errorMessage = error ? (ERROR_MESSAGES[error] ?? ERROR_MESSAGES.Default) : null
+
   return (
     <div className="relative min-h-screen bg-[#0a0a0a] flex overflow-hidden">
 
@@ -89,6 +98,14 @@ export default function LoginPage() {
             <p className="text-[0.6875rem] font-mono tracking-[0.15em] uppercase text-[#594139] mb-6">
               Acceso Corporativo
             </p>
+
+            {/* Error banner */}
+            {errorMessage && (
+              <div className="mb-5 flex items-start gap-2 px-3 py-2.5 bg-[#1a0a0a] border border-red-900/40 rounded-md">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0 mt-1" />
+                <p className="text-[0.7rem] text-red-400 leading-relaxed">{errorMessage}</p>
+              </div>
+            )}
 
             {/* Zoho button — primary CTA */}
             <form
