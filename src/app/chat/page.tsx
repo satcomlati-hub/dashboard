@@ -114,7 +114,7 @@ export default function SaraChatPage() {
   const { data: session }             = useSession();
   const [sessions, setSessions]             = useState<StoredSession[]>([]);
   const [activeSessionId, setActiveId]      = useState('');
-  const [messages, setMessages]             = useState<Message[]>([WELCOME]);
+  const [messages, setMessages]             = useState<Message[]>([]);
   const [input, setInput]                   = useState('');
   const [isLoading, setIsLoading]           = useState(false);
   const [selectedFile, setSelectedFile]     = useState<File | null>(null);
@@ -138,20 +138,20 @@ export default function SaraChatPage() {
         }
       }
     } catch { /* ignore */ }
-    createSession(true);
+    createSession(true, true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function createSession(initial = false) {
+  function createSession(initial = false, firstLoad = false) {
     const id = `sara_${newId()}`;
-    const s: StoredSession = { id, title: 'Nueva sesión', preview: 'Inicia una consulta', timestamp: Date.now(), messages: [WELCOME] };
+    const s: StoredSession = { id, title: 'Nueva sesión', preview: 'Inicia una consulta', timestamp: Date.now(), messages: [] };
     setSessions(prev => {
       const next = [s, ...prev];
       if (!initial) localStorage.setItem('sara_sessions', JSON.stringify(next));
       return next;
     });
     setActiveId(id);
-    setMessages([WELCOME]);
+    setMessages([]);
     setInput('');
     clearFile();
   }
@@ -420,7 +420,10 @@ export default function SaraChatPage() {
               Nueva sesión
             </button>
             <button
-              onClick={() => setMessages([WELCOME])}
+              onClick={() => {
+                setMessages([]);
+                persist([], activeSessionId);
+              }}
               className="px-3 py-1.5 text-[10px] font-bold rounded border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors uppercase tracking-wider"
             >
               Limpiar
@@ -429,69 +432,106 @@ export default function SaraChatPage() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-6 py-8 space-y-6">
-          {messages.map((m) => (
-            <div key={m.id} className={`flex gap-3 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              {m.role === 'assistant' && (
-                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#71BF44] to-[#5a9c33] flex items-center justify-center text-white shrink-0 mt-0.5 shadow-sm">
-                  <span className="font-bold text-[10px]">S</span>
-                </div>
-              )}
-
-              <div className={`max-w-[80%] flex flex-col gap-2 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
-                {/* Bubble */}
-                <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
-                  m.role === 'user'
-                    ? 'bg-neutral-900 dark:bg-neutral-700 text-white rounded-tr-sm'
-                    : 'bg-white dark:bg-[#1a1a1a] border border-neutral-200 dark:border-neutral-800 text-neutral-800 dark:text-neutral-200 rounded-tl-sm shadow-sm'
-                }`}>
-                  {m.userImage && (
-                    <img src={m.userImage} alt="adjunto" className="rounded-lg max-h-48 object-contain mb-2" />
-                  )}
-                  {m.content && (
-                    <p className="whitespace-pre-wrap">{renderMarkdown(m.content)}</p>
-                  )}
-                </div>
-
-                {/* RAG images */}
-                {m.images && m.images.length > 0 && (
-                  <div className={`flex flex-wrap gap-2 ${m.images.length > 1 ? 'grid grid-cols-2' : ''}`}>
-                    {m.images.map((img, i) => {
-                      const src = img.url || (img.base64 ? `data:image/jpeg;base64,${img.base64}` : null);
-                      if (!src) return null;
-                      return (
-                        <a key={i} href={img.sourceUrl || src} target="_blank" rel="noopener noreferrer">
-                          <img src={src} alt={img.filename || `Ref. ${i + 1}`}
-                            className="rounded-xl max-h-48 object-contain border border-neutral-200 dark:border-neutral-800 hover:ring-2 hover:ring-[#71BF44]/40 transition-all" />
-                        </a>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Sources */}
-                {m.sources && m.sources.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {m.sources.map((src, i) => (
-                      <a key={i} href={src.url} target="_blank" rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-[#71BF44]/10 text-[#71BF44] hover:bg-[#71BF44]/20 transition-colors">
-                        <IconExternalLink />
-                        {src.title || 'Ver manual'}
-                      </a>
-                    ))}
-                  </div>
-                )}
+        <div className="flex-1 overflow-y-auto px-6 py-8">
+          {messages.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center max-w-3xl mx-auto text-center space-y-8 animate-in fade-in duration-700">
+              <div className="space-y-2">
+                <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#71BF44] via-[#5a9c33] to-[#4a8229] bg-clip-text text-transparent pb-2">
+                  Hola, {session?.user?.name?.split(' ')[0] || 'invitado'}
+                </h1>
+                <h2 className="text-2xl md:text-3xl font-medium text-neutral-400 dark:text-neutral-500">
+                  ¿Cómo puedo ayudarte hoy?
+                </h2>
               </div>
 
-              {m.role === 'user' && (
-                <div className="w-7 h-7 rounded-full bg-neutral-200 dark:bg-neutral-700 flex items-center justify-center shrink-0 mt-0.5">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-500 dark:text-neutral-400">
-                    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
-                  </svg>
-                </div>
-              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl px-4">
+                {[
+                  { title: 'Análisis de manuales', desc: 'Explora la documentación técnica de SATCOM.', icon: '📚' },
+                  { title: 'Visión por IA', desc: 'Sube una imagen para que la analice en detalle.', icon: '👁️' },
+                  { title: 'Soporte Técnico', desc: 'Pregúntame sobre procedimientos o fallas.', icon: '🔧' },
+                  { title: 'Consultas RAG', desc: 'Busco información precisa en nuestra base de conocimientos.', icon: '🔍' },
+                ].map((item, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setInput(item.title);
+                      textareaRef.current?.focus();
+                    }}
+                    className="flex flex-col items-start p-4 rounded-2xl bg-white dark:bg-[#1a1a1a] border border-neutral-200 dark:border-neutral-800 hover:border-[#71BF44]/50 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-all text-left group"
+                  >
+                    <span className="text-2xl mb-2">{item.icon}</span>
+                    <span className="text-sm font-bold text-neutral-900 dark:text-white group-hover:text-[#71BF44] transition-colors">{item.title}</span>
+                    <span className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">{item.desc}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          ))}
+          ) : (
+            <div className="space-y-6">
+              {messages.map((m) => (
+                <div key={m.id} className={`flex gap-3 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  {m.role === 'assistant' && (
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#71BF44] to-[#5a9c33] flex items-center justify-center text-white shrink-0 mt-0.5 shadow-sm">
+                      <span className="font-bold text-[10px]">S</span>
+                    </div>
+                  )}
+
+                  <div className={`max-w-[80%] flex flex-col gap-2 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                    {/* Bubble */}
+                    <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+                      m.role === 'user'
+                        ? 'bg-neutral-900 dark:bg-neutral-700 text-white rounded-tr-sm'
+                        : 'bg-white dark:bg-[#1a1a1a] border border-neutral-200 dark:border-neutral-800 text-neutral-800 dark:text-neutral-200 rounded-tl-sm shadow-sm'
+                    }`}>
+                      {m.userImage && (
+                        <img src={m.userImage} alt="adjunto" className="rounded-lg max-h-48 object-contain mb-2" />
+                      )}
+                      {m.content && (
+                        <p className="whitespace-pre-wrap">{renderMarkdown(m.content)}</p>
+                      )}
+                    </div>
+
+                    {/* RAG images */}
+                    {m.images && m.images.length > 0 && (
+                      <div className={`flex flex-wrap gap-2 ${m.images.length > 1 ? 'grid grid-cols-2' : ''}`}>
+                        {m.images.map((img, i) => {
+                          const src = img.url || (img.base64 ? `data:image/jpeg;base64,${img.base64}` : null);
+                          if (!src) return null;
+                          return (
+                            <a key={i} href={img.sourceUrl || src} target="_blank" rel="noopener noreferrer">
+                              <img src={src} alt={img.filename || `Ref. ${i + 1}`}
+                                className="rounded-xl max-h-48 object-contain border border-neutral-200 dark:border-neutral-800 hover:ring-2 hover:ring-[#71BF44]/40 transition-all" />
+                            </a>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Sources */}
+                    {m.sources && m.sources.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {m.sources.map((src, i) => (
+                          <a key={i} href={src.url} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-[#71BF44]/10 text-[#71BF44] hover:bg-[#71BF44]/20 transition-colors">
+                            <IconExternalLink />
+                            {src.title || 'Ver manual'}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {m.role === 'user' && (
+                    <div className="w-7 h-7 rounded-full bg-neutral-200 dark:bg-neutral-700 flex items-center justify-center shrink-0 mt-0.5">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-500 dark:text-neutral-400">
+                        <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Loading indicator */}
           {isLoading && (

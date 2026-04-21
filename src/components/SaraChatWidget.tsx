@@ -36,7 +36,7 @@ const WELCOME: Message = {
 
 export default function SaraChatWidget() {
   const [open, setOpen]               = useState(false);
-  const [messages, setMessages]       = useState<Message[]>([WELCOME]);
+  const [messages, setMessages]       = useState<Message[]>([]);
   const [input, setInput]             = useState('');
   const [loading, setLoading]         = useState(false);
   const [unread, setUnread]           = useState(false);
@@ -239,28 +239,40 @@ export default function SaraChatWidget() {
             className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
             style={{ scrollbarWidth: 'thin', scrollbarColor: '#262626 transparent' }}
           >
-            {messages.map((m) => (
-              <div key={m.id} className={`flex gap-2.5 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                {m.role === 'assistant' && (
-                  <div className="w-6 h-6 rounded-sm shrink-0 mt-0.5 flex items-center justify-center font-bold text-[10px]" style={{ background: '#1a4500', color: '#71BF44' }}>
-                    S
-                  </div>
-                )}
-                <div
-                  className="text-xs leading-relaxed rounded-lg px-3 py-2.5 max-w-[80%]"
-                  style={
-                    m.role === 'assistant'
-                      ? { background: '#262626', color: 'rgba(229,229,229,0.9)' }
-                      : { background: '#1a4500', color: '#e5e5e5', borderRadius: '0.5rem 0.5rem 0.125rem 0.5rem' }
-                  }
-                >
-                  {m.userImage && (
-                    <img src={m.userImage} alt="adjunto" className="rounded max-h-32 object-contain mb-2" />
-                  )}
-                  <p className="whitespace-pre-wrap">{m.role === 'assistant' ? renderText(m.content) : m.content}</p>
+            {messages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center p-4 space-y-4 animate-in fade-in duration-500">
+                <div className="w-12 h-12 rounded-xl bg-[#1a4500] flex items-center justify-center text-[#71BF44] text-xl font-bold">
+                  S
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-bold text-neutral-200">¿En qué puedo ayudarte?</p>
+                  <p className="text-[10px] text-neutral-500">SARA está lista para analizar manuales e imágenes.</p>
                 </div>
               </div>
-            ))}
+            ) : (
+              messages.map((m) => (
+                <div key={m.id} className={`flex gap-2.5 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                  {m.role === 'assistant' && (
+                    <div className="w-6 h-6 rounded-sm shrink-0 mt-0.5 flex items-center justify-center font-bold text-[10px]" style={{ background: '#1a4500', color: '#71BF44' }}>
+                      S
+                    </div>
+                  )}
+                  <div
+                    className="text-xs leading-relaxed rounded-lg px-3 py-2.5 max-w-[80%]"
+                    style={
+                      m.role === 'assistant'
+                        ? { background: '#262626', color: 'rgba(229,229,229,0.9)' }
+                        : { background: '#1a4500', color: '#e5e5e5', borderRadius: '0.5rem 0.5rem 0.125rem 0.5rem' }
+                    }
+                  >
+                    {m.userImage && (
+                      <img src={m.userImage} alt="adjunto" className="rounded max-h-32 object-contain mb-2" />
+                    )}
+                    <p className="whitespace-pre-wrap">{m.role === 'assistant' ? renderText(m.content) : m.content}</p>
+                  </div>
+                </div>
+              ))
+            )}
 
             {loading && (
               <div className="flex gap-2.5">
