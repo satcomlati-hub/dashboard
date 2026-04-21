@@ -4,7 +4,6 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const query = formData.get('query');
-    const sessionId = formData.get('sessionId');
     const image = formData.get('image');
 
     if (!query && !image) {
@@ -17,8 +16,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Configuration error' }, { status: 500 });
     }
 
-    // Reenviamos el FormData completo a n8n. 
-    // fetch establecerá automáticamente el Content-Type adecuado con el boundary para multipart/form-data.
     const response = await fetch(n8nWebhookUrl, {
       method: 'POST',
       body: formData,
@@ -30,8 +27,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Error communicating with SARA' }, { status: response.status });
     }
 
-    const data = await response.json();
-    return NextResponse.json(data);
+    const contentType = response.headers.get('content-type') || 'application/json';
+
+    // Proxy the response body directly, preserving streaming when n8n sends SSE
+    return new Response(response.body, {
+      status: response.status,
+      headers: {
+        'Content-Type': contentType,
+        'Cache-Control': 'no-cache, no-transform',
+        'X-Accel-Buffering': 'no',
+      },
+    });
   } catch (error) {
     console.error('Chat API Error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

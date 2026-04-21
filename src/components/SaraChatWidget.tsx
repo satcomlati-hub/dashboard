@@ -99,17 +99,82 @@ export default function SaraChatWidget() {
       if (currentFile) formData.append('image', currentFile);
 
       const res = await fetch('/api/chat', { method: 'POST', body: formData });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      const saraMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: data.response || 'No pude generar una respuesta.',
-      };
+      const contentType = res.headers.get('content-type') || '';
 
-      setMessages([...withUser, saraMsg]);
-      if (!open) setUnread(true);
+      if (res.body && contentType.includes('event-stream')) {
+        // ── Streaming (SSE) ────────────────────────────────────────────────
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let accumulated = '';
+        let streamMsgId: string | null = null;
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() ?? '';
+
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              const raw = line.slice(6).trim();
+              if (!raw || raw === '[DONE]') continue;
+
+              let chunk = '';
+              try {
+                const parsed = JSON.parse(raw);
+                if (parsed.type === 'done') continue;
+                chunk = parsed.text ?? parsed.content ?? parsed.output ?? '';
+              } catch {
+                chunk = raw;
+              }
+
+              if (!chunk) continue;
+
+              if (!streamMsgId) {
+                streamMsgId = (Date.now() + 1).toString();
+                accumulated = chunk;
+                setLoading(false);
+                setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: chunk }]);
+              } else {
+                accumulated += chunk;
+                setMessages(prev =>
+                  prev.map(m => m.id === streamMsgId ? { ...m, content: accumulated } : m)
+                );
+              }
+            }
+          }
+        } finally {
+          reader.releaseLock();
+        }
+
+        if (!streamMsgId) {
+          setLoading(false);
+          setMessages([...withUser, {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: 'Sin respuesta.',
+          }]);
+        }
+
+        if (!open) setUnread(true);
+
+      } else {
+        // ── JSON (fallback) ──────────────────────────────────────────────
+        const data = await res.json();
+        setMessages([...withUser, {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: data.response || 'No pude generar una respuesta.',
+        }]);
+        if (!open) setUnread(true);
+      }
+
     } catch {
       setMessages([...withUser, {
         id: (Date.now() + 1).toString(),

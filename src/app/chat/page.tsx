@@ -241,7 +241,7 @@ export default function SaraChatPage() {
     const userMsg: Message = { id: newId(), role: 'user', content: input, userImage: previewUrl };
     const withUser = [...messages, userMsg];
     setMessages(withUser);
-    const q = input, f = selectedFile;
+    const q = input, f = selectedFile, sid = activeSessionId;
     setInput('');
     clearFile();
     setIsLoading(true);
@@ -249,27 +249,96 @@ export default function SaraChatPage() {
     try {
       const fd = new FormData();
       fd.append('query', q);
-      fd.append('sessionId', activeSessionId);
+      fd.append('sessionId', sid);
       if (session?.user?.name) fd.append('userName', session.user.name);
       if (session?.user?.email) fd.append('userEmail', session.user.email);
       if (f) fd.append('image', f);
+
       const res = await fetch('/api/chat', { method: 'POST', body: fd });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      const saraMsg: Message = {
-        id: newId(), role: 'assistant',
-        content: data.response || 'Sin respuesta.',
-        images:  data.images  || [],
-        sources: data.sources || [],
-      };
-      const final = [...withUser, saraMsg];
-      setMessages(final);
-      persist(final, activeSessionId);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const contentType = res.headers.get('content-type') || '';
+
+      if (res.body && contentType.includes('event-stream')) {
+        // ── Streaming (SSE) ──────────────────────────────────────────────────
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let accumulated = '';
+        let streamMsgId: string | null = null;
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() ?? '';
+
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              const raw = line.slice(6).trim();
+              if (!raw || raw === '[DONE]') continue;
+
+              let chunk = '';
+              try {
+                const parsed = JSON.parse(raw);
+                if (parsed.type === 'done') continue;
+                chunk = parsed.text ?? parsed.content ?? parsed.output ?? '';
+              } catch {
+                chunk = raw;
+              }
+
+              if (!chunk) continue;
+
+              if (!streamMsgId) {
+                // First content received: replace loading dots with message
+                streamMsgId = newId();
+                accumulated = chunk;
+                setIsLoading(false);
+                setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: chunk }]);
+              } else {
+                accumulated += chunk;
+                setMessages(prev =>
+                  prev.map(m => m.id === streamMsgId ? { ...m, content: accumulated } : m)
+                );
+              }
+            }
+          }
+        } finally {
+          reader.releaseLock();
+        }
+
+        if (!streamMsgId) {
+          // Stream ended with no content
+          streamMsgId = newId();
+          setIsLoading(false);
+          setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: 'Sin respuesta.' }]);
+        }
+
+        const finalMsg: Message = { id: streamMsgId, role: 'assistant', content: accumulated || 'Sin respuesta.' };
+        persist([...withUser, finalMsg], sid);
+
+      } else {
+        // ── JSON (fallback) ──────────────────────────────────────────────────
+        const data = await res.json();
+        const saraMsg: Message = {
+          id: newId(), role: 'assistant',
+          content: data.response || 'Sin respuesta.',
+          images:  data.images  || [],
+          sources: data.sources || [],
+        };
+        const final = [...withUser, saraMsg];
+        setMessages(final);
+        persist(final, sid);
+      }
+
     } catch {
       const err: Message = { id: newId(), role: 'assistant', content: 'Error al conectar con SARA. Verifica que n8n esté activo.' };
       const final = [...withUser, err];
       setMessages(final);
-      persist(final, activeSessionId);
+      persist(final, sid);
     } finally {
       setIsLoading(false);
     }
