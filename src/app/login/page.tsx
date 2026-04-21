@@ -123,7 +123,7 @@ export default function LoginPage() {
             <div className="mt-5 flex items-center gap-2 px-3 py-2.5 bg-[#0e0e0e] rounded-md">
               <span className="w-1.5 h-1.5 rounded-full bg-[#58d6f6] flex-shrink-0" />
               <p className="text-[0.7rem] text-[#a88a81]">
-                Solo cuentas <span className="text-[#ffb59d] font-mono">@satcomla.com</span>
+                Cuentas <span className="text-[#ffb59d] font-mono">@satcomla.com</span> o <span className="text-[#ffb59d] font-mono">@somoshora.com</span>
               </p>
             </div>
           </div>

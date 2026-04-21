@@ -14,14 +14,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     ...authConfig.callbacks,
     async signIn({ user }) {
-      const allowedDomain = process.env.ZOHO_ORG_DOMAIN;
+      const domainsRaw = process.env.ZOHO_ORG_DOMAINS;
 
-      if (!allowedDomain) {
-         console.warn("La variable ZOHO_ORG_DOMAIN no está definida en .env.local. Bloqueando acceso por seguridad.");
+      if (!domainsRaw) {
+         console.warn("La variable ZOHO_ORG_DOMAINS no está definida en .env.local. Bloqueando acceso por seguridad.");
          return false;
       }
 
-      if (user.email && user.email.endsWith(`@${allowedDomain}`)) {
+      const allowedDomains = domainsRaw.split(",").map(d => d.trim().toLowerCase());
+
+      if (user.email && allowedDomains.some(domain => user.email!.toLowerCase().endsWith(`@${domain}`))) {
         return true;
       }
 
