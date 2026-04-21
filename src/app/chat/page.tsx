@@ -257,10 +257,8 @@ export default function SaraChatPage() {
       const res = await fetch('/api/chat', { method: 'POST', body: fd });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      const contentType = res.headers.get('content-type') || '';
-
-      if (res.body && contentType.includes('event-stream')) {
-        // ── Streaming (SSE) ──────────────────────────────────────────────────
+      if (res.body) {
+        // ── Streaming NDJSON (formato n8n: {"type":"item","content":"..."}) ──
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -277,32 +275,28 @@ export default function SaraChatPage() {
             buffer = lines.pop() ?? '';
 
             for (const line of lines) {
-              if (!line.startsWith('data: ')) continue;
-              const raw = line.slice(6).trim();
-              if (!raw || raw === '[DONE]') continue;
+              const trimmed = line.trim();
+              if (!trimmed) continue;
 
-              let chunk = '';
               try {
-                const parsed = JSON.parse(raw);
-                if (parsed.type === 'done') continue;
-                chunk = parsed.text ?? parsed.content ?? parsed.output ?? '';
+                const parsed = JSON.parse(trimmed);
+                // n8n emite {type:"item", content:"..."} por cada chunk
+                if (parsed.type !== 'item' || !parsed.content) continue;
+                const chunk: string = parsed.content;
+
+                if (!streamMsgId) {
+                  streamMsgId = newId();
+                  accumulated = chunk;
+                  setIsLoading(false);
+                  setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: chunk }]);
+                } else {
+                  accumulated += chunk;
+                  setMessages(prev =>
+                    prev.map(m => m.id === streamMsgId ? { ...m, content: accumulated } : m)
+                  );
+                }
               } catch {
-                chunk = raw;
-              }
-
-              if (!chunk) continue;
-
-              if (!streamMsgId) {
-                // First content received: replace loading dots with message
-                streamMsgId = newId();
-                accumulated = chunk;
-                setIsLoading(false);
-                setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: chunk }]);
-              } else {
-                accumulated += chunk;
-                setMessages(prev =>
-                  prev.map(m => m.id === streamMsgId ? { ...m, content: accumulated } : m)
-                );
+                // línea no parseable, ignorar
               }
             }
           }
@@ -311,7 +305,6 @@ export default function SaraChatPage() {
         }
 
         if (!streamMsgId) {
-          // Stream ended with no content
           streamMsgId = newId();
           setIsLoading(false);
           setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: 'Sin respuesta.' }]);
@@ -321,7 +314,7 @@ export default function SaraChatPage() {
         persist([...withUser, finalMsg], sid);
 
       } else {
-        // ── JSON (fallback) ──────────────────────────────────────────────────
+        // ── JSON (fallback sin body streameable) ────────────────────────────
         const data = await res.json();
         const saraMsg: Message = {
           id: newId(), role: 'assistant',
@@ -344,7 +337,6 @@ export default function SaraChatPage() {
     }
   };
 
-  const activeSession = sessions.find(s => s.id === activeSessionId);
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 

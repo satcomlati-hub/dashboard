@@ -103,8 +103,8 @@ export default function SaraChatWidget() {
 
       const contentType = res.headers.get('content-type') || '';
 
-      if (res.body && contentType.includes('event-stream')) {
-        // ── Streaming (SSE) ────────────────────────────────────────────────
+      if (res.body) {
+        // ── Streaming NDJSON (formato n8n: {"type":"item","content":"..."}) ──
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -121,31 +121,27 @@ export default function SaraChatWidget() {
             buffer = lines.pop() ?? '';
 
             for (const line of lines) {
-              if (!line.startsWith('data: ')) continue;
-              const raw = line.slice(6).trim();
-              if (!raw || raw === '[DONE]') continue;
+              const trimmed = line.trim();
+              if (!trimmed) continue;
 
-              let chunk = '';
               try {
-                const parsed = JSON.parse(raw);
-                if (parsed.type === 'done') continue;
-                chunk = parsed.text ?? parsed.content ?? parsed.output ?? '';
+                const parsed = JSON.parse(trimmed);
+                if (parsed.type !== 'item' || !parsed.content) continue;
+                const chunk: string = parsed.content;
+
+                if (!streamMsgId) {
+                  streamMsgId = (Date.now() + 1).toString();
+                  accumulated = chunk;
+                  setLoading(false);
+                  setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: chunk }]);
+                } else {
+                  accumulated += chunk;
+                  setMessages(prev =>
+                    prev.map(m => m.id === streamMsgId ? { ...m, content: accumulated } : m)
+                  );
+                }
               } catch {
-                chunk = raw;
-              }
-
-              if (!chunk) continue;
-
-              if (!streamMsgId) {
-                streamMsgId = (Date.now() + 1).toString();
-                accumulated = chunk;
-                setLoading(false);
-                setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: chunk }]);
-              } else {
-                accumulated += chunk;
-                setMessages(prev =>
-                  prev.map(m => m.id === streamMsgId ? { ...m, content: accumulated } : m)
-                );
+                // línea no parseable, ignorar
               }
             }
           }
@@ -165,7 +161,7 @@ export default function SaraChatWidget() {
         if (!open) setUnread(true);
 
       } else {
-        // ── JSON (fallback) ──────────────────────────────────────────────
+        // ── JSON (fallback sin body streameable) ────────────────────────
         const data = await res.json();
         setMessages([...withUser, {
           id: (Date.now() + 1).toString(),

@@ -27,9 +27,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Error communicating with SARA' }, { status: response.status });
     }
 
-    const contentType = response.headers.get('content-type') || 'application/json';
+    // n8n streaming devuelve Transfer-Encoding: chunked sin Content-Type explícito.
+    // Forzamos application/x-ndjson para que el cliente detecte el modo stream.
+    const upstreamType = response.headers.get('content-type') || '';
+    const contentType = upstreamType || 'application/x-ndjson';
 
-    // Proxy the response body directly, preserving streaming when n8n sends SSE
     return new Response(response.body, {
       status: response.status,
       headers: {
