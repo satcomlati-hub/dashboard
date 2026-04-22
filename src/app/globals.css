@@ -37,3 +37,34 @@ body {
 .dark * {
   border-color: #262626;
 }
+
+/* Markdown Content Styles */
+.markdown-content {
+  word-break: break-word;
+}
+
+.markdown-content pre {
+  max-width: 100%;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.markdown-content code {
+  white-space: pre-wrap;
+}
+
+.markdown-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+}
+
+.markdown-content th, .markdown-content td {
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem;
+  text-align: left;
+}
+
+.dark .markdown-content th, .dark .markdown-content td {
+  border-color: #262626;
+}

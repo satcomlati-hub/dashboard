@@ -2,6 +2,8 @@
 
 import React, { useState, useRef, useEffect, ChangeEvent } from 'react';
 import { useSession } from 'next-auth/react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,25 +35,7 @@ type StoredSession = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function renderMarkdown(text: string) {
-  const parts: React.ReactNode[] = [];
-  const regex = /(\*\*(.+?)\*\*)|(\[([^\]]+)\]\(([^)]+)\))/g;
-  let lastIndex = 0, key = 0;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
-    if (match[1]) parts.push(<strong key={key++} className="font-bold">{match[2]}</strong>);
-    else if (match[3]) parts.push(
-      <a key={key++} href={match[5]} target="_blank" rel="noopener noreferrer"
-        className="text-[#71BF44] underline underline-offset-2 hover:text-[#98e968] transition-colors">
-        {match[4]}
-      </a>
-    );
-    lastIndex = match.index + match[0].length;
-  }
-  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
-  return parts;
-}
+// La función renderMarkdown ya no es necesaria con ReactMarkdown
 
 function newId() { return `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`; }
 
@@ -487,7 +471,44 @@ export default function SaraChatPage() {
                         <img src={m.userImage} alt="adjunto" className="rounded-lg max-h-48 object-contain mb-2" />
                       )}
                       {m.content && (
-                        <p className="whitespace-pre-wrap">{renderMarkdown(m.content)}</p>
+                        <div className="markdown-content">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                              h1: ({ children }) => <h1 className="text-xl font-bold mb-2">{children}</h1>,
+                              h2: ({ children }) => <h2 className="text-lg font-bold mb-2">{children}</h2>,
+                              h3: ({ children }) => <h3 className="text-base font-bold mb-2">{children}</h3>,
+                              ul: ({ children }) => <ul className="list-disc ml-4 mb-2">{children}</ul>,
+                              ol: ({ children }) => <ol className="list-decimal ml-4 mb-2">{children}</ol>,
+                              li: ({ children }) => <li className="mb-1">{children}</li>,
+                              strong: ({ children }) => <strong className="font-bold">{children}</strong>,
+                              a: ({ href, children }) => (
+                                <a href={href} target="_blank" rel="noopener noreferrer"
+                                   className="text-[#71BF44] underline underline-offset-2 hover:text-[#98e968] transition-colors">
+                                  {children}
+                                </a>
+                              ),
+                              code: ({ children }) => (
+                                <code className="bg-neutral-100 dark:bg-neutral-800 px-1 rounded text-xs font-mono">
+                                  {children}
+                                </code>
+                              ),
+                              pre: ({ children }) => (
+                                <pre className="bg-neutral-100 dark:bg-neutral-800 p-2 rounded-lg overflow-x-auto text-xs font-mono my-2 border border-neutral-200 dark:border-neutral-700">
+                                  {children}
+                                </pre>
+                              ),
+                              blockquote: ({ children }) => (
+                                <blockquote className="border-l-4 border-neutral-300 dark:border-neutral-600 pl-4 italic my-2">
+                                  {children}
+                                </blockquote>
+                              ),
+                            }}
+                          >
+                            {m.content}
+                          </ReactMarkdown>
+                        </div>
                       )}
                     </div>
 
