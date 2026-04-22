@@ -8,6 +8,7 @@ type Message = {
   role: 'user' | 'assistant';
   content: string;
   userImage?: string | null;
+  timestamp?: number;
 };
 
 function renderText(text: string) {
@@ -106,6 +107,7 @@ export default function SaraChatWidget() {
       role: 'user',
       content: input,
       userImage: previewUrl,
+      timestamp: Date.now(),
     };
 
     const withUser = [...messages, userMsg];
@@ -154,7 +156,7 @@ export default function SaraChatWidget() {
                   streamMsgId = (Date.now() + 1).toString();
                   accumulated = chunk;
                   setLoading(false);
-                  setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: chunk }]);
+                  setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: chunk, timestamp: Date.now() }]);
                 } else {
                   accumulated += chunk;
                   setMessages(prev =>
@@ -176,6 +178,7 @@ export default function SaraChatWidget() {
             id: (Date.now() + 1).toString(),
             role: 'assistant',
             content: 'Sin respuesta.',
+            timestamp: Date.now(),
           }]);
         }
 
@@ -187,6 +190,7 @@ export default function SaraChatWidget() {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
           content: data.response || 'No pude generar una respuesta.',
+          timestamp: Date.now(),
         }]);
         if (!open) setUnread(true);
       }
@@ -196,6 +200,7 @@ export default function SaraChatWidget() {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: 'Error al conectar con SARA. Verifica que n8n esté activo.',
+        timestamp: Date.now(),
       }]);
     } finally {
       setLoading(false);
@@ -275,6 +280,11 @@ export default function SaraChatWidget() {
                       <img src={m.userImage} alt="adjunto" className="rounded-lg max-h-32 object-contain mb-2 border border-neutral-200/20" />
                     )}
                     <p className="whitespace-pre-wrap break-words text-[13px]">{m.role === 'assistant' ? renderText(m.content) : m.content}</p>
+                    {m.timestamp && (
+                      <p className={`text-[9px] mt-1 opacity-50 ${m.role === 'user' ? 'text-right' : 'text-left'}`}>
+                        {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    )}
                   </div>
                 </div>
               ))

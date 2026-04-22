@@ -23,6 +23,7 @@ type Message = {
   images?: ImageAttachment[];
   sources?: Source[];
   userImage?: string | null;
+  timestamp?: number;
 };
 
 type StoredSession = {
@@ -229,7 +230,7 @@ export default function SaraChatPage() {
     e.preventDefault();
     if ((!input.trim() && !selectedFile) || isLoading) return;
 
-    const userMsg: Message = { id: newId(), role: 'user', content: input, userImage: previewUrl };
+    const userMsg: Message = { id: newId(), role: 'user', content: input, userImage: previewUrl, timestamp: Date.now() };
     const withUser = [...messages, userMsg];
     setMessages(withUser);
     const q = input, f = selectedFile, sid = activeSessionId;
@@ -279,7 +280,7 @@ export default function SaraChatPage() {
                   streamMsgId = newId();
                   accumulated = chunk;
                   setIsLoading(false);
-                  setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: chunk }]);
+                  setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: chunk, timestamp: Date.now() }]);
                 } else {
                   accumulated += chunk;
                   setMessages(prev =>
@@ -301,7 +302,7 @@ export default function SaraChatPage() {
           setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: 'Sin respuesta.' }]);
         }
 
-        const finalMsg: Message = { id: streamMsgId, role: 'assistant', content: accumulated || 'Sin respuesta.' };
+        const finalMsg: Message = { id: streamMsgId, role: 'assistant', content: accumulated || 'Sin respuesta.', timestamp: Date.now() };
         persist([...withUser, finalMsg], sid);
 
       } else {
@@ -312,6 +313,7 @@ export default function SaraChatPage() {
           content: data.response || 'Sin respuesta.',
           images:  data.images  || [],
           sources: data.sources || [],
+          timestamp: Date.now(),
         };
         const final = [...withUser, saraMsg];
         setMessages(final);
@@ -369,7 +371,7 @@ export default function SaraChatPage() {
                     <span className={`text-xs truncate max-w-[120px] ${active ? 'font-bold text-neutral-900 dark:text-neutral-100' : 'font-medium text-neutral-600 dark:text-neutral-400'}`}>
                       {s.title}
                     </span>
-                    <span className="text-[9px] text-neutral-400/80 shrink-0 mt-0.5">{formatTime(s.timestamp)}</span>
+                    <span className="text-[9px] text-neutral-400/80 shrink-0 mt-0.5 group-hover:opacity-0 transition-opacity">{formatTime(s.timestamp)}</span>
                   </div>
                   <p className={`text-[10px] truncate pr-6 ${active ? 'text-neutral-500 dark:text-neutral-400' : 'text-neutral-400/80 dark:text-neutral-500'}`}>{s.preview}</p>
                 </button>
@@ -541,8 +543,13 @@ export default function SaraChatPage() {
                           </a>
                         ))}
                       </div>
-                    )}
-                  </div>
+                      {/* Timestamp */}
+                      {m.timestamp && (
+                        <span className="text-[10px] text-neutral-400 dark:text-neutral-500 mt-1 px-2">
+                          {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </div>
 
                   {m.role === 'user' && (
                     <div className="w-8 h-8 rounded-full bg-neutral-200 dark:bg-neutral-800 flex items-center justify-center shrink-0 mt-1 ring-2 ring-white dark:ring-[#131313]">
