@@ -543,7 +543,8 @@ export default function SaraChatPage() {
                           </a>
                         ))}
                       </div>
-                      {/* Timestamp */}
+                    )}
+                    {/* Timestamp */}
                       {m.timestamp && (
                         <span className="text-[10px] text-neutral-400 dark:text-neutral-500 mt-1 px-2">
                           {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
