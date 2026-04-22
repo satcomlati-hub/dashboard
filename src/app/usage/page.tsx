@@ -32,7 +32,15 @@ interface UsageData {
 }
 
 // ─── Static plan limits ───────────────────────────────────────────────────────
-const SUPABASE_LIMITS = { DB_MB: 500, STORAGE_GB: 1, BANDWIDTH_GB: 5, MAU: 50_000, EDGE_FN: 500_000 };
+// Supabase Pro — verificado en supabase.com/pricing (abril 2026) · $25/mes
+const SUPABASE_LIMITS = {
+  DB_MB: 8_192,         // 8 GB incluidos (luego $0.125/GB adicional)
+  STORAGE_GB: 100,      // 100 GB incluidos
+  BANDWIDTH_GB: 250,    // 250 GB incluidos
+  MAU: 100_000,         // 100 k MAU incluidos
+  EDGE_FN: 2_000_000,   // 2 M invocaciones/mes
+  PRICE: 25,
+};
 const N8N_STARTER = { EXEC: 2_500, PRICE: 20, CONCURRENT: 5, RAM_MIB: 320 };
 const N8N_PRO = { EXEC: 10_000, PRICE: 50, CONCURRENT: 20, RAM_MIB: 1_280 };
 const VERCEL_LIMITS = { BANDWIDTH_GB: 100, BUILD_MINUTES: 6_000 };
@@ -347,7 +355,7 @@ export default function UsagePage() {
           {
             label: 'Supabase · base de datos',
             value: loading ? '—' : `${dbMb.toFixed(0)} MB`,
-            sub: `de ${SUPABASE_LIMITS.DB_MB} MB · free tier${dbMb > 500 ? ' ⚠ excedido' : ''}`,
+            sub: `de 8,192 MB · plan Pro $${SUPABASE_LIMITS.PRICE}/mes`,
             accent: pctColor(pct(dbMb, SUPABASE_LIMITS.DB_MB)),
           },
           {
@@ -538,29 +546,36 @@ export default function UsagePage() {
           {/* Supabase */}
           <SectionCard
             title="Supabase"
-            badge={<Badge label={dbMb > 500 ? '⚠ Excedido' : 'Free Tier'} variant={dbMb > 500 ? 'err' : 'free'} />}
+            badge={<Badge label="Pro · $25/mes" variant="paid" />}
             icon={<IconDatabase />}
           >
             <div className="space-y-3">
               <MetricRow label="Base de datos" val={dbMb} max={SUPABASE_LIMITS.DB_MB} unit="MB" />
-              <MetricRow label="File storage" val={infra?.supabase.storageGb !== null ? (infra!.supabase.storageGb! * 1000) : null} max={SUPABASE_LIMITS.STORAGE_GB * 1000} unit="MB" />
-              <MetricRow label="Bandwidth / mes" val={infra?.supabase.bandwidthGb !== null ? (infra!.supabase.bandwidthGb! * 1000) : null} max={SUPABASE_LIMITS.BANDWIDTH_GB * 1000} unit="MB" />
+              <MetricRow
+                label="File storage"
+                val={infra?.supabase.storageGb != null ? infra.supabase.storageGb * 1_000 : null}
+                max={SUPABASE_LIMITS.STORAGE_GB * 1_000}
+                unit="MB"
+              />
+              <MetricRow
+                label="Bandwidth / mes"
+                val={infra?.supabase.bandwidthGb != null ? infra.supabase.bandwidthGb * 1_000 : null}
+                max={SUPABASE_LIMITS.BANDWIDTH_GB * 1_000}
+                unit="MB"
+              />
               <MetricRow label="Edge Functions / mes" val={infra?.supabase.edgeFn ?? null} max={SUPABASE_LIMITS.EDGE_FN} unit="inv." />
               <MetricRow label="MAU" val={infra?.supabase.mau ?? null} max={SUPABASE_LIMITS.MAU} unit="usuarios" />
             </div>
             <div className="mt-4 bg-neutral-50 dark:bg-neutral-900/50 rounded-lg p-3 text-xs space-y-1 text-neutral-500 dark:text-neutral-400">
-              <div className="flex justify-between"><span>Proyectos activos máx.</span><span className="font-mono">2</span></div>
-              <div className="flex justify-between"><span>Pausa por inactividad</span><span className="font-mono">7 días</span></div>
-              <div className="flex justify-between"><span>Plan Pro</span><span className="font-mono text-blue-500">$25/mes</span></div>
+              <div className="flex justify-between"><span>DB incluida</span><span className="font-mono">8 GB</span></div>
+              <div className="flex justify-between"><span>Storage incluido</span><span className="font-mono">100 GB</span></div>
+              <div className="flex justify-between"><span>Bandwidth incluido</span><span className="font-mono">250 GB</span></div>
+              <div className="flex justify-between"><span>Sin pausa por inactividad</span><span className="font-mono text-[#71BF44]">✓</span></div>
+              <div className="flex justify-between"><span>Point-in-time recovery</span><span className="font-mono text-[#71BF44]">✓</span></div>
             </div>
-            {dbMb > 500 && (
-              <InfoBox variant="err">
-                DB en {dbMb.toFixed(0)} MB — supera el límite de 500 MB del Free Tier. Revisar <code className="font-mono">zoho_learn_vectors</code> (8,522 filas) o migrar a Pro ($25/mes).
-              </InfoBox>
-            )}
-            {infra?.supabase.storageGb === null && (
+            {infra?.supabase.storageGb == null && (
               <InfoBox variant="neutral">
-                Storage, bandwidth y MAU sin datos. El workflow <code className="font-mono">MON_Costos_Diarios</code> los rellenará diariamente vía Supabase Management API.
+                Storage, bandwidth y MAU sin datos aún. El workflow <code className="font-mono">MON_Costos_Diarios</code> los rellenará diariamente vía Supabase Management API.
               </InfoBox>
             )}
           </SectionCard>
@@ -770,11 +785,11 @@ export default function UsagePage() {
                   detail: `${infra?.n8n.primary.executions ?? 0} ejecuciones registradas (últimas 250)`,
                 },
                 {
-                  service: 'Supabase → Pro ($25/mes)',
-                  trigger: 'DB >500 MB, bandwidth >5 GB o MAU >50k',
+                  service: 'Supabase → escala DB ($0.125/GB adicional)',
+                  trigger: 'DB >8 GB, bandwidth >250 GB o MAU >100k',
                   val: dbMb,
                   max: SUPABASE_LIMITS.DB_MB,
-                  detail: `DB ${dbMb.toFixed(0)} MB / 500 MB`,
+                  detail: `DB ${dbMb.toFixed(0)} MB / 8,192 MB · Plan Pro activo`,
                 },
                 {
                   service: 'Vercel → Pro ($20/mes · comercial)',
