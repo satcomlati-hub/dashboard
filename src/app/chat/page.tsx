@@ -181,12 +181,19 @@ export default function SaraChatPage() {
   function persist(updated: Message[], sid: string) {
     setSessions(prev => {
       const firstUser = updated.find(m => m.role === 'user');
+      
+      // Sanitizar los mensajes para no guardar blobs pesados (Base64) en localStorage
+      const sanitizedMessages = updated.map(m => ({
+        ...m,
+        userImage: null, // Evita guardar la imagen subida en localStorage
+      }));
+
       const next = prev.map(s => s.id !== sid ? s : {
         ...s,
         title:     firstUser ? firstUser.content.slice(0, 40) || 'Sesión' : s.title,
         preview:   updated[updated.length - 1]?.content?.slice(0, 60) ?? '',
         timestamp: Date.now(),
-        messages:  updated,
+        messages:  sanitizedMessages,
       });
       localStorage.setItem('sara_sessions', JSON.stringify(next));
       return next;
@@ -325,16 +332,16 @@ export default function SaraChatPage() {
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-[calc(100vh-64px)] lg:h-screen bg-neutral-50 dark:bg-[#0e0e0e]">
+    <div className="flex h-[calc(100vh-64px)] lg:h-screen bg-[#fafafa] dark:bg-[#131313] font-sans selection:bg-[#71BF44]/30 selection:text-[#71BF44]">
 
       {/* ── History sidebar ──────────────────────────────────────────────────── */}
-      <aside className="w-64 shrink-0 flex flex-col bg-white dark:bg-[#0a0a0a] border-r border-neutral-200 dark:border-neutral-800">
+      <aside className="w-64 shrink-0 flex flex-col bg-white/50 dark:bg-[#1b1b1b]/50 backdrop-blur-xl border-r border-black/5 dark:border-white/5 z-10 relative">
         {/* Header */}
-        <div className="px-4 py-3 flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800/60">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Historial</span>
+        <div className="px-5 py-4 flex items-center justify-between">
+          <span className="text-[11px] font-bold uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Historial de SARA</span>
           <button
             onClick={() => createSession()}
-            className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-[#71BF44] transition-colors"
+            className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-neutral-400 hover:text-[#71BF44] transition-colors"
             title="Nueva sesión"
           >
             <IconPlus />
@@ -342,7 +349,7 @@ export default function SaraChatPage() {
         </div>
 
         {/* Session list */}
-        <div className="flex-1 overflow-y-auto py-2">
+        <div className="flex-1 overflow-y-auto py-2 px-3 space-y-1" style={{ scrollbarWidth: 'none' }}>
           {sessions.length === 0 && (
             <p className="px-4 py-3 text-xs text-neutral-400 dark:text-neutral-500">Sin sesiones previas</p>
           )}
@@ -352,23 +359,23 @@ export default function SaraChatPage() {
               <div key={s.id} className="group relative">
                 <button
                   onClick={() => switchSession(s)}
-                  className={`w-full text-left px-4 py-3 transition-colors border-l-2 ${
+                  className={`w-full text-left px-3 py-2.5 rounded-xl transition-all ${
                     active
-                      ? 'bg-[#71BF44]/5 border-l-[#71BF44]'
-                      : 'border-l-transparent hover:bg-neutral-50 dark:hover:bg-neutral-800/40'
+                      ? 'bg-white dark:bg-[#353535] shadow-sm ring-1 ring-black/5 dark:ring-white/5'
+                      : 'hover:bg-white/60 dark:hover:bg-[#1f1f1f]/60'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-2 mb-0.5">
-                    <span className={`text-xs truncate max-w-[120px] ${active ? 'font-semibold text-neutral-900 dark:text-white' : 'font-medium text-neutral-700 dark:text-neutral-300'}`}>
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <span className={`text-xs truncate max-w-[120px] ${active ? 'font-bold text-neutral-900 dark:text-neutral-100' : 'font-medium text-neutral-600 dark:text-neutral-400'}`}>
                       {s.title}
                     </span>
-                    <span className="text-[9px] text-neutral-400 shrink-0">{formatTime(s.timestamp)}</span>
+                    <span className="text-[9px] text-neutral-400/80 shrink-0 mt-0.5">{formatTime(s.timestamp)}</span>
                   </div>
-                  <p className="text-[10px] text-neutral-400 dark:text-neutral-500 truncate pr-6">{s.preview}</p>
+                  <p className={`text-[10px] truncate pr-6 ${active ? 'text-neutral-500 dark:text-neutral-400' : 'text-neutral-400/80 dark:text-neutral-500'}`}>{s.preview}</p>
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-all"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-all"
                   title="Borrar chat"
                 >
                   <IconTrash />
@@ -380,35 +387,29 @@ export default function SaraChatPage() {
       </aside>
 
       {/* ── Main chat ────────────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0">
-
+      <div className="flex-1 flex flex-col min-w-0 bg-[url('/noise.png')] bg-repeat opacity-[0.98]">
+        
         {/* Chat header */}
-        <div className="shrink-0 px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#0e0e0e] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#71BF44] to-[#5a9c33] flex items-center justify-center text-white shadow-sm shadow-[#71BF44]/20">
+        <div className="shrink-0 px-6 md:px-8 py-5 flex items-center justify-between sticky top-0 z-20 bg-[#fafafa]/80 dark:bg-[#131313]/80 backdrop-blur-md border-b border-black/5 dark:border-white/5">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#71BF44] to-[#5a9c33] flex items-center justify-center text-white shadow-lg shadow-[#71BF44]/20 ring-1 ring-black/5">
               <IconSara />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-neutral-900 dark:text-white">AI Assistant: SARA</h2>
-              <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#71BF44] animate-pulse" />
-                <span className="text-[10px] font-medium text-[#71BF44] uppercase tracking-wide">Sistema óptimo · Powered by Gemini</span>
+              <h2 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">AI Assistant: SARA</h2>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#71BF44] shadow-[0_0_8px_#71BF44] animate-pulse" />
+                <span className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest">Sistema Óptimo</span>
               </div>
             </div>
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => createSession()}
-              className="px-3 py-1.5 text-[10px] font-bold rounded border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors uppercase tracking-wider"
-            >
-              Nueva sesión
-            </button>
-            <button
               onClick={() => {
                 setMessages([]);
                 persist([], activeSessionId);
               }}
-              className="px-3 py-1.5 text-[10px] font-bold rounded border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors uppercase tracking-wider"
+              className="px-4 py-2 text-[10px] font-bold rounded-lg bg-white/50 dark:bg-[#1f1f1f]/50 hover:bg-white dark:hover:bg-[#2a2a2a] text-neutral-600 dark:text-neutral-400 transition-colors uppercase tracking-wider ring-1 ring-black/5 dark:ring-white/5"
             >
               Limpiar
             </button>
@@ -416,19 +417,19 @@ export default function SaraChatPage() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-6 py-8">
+        <div className="flex-1 overflow-y-auto px-6 md:px-12 lg:px-24 py-8">
           {messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center max-w-3xl mx-auto text-center space-y-8 animate-in fade-in duration-700">
-              <div className="space-y-2">
-                <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#71BF44] via-[#5a9c33] to-[#4a8229] bg-clip-text text-transparent pb-2">
+            <div className="h-full flex flex-col items-center justify-center max-w-3xl mx-auto text-center space-y-12 animate-in fade-in zoom-in-95 duration-700">
+              <div className="space-y-4">
+                <h1 className="text-5xl md:text-6xl font-bold tracking-tight text-neutral-900 dark:text-white">
                   Hola, {session?.user?.name?.split(' ')[0] || 'invitado'}
                 </h1>
-                <h2 className="text-2xl md:text-3xl font-medium text-neutral-400 dark:text-neutral-500">
-                  ¿Cómo puedo ayudarte hoy?
+                <h2 className="text-xl md:text-2xl font-medium text-neutral-500 dark:text-neutral-400">
+                  ¿Cómo puedo ayudarte a orquestar el trabajo hoy?
                 </h2>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl px-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
                 {[
                   { title: 'Análisis de manuales', desc: 'Explora la documentación técnica de SATCOM.', icon: '📚' },
                   { title: 'Visión por IA', desc: 'Sube una imagen para que la analice en detalle.', icon: '👁️' },
@@ -441,66 +442,66 @@ export default function SaraChatPage() {
                       setInput(item.title);
                       textareaRef.current?.focus();
                     }}
-                    className="flex flex-col items-start p-4 rounded-2xl bg-white dark:bg-[#1a1a1a] border border-neutral-200 dark:border-neutral-800 hover:border-[#71BF44]/50 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-all text-left group"
+                    className="flex flex-col items-start p-5 rounded-2xl bg-white/40 dark:bg-[#1f1f1f]/40 backdrop-blur-sm border border-black/5 dark:border-white/5 hover:bg-white dark:hover:bg-[#2a2a2a] hover:border-[#71BF44]/30 hover:shadow-xl hover:shadow-[#71BF44]/5 transition-all text-left group"
                   >
-                    <span className="text-2xl mb-2">{item.icon}</span>
-                    <span className="text-sm font-bold text-neutral-900 dark:text-white group-hover:text-[#71BF44] transition-colors">{item.title}</span>
-                    <span className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">{item.desc}</span>
+                    <span className="text-2xl mb-3">{item.icon}</span>
+                    <span className="text-sm font-bold text-neutral-900 dark:text-neutral-100 group-hover:text-[#71BF44] transition-colors">{item.title}</span>
+                    <span className="text-xs text-neutral-500 dark:text-neutral-400 mt-1.5 leading-relaxed">{item.desc}</span>
                   </button>
                 ))}
               </div>
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-8 max-w-4xl mx-auto">
               {messages.map((m) => (
-                <div key={m.id} className={`flex gap-3 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div key={m.id} className={`flex gap-4 animate-in fade-in slide-in-from-bottom-4 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   {m.role === 'assistant' && (
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#71BF44] to-[#5a9c33] flex items-center justify-center text-white shrink-0 mt-0.5 shadow-sm">
-                      <span className="font-bold text-[10px]">S</span>
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#71BF44] to-[#5a9c33] flex items-center justify-center text-white shrink-0 mt-1 shadow-md shadow-[#71BF44]/20 ring-2 ring-white dark:ring-[#131313]">
+                      <span className="font-bold text-[11px]">S</span>
                     </div>
                   )}
 
-                  <div className={`max-w-[80%] flex flex-col gap-2 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                  <div className={`max-w-[85%] flex flex-col gap-2 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
                     {/* Bubble */}
-                    <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+                    <div className={`px-5 py-4 rounded-3xl text-[15px] leading-relaxed shadow-sm ${
                       m.role === 'user'
-                        ? 'bg-neutral-900 dark:bg-neutral-700 text-white rounded-tr-sm'
-                        : 'bg-white dark:bg-[#1a1a1a] border border-neutral-200 dark:border-neutral-800 text-neutral-800 dark:text-neutral-200 rounded-tl-sm shadow-sm'
+                        ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-tr-sm font-medium'
+                        : 'bg-white dark:bg-[#1f1f1f] border border-black/5 dark:border-white/5 text-neutral-800 dark:text-neutral-200 rounded-tl-sm'
                     }`}>
                       {m.userImage && (
-                        <img src={m.userImage} alt="adjunto" className="rounded-lg max-h-48 object-contain mb-2" />
+                        <img src={m.userImage} alt="adjunto" className="rounded-xl max-h-64 object-cover mb-3 ring-1 ring-black/5 dark:ring-white/5" />
                       )}
                       {m.content && (
-                        <div className="markdown-content">
+                        <div className={`markdown-content ${m.role === 'user' ? 'opacity-90' : ''}`}>
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
                             components={{
-                              p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                              h1: ({ children }) => <h1 className="text-xl font-bold mb-2">{children}</h1>,
-                              h2: ({ children }) => <h2 className="text-lg font-bold mb-2">{children}</h2>,
-                              h3: ({ children }) => <h3 className="text-base font-bold mb-2">{children}</h3>,
-                              ul: ({ children }) => <ul className="list-disc ml-4 mb-2">{children}</ul>,
-                              ol: ({ children }) => <ol className="list-decimal ml-4 mb-2">{children}</ol>,
-                              li: ({ children }) => <li className="mb-1">{children}</li>,
-                              strong: ({ children }) => <strong className="font-bold">{children}</strong>,
+                              p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+                              h1: ({ children }) => <h1 className="text-xl font-bold mb-3 tracking-tight">{children}</h1>,
+                              h2: ({ children }) => <h2 className="text-lg font-bold mb-3 tracking-tight">{children}</h2>,
+                              h3: ({ children }) => <h3 className="text-base font-bold mb-2 tracking-tight">{children}</h3>,
+                              ul: ({ children }) => <ul className="list-disc ml-5 mb-3 space-y-1">{children}</ul>,
+                              ol: ({ children }) => <ol className="list-decimal ml-5 mb-3 space-y-1">{children}</ol>,
+                              li: ({ children }) => <li>{children}</li>,
+                              strong: ({ children }) => <strong className="font-bold text-[#71BF44]">{children}</strong>,
                               a: ({ href, children }) => (
                                 <a href={href} target="_blank" rel="noopener noreferrer"
-                                   className="text-[#71BF44] underline underline-offset-2 hover:text-[#98e968] transition-colors">
+                                   className="text-[#71BF44] border-b border-[#71BF44]/30 hover:border-[#71BF44] transition-colors pb-0.5">
                                   {children}
                                 </a>
                               ),
                               code: ({ children }) => (
-                                <code className="bg-neutral-100 dark:bg-neutral-800 px-1 rounded text-xs font-mono">
+                                <code className="bg-neutral-100 dark:bg-neutral-800/80 px-1.5 py-0.5 rounded-md text-[13px] font-mono text-neutral-800 dark:text-neutral-200">
                                   {children}
                                 </code>
                               ),
                               pre: ({ children }) => (
-                                <pre className="bg-neutral-100 dark:bg-neutral-800 p-2 rounded-lg overflow-x-auto text-xs font-mono my-2 border border-neutral-200 dark:border-neutral-700">
+                                <pre className="bg-[#0e0e0e] text-neutral-300 p-4 rounded-xl overflow-x-auto text-[13px] font-mono my-3 shadow-inner">
                                   {children}
                                 </pre>
                               ),
                               blockquote: ({ children }) => (
-                                <blockquote className="border-l-4 border-neutral-300 dark:border-neutral-600 pl-4 italic my-2">
+                                <blockquote className="border-l-4 border-[#71BF44] bg-[#71BF44]/5 py-2 pr-4 pl-4 italic my-3 rounded-r-lg">
                                   {children}
                                 </blockquote>
                               ),
@@ -514,14 +515,15 @@ export default function SaraChatPage() {
 
                     {/* RAG images */}
                     {m.images && m.images.length > 0 && (
-                      <div className={`flex flex-wrap gap-2 ${m.images.length > 1 ? 'grid grid-cols-2' : ''}`}>
+                      <div className={`flex flex-wrap gap-3 mt-1 ${m.images.length > 1 ? 'grid grid-cols-2' : ''}`}>
                         {m.images.map((img, i) => {
                           const src = img.url || (img.base64 ? `data:image/jpeg;base64,${img.base64}` : null);
                           if (!src) return null;
                           return (
-                            <a key={i} href={img.sourceUrl || src} target="_blank" rel="noopener noreferrer">
+                            <a key={i} href={img.sourceUrl || src} target="_blank" rel="noopener noreferrer" className="group relative block overflow-hidden rounded-xl border border-black/5 dark:border-white/5 bg-white dark:bg-[#1a1a1a]">
                               <img src={src} alt={img.filename || `Ref. ${i + 1}`}
-                                className="rounded-xl max-h-48 object-contain border border-neutral-200 dark:border-neutral-800 hover:ring-2 hover:ring-[#71BF44]/40 transition-all" />
+                                className="max-h-48 w-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                              <div className="absolute inset-0 ring-1 ring-inset ring-black/10 group-hover:ring-[#71BF44]/50 transition-colors rounded-xl" />
                             </a>
                           );
                         })}
@@ -530,12 +532,12 @@ export default function SaraChatPage() {
 
                     {/* Sources */}
                     {m.sources && m.sources.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2 mt-1">
                         {m.sources.map((src, i) => (
                           <a key={i} href={src.url} target="_blank" rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-[#71BF44]/10 text-[#71BF44] hover:bg-[#71BF44]/20 transition-colors">
+                            className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-white dark:bg-[#1f1f1f] border border-black/5 dark:border-white/5 text-neutral-600 dark:text-neutral-400 hover:text-[#71BF44] hover:border-[#71BF44]/30 shadow-sm transition-all group">
                             <IconExternalLink />
-                            {src.title || 'Ver manual'}
+                            <span className="truncate max-w-[200px]">{src.title || 'Ver documento'}</span>
                           </a>
                         ))}
                       </div>
@@ -543,8 +545,8 @@ export default function SaraChatPage() {
                   </div>
 
                   {m.role === 'user' && (
-                    <div className="w-7 h-7 rounded-full bg-neutral-200 dark:bg-neutral-700 flex items-center justify-center shrink-0 mt-0.5">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-500 dark:text-neutral-400">
+                    <div className="w-8 h-8 rounded-full bg-neutral-200 dark:bg-neutral-800 flex items-center justify-center shrink-0 mt-1 ring-2 ring-white dark:ring-[#131313]">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-500 dark:text-neutral-400">
                         <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
                       </svg>
                     </div>
@@ -556,75 +558,76 @@ export default function SaraChatPage() {
 
           {/* Loading indicator */}
           {isLoading && (
-            <div className="flex gap-3 justify-start">
-              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#71BF44] to-[#5a9c33] flex items-center justify-center text-white shrink-0 mt-0.5 animate-pulse shadow-sm">
-                <span className="font-bold text-[10px]">S</span>
+            <div className="flex gap-4 justify-start max-w-4xl mx-auto mt-8 animate-in fade-in">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#71BF44] to-[#5a9c33] flex items-center justify-center text-white shrink-0 mt-1 shadow-md shadow-[#71BF44]/20 ring-2 ring-white dark:ring-[#131313] animate-pulse">
+                <span className="font-bold text-[11px]">S</span>
               </div>
-              <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-white dark:bg-[#1a1a1a] border border-neutral-200 dark:border-neutral-800 shadow-sm flex gap-1.5 items-center">
+              <div className="px-5 py-4 rounded-3xl rounded-tl-sm bg-white dark:bg-[#1f1f1f] border border-black/5 dark:border-white/5 shadow-sm flex gap-1.5 items-center">
                 {[0, 150, 300].map(d => (
-                  <span key={d} className="w-2 h-2 rounded-full bg-neutral-300 dark:bg-neutral-600 animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                  <span key={d} className="w-2 h-2 rounded-full bg-neutral-400 dark:bg-neutral-500 animate-bounce" style={{ animationDelay: `${d}ms` }} />
                 ))}
               </div>
             </div>
           )}
 
-          <div ref={endRef} />
+          <div ref={endRef} className="h-8" />
         </div>
 
         {/* ── Input area ──────────────────────────────────────────────────────── */}
-        <div className="shrink-0 border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#0e0e0e] p-4">
+        <div className="shrink-0 pb-6 px-6 md:px-12 lg:px-24 w-full max-w-5xl mx-auto relative z-20">
 
-
-
-          {/* Image preview */}
-          {previewUrl && (
-            <div className="mb-3 inline-block relative">
-              <div className="w-16 h-16 rounded-lg overflow-hidden border-2 border-[#71BF44]">
-                <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
+          <div className="bg-white/80 dark:bg-[#1f1f1f]/80 backdrop-blur-xl rounded-3xl p-3 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] border border-black/5 dark:border-white/5">
+            {/* Image preview */}
+            {previewUrl && (
+              <div className="mb-3 ml-3 relative inline-block animate-in zoom-in-95">
+                <div className="w-16 h-16 rounded-xl overflow-hidden border-2 border-[#71BF44] shadow-sm">
+                  <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
+                </div>
+                <button onClick={clearFile}
+                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 transition-colors">
+                  <IconClose />
+                </button>
               </div>
-              <button onClick={clearFile}
-                className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-1 shadow hover:bg-red-600 transition-colors">
-                <IconClose />
+            )}
+
+            {/* Text input row */}
+            <div className="flex gap-2 items-end">
+              {/* Attach */}
+              <button type="button" onClick={() => fileRef.current?.click()}
+                className="p-3.5 rounded-2xl hover:bg-neutral-100 dark:hover:bg-[#2a2a2a] text-neutral-400 hover:text-[#71BF44] transition-colors shrink-0"
+                title="Adjuntar imagen">
+                <IconAttach />
               </button>
+              <input type="file" ref={fileRef} onChange={handleFileChange} accept="image/*" className="hidden" />
+
+              {/* Textarea + send */}
+              <form onSubmit={handleSubmit} className="flex-1 flex items-end gap-2 px-1">
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(e); } }}
+                  placeholder="Instruye a SARA..."
+                  rows={1}
+                  className="flex-1 bg-transparent border-none outline-none resize-none text-[15px] text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 py-3.5 min-h-[48px] max-h-40"
+                  style={{ scrollbarWidth: 'none' }}
+                />
+                <button type="submit"
+                  disabled={(!input.trim() && !selectedFile) || isLoading}
+                  className={`p-3 rounded-xl transition-all shrink-0 mb-1 ${
+                    (input.trim() || selectedFile) && !isLoading
+                      ? 'bg-[#71BF44] text-white hover:bg-[#5a9c33] shadow-md shadow-[#71BF44]/25 hover:-translate-y-0.5'
+                      : 'bg-neutral-100 dark:bg-[#2a2a2a] text-neutral-300 dark:text-neutral-600 cursor-not-allowed'
+                  }`}>
+                  <IconSend />
+                </button>
+              </form>
             </div>
-          )}
-
-          {/* Text input row */}
-          <div className="flex gap-2 items-end">
-            {/* Attach */}
-            <button type="button" onClick={() => fileRef.current?.click()}
-              className="p-3 rounded-xl bg-neutral-100 dark:bg-[#1a1a1a] border border-neutral-200 dark:border-neutral-800 text-neutral-400 hover:text-[#71BF44] transition-colors shrink-0"
-              title="Adjuntar imagen">
-              <IconAttach />
-            </button>
-            <input type="file" ref={fileRef} onChange={handleFileChange} accept="image/*" className="hidden" />
-
-            {/* Textarea + send */}
-            <form onSubmit={handleSubmit} className="flex-1 flex items-end gap-2 bg-neutral-100 dark:bg-[#1a1a1a] rounded-xl border border-neutral-200 dark:border-neutral-800 focus-within:ring-2 focus-within:ring-[#71BF44]/40 focus-within:border-[#71BF44] transition-all overflow-hidden px-3 py-2">
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(e); } }}
-                placeholder="Pregúntale a SARA... (Enter para enviar, Shift+Enter para nueva línea)"
-                rows={1}
-                className="flex-1 bg-transparent border-none outline-none resize-none text-sm text-neutral-900 dark:text-white placeholder-neutral-400 py-1 min-h-[36px] max-h-40"
-              />
-              <button type="submit"
-                disabled={(!input.trim() && !selectedFile) || isLoading}
-                className={`p-2 rounded-lg transition-all shrink-0 mb-0.5 ${
-                  (input.trim() || selectedFile) && !isLoading
-                    ? 'bg-[#71BF44] text-white hover:bg-[#5a9c33] shadow-sm shadow-[#71BF44]/20 hover:scale-105 active:scale-95'
-                    : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-400 dark:text-neutral-500 cursor-not-allowed'
-                }`}>
-                <IconSend />
-              </button>
-            </form>
           </div>
 
           {/* Footer note */}
-          <p className="text-center text-[10px] text-neutral-400 dark:text-neutral-500 mt-2">
-            SARA puede cometer errores · Verifica la información importante en los manuales oficiales
+          <p className="text-center text-[10px] font-medium text-neutral-400 dark:text-neutral-500 mt-4 tracking-wide">
+            SARA PUEDE COMETER ERRORES · VERIFICA LA INFORMACIÓN IMPORTANTE EN LOS MANUALES OFICIALES
           </p>
         </div>
       </div>
