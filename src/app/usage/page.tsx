@@ -280,17 +280,20 @@ export default function UsagePage() {
     ? (ai?.trend.reduce((s, t) => s + t.costUsd, 0) ?? 0) / trendDays
     : 0;
   const projMonthCost = avgDailyCost * 30;
-  const projYearCost = (projMonthCost + N8N_STARTER.PRICE) * 12;
+  const FIXED_MONTHLY = N8N_STARTER.PRICE + SUPABASE_LIMITS.PRICE; // $20 n8n + $25 Supabase = $45
+  const projYearCost = (projMonthCost + FIXED_MONTHLY) * 12;
 
   // Projection table rows
   const projRows = Array.from({ length: 6 }, (_, i) => {
     const d = new Date();
     d.setMonth(d.getMonth() + i);
+    const aiCost = i === 0 ? totalCost : projMonthCost;
     return {
       label: d.toLocaleDateString('es-MX', { month: 'short', year: '2-digit' }),
-      ai: i === 0 ? totalCost : projMonthCost,
+      ai: aiCost,
       n8n: N8N_STARTER.PRICE,
-      total: (i === 0 ? totalCost : projMonthCost) + N8N_STARTER.PRICE,
+      supabase: SUPABASE_LIMITS.PRICE,
+      total: aiCost + FIXED_MONTHLY,
     };
   });
 
@@ -707,7 +710,7 @@ export default function UsagePage() {
               {[
                 { label: 'Promedio diario IA', value: fmt$(avgDailyCost) },
                 { label: 'Proyección mensual IA', value: fmt$(projMonthCost) },
-                { label: 'n8n Cloud (fijo)', value: `$${N8N_STARTER.PRICE}/mes` },
+                { label: 'Costos fijos / mes', value: `$${FIXED_MONTHLY} (n8n $${N8N_STARTER.PRICE} + Supabase $${SUPABASE_LIMITS.PRICE})` },
                 { label: 'Total estimado / año', value: `$${projYearCost.toFixed(0)}` },
               ].map(s => (
                 <div key={s.label}>
@@ -730,14 +733,16 @@ export default function UsagePage() {
                 <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#71717a' }} />
                 <YAxis tickFormatter={v => `$${v}`} tick={{ fontSize: 10, fill: '#71717a' }} />
                 <Tooltip content={<ChartTooltip formatter={(v: number) => `$${v.toFixed(2)}`} />} />
+                <Bar dataKey="supabase" stackId="a" fill="#10b981" name="Supabase Pro" />
                 <Bar dataKey="n8n" stackId="a" fill="#3b82f6" name="n8n Cloud" />
                 <Bar dataKey="ai" stackId="a" fill="#f59e0b" name="Gemini/IA" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-            <div className="flex gap-4 mt-3 text-xs text-neutral-400">
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-blue-400/70 inline-block" />n8n Cloud (fijo $20)</span>
+            <div className="flex flex-wrap gap-4 mt-3 text-xs text-neutral-400">
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-emerald-500 inline-block" />Supabase Pro (fijo $25)</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-blue-500 inline-block" />n8n Cloud (fijo $20)</span>
               <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-400/80 inline-block" />Gemini / IA (variable)</span>
-              <span className="flex items-center gap-1.5 text-[#71BF44]">✦ Supabase · Vercel · OCI gratis</span>
+              <span className="flex items-center gap-1.5 text-[#71BF44]">✦ Vercel · OCI gratis</span>
             </div>
           </Card>
 
@@ -752,6 +757,7 @@ export default function UsagePage() {
                   <tr>
                     <th className="px-6 py-3 text-left font-medium">Mes</th>
                     <th className="px-6 py-3 text-right font-medium">IA (Gemini)</th>
+                    <th className="px-6 py-3 text-right font-medium">Supabase Pro</th>
                     <th className="px-6 py-3 text-right font-medium">n8n Cloud</th>
                     <th className="px-6 py-3 text-right font-medium">Total</th>
                   </tr>
@@ -763,6 +769,7 @@ export default function UsagePage() {
                         {r.label}{i === 0 && <span className="ml-2 text-[10px] text-[#71BF44] font-semibold">actual</span>}
                       </td>
                       <td className="px-6 py-3 text-right font-mono text-xs text-amber-600 dark:text-amber-400">{fmt$(r.ai)}</td>
+                      <td className="px-6 py-3 text-right font-mono text-xs text-emerald-500">${r.supabase}</td>
                       <td className="px-6 py-3 text-right font-mono text-xs text-blue-500">${r.n8n}</td>
                       <td className="px-6 py-3 text-right font-mono font-semibold text-neutral-900 dark:text-white">${r.total.toFixed(2)}</td>
                     </tr>
