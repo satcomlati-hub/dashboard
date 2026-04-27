@@ -121,8 +121,9 @@ export default async function AnalyticsPage() {
       connection: {
         type: 'n8n',
         source: 'https://sara.mysatcomla.com/webhook/GetData',
-        flowName: 'Tablero IVA EC 2026 (V5)',
-        flowId: 'consulta_tablero_iva_ec_2026'
+        flowName: 'Monitoreo Procesos Consulta SP',
+        flowId: 'VOfL2rAriW1s0TeQ',
+        method: 'SP: consulta_tablero_iva_ec_2026'
       }
     }
   ];
