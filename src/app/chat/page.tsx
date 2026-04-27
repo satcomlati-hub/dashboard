@@ -256,6 +256,7 @@ export default function SaraChatPage() {
         let buffer = '';
         let accumulated = '';
         let streamMsgId: string | null = null;
+        let streamImages: ImageAttachment[] = [];
 
         try {
           while (true) {
@@ -274,7 +275,19 @@ export default function SaraChatPage() {
                 const parsed = JSON.parse(trimmed);
                 // n8n emite {type:"item", content:"..."} por cada chunk
                 if (parsed.type !== 'item' || !parsed.content) continue;
-                const chunk: string = parsed.content;
+                let chunk: string = parsed.content;
+
+                // Detectar marcador de imágenes [[IMGS]]:url1|url2 al final del chunk
+                const imgMarker = chunk.match(/\[\[IMGS\]\]:([^\n]*)/);
+                if (imgMarker) {
+                  streamImages = imgMarker[1].split('|')
+                    .map(u => u.trim())
+                    .filter(u => u.startsWith('http'))
+                    .map(url => ({ url }));
+                  chunk = chunk.replace(/\n?\[\[IMGS\]\]:[^\n]*/g, '').trimEnd();
+                }
+
+                if (!chunk) continue;
 
                 if (!streamMsgId) {
                   streamMsgId = newId();
@@ -302,7 +315,14 @@ export default function SaraChatPage() {
           setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: 'Sin respuesta.' }]);
         }
 
-        const finalMsg: Message = { id: streamMsgId, role: 'assistant', content: accumulated || 'Sin respuesta.', timestamp: Date.now() };
+        // Aplicar imágenes al mensaje final si el agente las incluyó
+        if (streamImages.length > 0) {
+          setMessages(prev =>
+            prev.map(m => m.id === streamMsgId ? { ...m, images: streamImages } : m)
+          );
+        }
+
+        const finalMsg: Message = { id: streamMsgId, role: 'assistant', content: accumulated || 'Sin respuesta.', images: streamImages, timestamp: Date.now() };
         persist([...withUser, finalMsg], sid);
 
       } else {
