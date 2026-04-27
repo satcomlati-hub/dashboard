@@ -19,32 +19,38 @@ import {
   CheckCircle2,
   XCircle,
   Hash,
-  Download
+  Download,
+  Building2,
+  Percent
 } from 'lucide-react';
 import { formatDate } from '@/lib/formatters';
 import {
-  LineChart,
-  Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend
+  Legend,
+  Cell
 } from 'recharts';
 
 interface IvaRecord {
-  fecha: string;
-  impuesto: string;
-  autorizados: number | string;
-  no_autorizados: number | string;
-  total?: number | string;
-  detalles?: string;
+  Nemonico: string;
+  Emisor: string;
+  DescripcionTipoDocumento: string;
+  Autorizado: number | string;
+  CodigoImpuesto: number | string;
+  CodigoPorcentaje: number | string;
+  Porcentaje: string;
+  CantidadComprobantes: number | string;
+  FechaReporte: string;
 }
 
 const COLORS = [
-  '#71BF44', // Satcom Green
-  '#ef4444', // Red
+  '#71BF44', // Satcom Green (Autorizados)
+  '#ef4444', // Red (No Autorizados)
   '#3b82f6', // Blue
   '#f59e0b', // Amber
   '#8b5cf6', // Violet
@@ -59,11 +65,12 @@ export default function TableroIvaPage() {
   const [refreshing, setRefreshing] = useState(false);
   
   // Filters
-  const [filterImpuesto, setFilterImpuesto] = useState('Todos');
+  const [filterNemonico, setFilterNemonico] = useState('Todos');
+  const [filterPorcentaje, setFilterPorcentaje] = useState('Todos');
   const [searchTerm, setSearchTerm] = useState('');
   
   // Sorting
-  const [sortField, setSortField] = useState<keyof IvaRecord>('fecha');
+  const [sortField, setSortField] = useState<keyof IvaRecord>('FechaReporte');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const fetchData = useCallback(async (isRefresh = false) => {
@@ -71,7 +78,6 @@ export default function TableroIvaPage() {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       
-      // Proceso: consulta_tablero_iva_ec_2026, Ambiente: V5 (según requerimiento)
       const res = await fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=V5&Proceso=consulta_tablero_iva_ec_2026`);
 
       if (!res.ok) throw new Error('Error al obtener datos del reporte');
@@ -84,7 +90,7 @@ export default function TableroIvaPage() {
           if (item.data) {
             const parsed = typeof item.data === 'string' ? JSON.parse(item.data) : item.data;
             if (Array.isArray(parsed)) flattened = [...flattened, ...parsed];
-          } else if (item.fecha || item.impuesto) {
+          } else if (item.Nemonico || item.FechaReporte) {
             flattened.push(item);
           }
         });
@@ -104,48 +110,98 @@ export default function TableroIvaPage() {
     fetchData();
   }, [fetchData]);
 
-  const impuestosList = useMemo(() => {
-    const list = Array.from(new Set(data.map(d => d.impuesto))).filter(Boolean).sort();
+  const nemonicosList = useMemo(() => {
+    const list = Array.from(new Set(data.map(d => d.Nemonico))).filter(Boolean).sort();
+    return ['Todos', ...list];
+  }, [data]);
+
+  const porcentajesList = useMemo(() => {
+    const list = Array.from(new Set(data.map(d => d.Porcentaje))).filter(Boolean).sort((a, b) => parseFloat(a) - parseFloat(b));
     return ['Todos', ...list];
   }, [data]);
 
   const filteredData = useMemo(() => {
     let result = data.filter(item => {
-      const matchImpuesto = filterImpuesto === 'Todos' || item.impuesto === filterImpuesto;
+      const matchNemonico = filterNemonico === 'Todos' || item.Nemonico === filterNemonico;
+      const matchPorcentaje = filterPorcentaje === 'Todos' || item.Porcentaje === filterPorcentaje;
       const matchSearch = !searchTerm || 
-        item.impuesto?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.detalles?.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchImpuesto && matchSearch;
+        item.Emisor?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.Nemonico?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.DescripcionTipoDocumento?.toLowerCase().includes(searchTerm.toLowerCase());
+      return matchNemonico && matchPorcentaje && matchSearch;
     });
 
     result.sort((a, b) => {
-      const valA = a[sortField] || '';
-      const valB = b[sortField] || '';
+      let valA: any = a[sortField];
+      let valB: any = b[sortField];
+
+      if (sortField === 'CantidadComprobantes') {
+        valA = Number(valA);
+        valB = Number(valB);
+      }
+
       if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
       if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
       return 0;
     });
 
     return result;
-  }, [data, filterImpuesto, searchTerm, sortField, sortOrder]);
+  }, [data, filterNemonico, filterPorcentaje, searchTerm, sortField, sortOrder]);
 
   const chartData = useMemo(() => {
-    const grouped: Record<string, any> = {};
-    
-    // Group by date to show trends
-    data.forEach(item => {
-      const dateKey = item.fecha?.split('T')[0] || 'Sin Fecha';
-      if (!grouped[dateKey]) {
-        grouped[dateKey] = { date: dateKey, autorizados: 0, no_autorizados: 0 };
-      }
-      grouped[dateKey].autorizados += Number(item.autorizados) || 0;
-      grouped[dateKey].no_autorizados += Number(item.no_autorizados) || 0;
-    });
+    // Si no hay filtro de nemónico, mostramos el TOP 10 de empresas por cantidad
+    if (filterNemonico === 'Todos') {
+      const companySummary: Record<string, { emisor: string, autorizados: number, no_autorizados: number }> = {};
+      
+      data.forEach(item => {
+        const key = item.Nemonico;
+        if (!companySummary[key]) {
+          companySummary[key] = { emisor: item.Emisor, autorizados: 0, no_autorizados: 0 };
+        }
+        const cant = Number(item.CantidadComprobantes) || 0;
+        if (Number(item.Autorizado) === 1) {
+          companySummary[key].autorizados += cant;
+        } else {
+          companySummary[key].no_autorizados += cant;
+        }
+      });
 
-    return Object.values(grouped)
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .slice(-15); // Últimos 15 puntos
-  }, [data]);
+      return Object.entries(companySummary)
+        .map(([nemonico, stats]) => ({
+          name: nemonico,
+          emisor: stats.emisor,
+          autorizados: stats.autorizados,
+          no_autorizados: stats.no_autorizados,
+          total: stats.autorizados + stats.no_autorizados
+        }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 10);
+    } else {
+      // Si hay filtro de nemónico, mostramos la tendencia por fecha para esa empresa
+      const dateSummary: Record<string, { autorizados: number, no_autorizados: number }> = {};
+      
+      data.filter(d => d.Nemonico === filterNemonico).forEach(item => {
+        const dateKey = item.FechaReporte;
+        if (!dateSummary[dateKey]) {
+          dateSummary[dateKey] = { autorizados: 0, no_autorizados: 0 };
+        }
+        const cant = Number(item.CantidadComprobantes) || 0;
+        if (Number(item.Autorizado) === 1) {
+          dateSummary[dateKey].autorizados += cant;
+        } else {
+          dateSummary[dateKey].no_autorizados += cant;
+        }
+      });
+
+      return Object.entries(dateSummary)
+        .map(([date, stats]) => ({
+          name: date,
+          autorizados: stats.autorizados,
+          no_autorizados: stats.no_autorizados
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    }
+  }, [data, filterNemonico]);
 
   const toggleSort = (field: keyof IvaRecord) => {
     if (sortField === field) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -176,7 +232,7 @@ export default function TableroIvaPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
           <div className="flex items-center gap-6">
             <div className="p-4 bg-[#71BF44]/10 border border-[#71BF44]/20 rounded-2xl flex items-center justify-center">
-              <TrendingUp className="w-8 h-8 text-[#71BF44]" />
+              <Building2 className="w-8 h-8 text-[#71BF44]" />
             </div>
             <div>
               <h1 className="text-4xl font-black text-neutral-900 dark:text-white tracking-tighter mb-1">
@@ -187,7 +243,7 @@ export default function TableroIvaPage() {
                   <span className="px-2 py-0.5 bg-[#71BF44]/10 text-[#71BF44] rounded text-[10px] font-bold tracking-widest">AMBIENTE V5</span>
                 </div>
                 <div className="w-1 h-1 rounded-full bg-neutral-300" />
-                <p className="text-xs text-neutral-500 font-medium tracking-tight">Análisis de comprobantes autorizados y no autorizados por tipo de impuesto.</p>
+                <p className="text-xs text-neutral-500 font-medium tracking-tight">Análisis de comprobantes autorizados y no autorizados por empresa e impuesto.</p>
               </div>
             </div>
           </div>
@@ -214,39 +270,31 @@ export default function TableroIvaPage() {
       )}
 
       {/* Stats Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-        <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm flex items-center gap-5">
-          <div className="w-14 h-14 rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-400">
-            <Hash className="w-7 h-7" />
-          </div>
-          <div>
-            <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">Registros Totales</p>
-            <h3 className="text-3xl font-black text-neutral-900 dark:text-white leading-none">{data.length.toLocaleString()}</h3>
-          </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+        <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm">
+          <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">Empresas</p>
+          <h3 className="text-3xl font-black text-neutral-900 dark:text-white leading-none">{nemonicosList.length - 1}</h3>
         </div>
 
-        <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm flex items-center gap-5">
-          <div className="w-14 h-14 rounded-2xl bg-[#71BF44]/10 flex items-center justify-center text-[#71BF44]">
-            <CheckCircle2 className="w-7 h-7" />
-          </div>
-          <div>
-            <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">Autorizados</p>
-            <h3 className="text-3xl font-black text-[#71BF44] leading-none">
-              {data.reduce((acc, curr) => acc + (Number(curr.autorizados) || 0), 0).toLocaleString()}
-            </h3>
-          </div>
+        <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm">
+          <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">Comprobantes Totales</p>
+          <h3 className="text-3xl font-black text-neutral-900 dark:text-white leading-none">
+            {data.reduce((acc, curr) => acc + (Number(curr.CantidadComprobantes) || 0), 0).toLocaleString()}
+          </h3>
         </div>
 
-        <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm flex items-center gap-5">
-          <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center text-red-500">
-            <XCircle className="w-7 h-7" />
-          </div>
-          <div>
-            <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">No Autorizados</p>
-            <h3 className="text-3xl font-black text-red-500 leading-none">
-              {data.reduce((acc, curr) => acc + (Number(curr.no_autorizados) || 0), 0).toLocaleString()}
-            </h3>
-          </div>
+        <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm">
+          <p className="text-[10px] font-black text-[#71BF44] uppercase tracking-widest mb-1">Autorizados</p>
+          <h3 className="text-3xl font-black text-[#71BF44] leading-none">
+            {data.filter(d => Number(d.Autorizado) === 1).reduce((acc, curr) => acc + (Number(curr.CantidadComprobantes) || 0), 0).toLocaleString()}
+          </h3>
+        </div>
+
+        <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm">
+          <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1">No Autorizados</p>
+          <h3 className="text-3xl font-black text-red-500 leading-none">
+            {data.filter(d => Number(d.Autorizado) !== 1).reduce((acc, curr) => acc + (Number(curr.CantidadComprobantes) || 0), 0).toLocaleString()}
+          </h3>
         </div>
       </div>
 
@@ -255,7 +303,9 @@ export default function TableroIvaPage() {
         <div className="flex items-center justify-between mb-10">
           <div className="flex items-center gap-3">
             <Activity className="w-5 h-5 text-[#71BF44]" />
-            <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">Tendencia de Comprobantes</h3>
+            <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
+              {filterNemonico === 'Todos' ? 'Top 10 Empresas: Autorizados vs No Autorizados' : `Tendencia: ${filterNemonico}`}
+            </h3>
           </div>
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">
@@ -271,14 +321,13 @@ export default function TableroIvaPage() {
         
         <div className="h-[400px]">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
+            <BarChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E5E5" />
               <XAxis 
-                dataKey="date" 
+                dataKey="name" 
                 axisLine={false} 
                 tickLine={false} 
                 tick={{ fill: '#999', fontSize: 10, fontWeight: 700 }}
-                tickFormatter={(val) => formatDate(val)}
               />
               <YAxis 
                 axisLine={false} 
@@ -288,27 +337,12 @@ export default function TableroIvaPage() {
               <Tooltip 
                 contentStyle={{ backgroundColor: '#1a1a1a', border: 'none', borderRadius: '16px', color: '#fff', fontSize: '10px', padding: '12px' }}
                 itemStyle={{ fontWeight: 'bold' }}
+                formatter={(value: any) => value.toLocaleString()}
               />
               <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase' }} />
-              <Line 
-                name="Autorizados" 
-                type="monotone" 
-                dataKey="autorizados" 
-                stroke="#71BF44" 
-                strokeWidth={4} 
-                dot={{ r: 4, strokeWidth: 2, fill: '#fff' }} 
-                activeDot={{ r: 6, strokeWidth: 0 }}
-              />
-              <Line 
-                name="No Autorizados" 
-                type="monotone" 
-                dataKey="no_autorizados" 
-                stroke="#ef4444" 
-                strokeWidth={4} 
-                dot={{ r: 4, strokeWidth: 2, fill: '#fff' }} 
-                activeDot={{ r: 6, strokeWidth: 0 }}
-              />
-            </LineChart>
+              <Bar name="Autorizados" dataKey="autorizados" fill="#71BF44" radius={[4, 4, 0, 0]} />
+              <Bar name="No Autorizados" dataKey="no_autorizados" fill="#ef4444" radius={[4, 4, 0, 0]} />
+            </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
@@ -317,28 +351,42 @@ export default function TableroIvaPage() {
       <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] overflow-hidden shadow-sm">
         {/* Table Filters */}
         <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-6 bg-neutral-50/50 dark:bg-white/[0.02]">
-          <div className="flex items-center gap-6 flex-1 min-w-[300px]">
-            <div className="flex flex-col gap-2 flex-1">
-              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Tipo de Impuesto</label>
+          <div className="flex items-center gap-6 flex-1 min-w-[500px]">
+            <div className="flex flex-col gap-2 w-48">
+              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Filtrar Empresa</label>
               <div className="relative">
                 <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
                 <select 
-                  value={filterImpuesto}
-                  onChange={(e) => setFilterImpuesto(e.target.value)}
+                  value={filterNemonico}
+                  onChange={(e) => setFilterNemonico(e.target.value)}
                   className="w-full bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl pl-10 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-[#71BF44]/50 transition-all appearance-none cursor-pointer"
                 >
-                  {impuestosList.map(imp => <option key={imp} value={imp}>{imp}</option>)}
+                  {nemonicosList.map(nem => <option key={nem} value={nem}>{nem}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 w-32">
+              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">IVA %</label>
+              <div className="relative">
+                <Percent className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                <select 
+                  value={filterPorcentaje}
+                  onChange={(e) => setFilterPorcentaje(e.target.value)}
+                  className="w-full bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl pl-10 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-[#71BF44]/50 transition-all appearance-none cursor-pointer"
+                >
+                  {porcentajesList.map(p => <option key={p} value={p}>{p === 'Todos' ? 'Todos' : `${p}%`}</option>)}
                 </select>
               </div>
             </div>
             
             <div className="flex flex-col gap-2 flex-1">
-              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Buscar en detalles</label>
+              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Buscar en Emisor / Documento</label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
                 <input 
                   type="text"
-                  placeholder="Buscar..."
+                  placeholder="Ej: MERAMEXAIR, FACTURA..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl pl-10 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-[#71BF44]/50 transition-all"
@@ -354,7 +402,7 @@ export default function TableroIvaPage() {
               const url = window.URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.setAttribute('href', url);
-              a.setAttribute('download', `ReporteIVA_EC_2026_${new Date().getTime()}.csv`);
+              a.setAttribute('download', `ReporteIVA_Detallado_${new Date().getTime()}.csv`);
               a.click();
             }}
             className="h-12 bg-neutral-900 dark:bg-white dark:text-black text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all hover:scale-105 active:scale-95 flex items-center gap-3"
@@ -369,45 +417,60 @@ export default function TableroIvaPage() {
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-neutral-100 dark:border-neutral-800 text-[10px] font-black text-neutral-400 uppercase tracking-widest">
-                <th className="px-8 py-5 cursor-pointer hover:text-[#71BF44] transition-colors" onClick={() => toggleSort('fecha')}>
-                  <div className="flex items-center gap-2">
-                    Fecha {sortField === 'fecha' && (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
-                  </div>
+                <th className="px-8 py-5 cursor-pointer hover:text-[#71BF44] transition-colors" onClick={() => toggleSort('Nemonico')}>
+                  Empresa {sortField === 'Nemonico' && (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
                 </th>
-                <th className="px-8 py-5 cursor-pointer hover:text-[#71BF44] transition-colors" onClick={() => toggleSort('impuesto')}>
-                  <div className="flex items-center gap-2">
-                    Impuesto {sortField === 'impuesto' && (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
-                  </div>
+                <th className="px-8 py-5">Tipo Documento / Impuesto</th>
+                <th className="px-8 py-5 cursor-pointer hover:text-[#71BF44] transition-colors text-right" onClick={() => toggleSort('CantidadComprobantes')}>
+                  Cantidad {sortField === 'CantidadComprobantes' && (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
                 </th>
-                <th className="px-8 py-5 text-right">Autorizados</th>
-                <th className="px-8 py-5 text-right">No Autorizados</th>
-                <th className="px-8 py-5">Detalles / Estado</th>
+                <th className="px-8 py-5">Estado</th>
+                <th className="px-8 py-5 cursor-pointer hover:text-[#71BF44] transition-colors" onClick={() => toggleSort('FechaReporte')}>
+                  Fecha {sortField === 'FechaReporte' && (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/50">
-              {filteredData.map((row, i) => (
-                <tr key={i} className="group hover:bg-neutral-50 dark:hover:bg-white/[0.01] transition-all">
-                  <td className="px-8 py-4 text-xs font-bold text-neutral-500">
-                    {formatDate(row.fecha, true)}
-                  </td>
-                  <td className="px-8 py-4">
-                    <span className="px-2 py-1 bg-neutral-100 dark:bg-neutral-800 rounded-md text-[10px] font-black uppercase">
-                      {row.impuesto}
-                    </span>
-                  </td>
-                  <td className="px-8 py-4 text-right">
-                    <span className="text-sm font-black text-[#71BF44]">{Number(row.autorizados).toLocaleString()}</span>
-                  </td>
-                  <td className="px-8 py-4 text-right">
-                    <span className="text-sm font-black text-red-500">{Number(row.no_autorizados).toLocaleString()}</span>
-                  </td>
-                  <td className="px-8 py-4">
-                    <p className="text-[10px] text-neutral-400 font-bold max-w-xs truncate" title={row.detalles}>
-                      {row.detalles || 'Sin detalles adicionales'}
-                    </p>
-                  </td>
-                </tr>
-              ))}
+              {filteredData.map((row, i) => {
+                const isAutorizado = Number(row.Autorizado) === 1;
+                return (
+                  <tr key={i} className="group hover:bg-neutral-50 dark:hover:bg-white/[0.01] transition-all">
+                    <td className="px-8 py-5">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-black text-neutral-900 dark:text-white uppercase tracking-tighter">{row.Emisor}</span>
+                        <span className="text-[10px] font-bold text-[#71BF44] uppercase tracking-widest">{row.Nemonico}</span>
+                      </div>
+                    </td>
+                    <td className="px-8 py-5">
+                      <div className="flex items-center gap-3">
+                        <span className="px-2 py-1 bg-neutral-100 dark:bg-neutral-800 rounded-md text-[9px] font-black text-neutral-500 uppercase">
+                          {row.DescripcionTipoDocumento}
+                        </span>
+                        <span className="flex items-center gap-1 text-[10px] font-black text-blue-500">
+                          <Percent className="w-3 h-3" />
+                          {row.Porcentaje}%
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-8 py-5 text-right">
+                      <span className="text-lg font-black text-neutral-900 dark:text-white tracking-tighter">
+                        {Number(row.CantidadComprobantes).toLocaleString()}
+                      </span>
+                    </td>
+                    <td className="px-8 py-5">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${isAutorizado ? 'bg-[#71BF44]' : 'bg-red-500 shadow-lg shadow-red-500/20'}`} />
+                        <span className={`text-[10px] font-black uppercase tracking-widest ${isAutorizado ? 'text-[#71BF44]' : 'text-red-500'}`}>
+                          {isAutorizado ? 'Autorizado' : 'No Autorizado'}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-8 py-5 text-xs font-bold text-neutral-400">
+                      {row.FechaReporte}
+                    </td>
+                  </tr>
+                );
+              })}
               {filteredData.length === 0 && (
                 <tr>
                   <td colSpan={5} className="py-24 text-center">
@@ -431,7 +494,7 @@ export default function TableroIvaPage() {
             </div>
             <div className="flex flex-col">
               <span className="text-[11px] font-black uppercase tracking-[0.4em] text-neutral-900 dark:text-white leading-none">Satcom Engine</span>
-              <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-[0.2em] mt-1">Analytics Dashboard v2.5</span>
+              <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-[0.2em] mt-1">IVA Analysis Module v1.0</span>
             </div>
          </div>
       </footer>
