@@ -107,6 +107,24 @@ export default async function AnalyticsPage() {
         flowName: 'Consolidado MySatcom 2026',
         flowId: 'MULTI_ENV'
       }
+    },
+    {
+      id: 'tablero-iva',
+      name: 'Tablero IVA EC 2026',
+      description: 'Análisis de impuestos y estados de autorización de comprobantes para Ecuador (V5).',
+      href: '/analytics/tablero-iva',
+      icon: (
+        <svg className="w-6 h-6 text-[#71BF44]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2zM10 8.5a.5.5 0 11-1 0 .5.5 0 011 0zm5 5a.5.5 0 11-1 0 .5.5 0 011 0z" />
+        </svg>
+      ),
+      connection: {
+        type: 'n8n',
+        source: 'https://sara.mysatcomla.com/webhook/GetData',
+        flowName: 'Monitoreo Procesos Consulta SP',
+        flowId: 'VOfL2rAriW1s0TeQ',
+        method: 'SP: consulta_tablero_iva_ec_2026'
+      }
     }
   ];
 
