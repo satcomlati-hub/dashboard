@@ -257,20 +257,24 @@ export default function SaraChatPage() {
         let accumulated = '';
         let streamMsgId: string | null = null;
         let streamImages: ImageAttachment[] = [];
-
-        const extractImgMarker = (text: string): { urls: string[]; cleaned: string } => {
-          const idx = text.indexOf('[[IMGS]]:');
-          if (idx === -1) return { urls: [], cleaned: text };
-          const urlBlock = text.slice(idx + '[[IMGS]]:'.length).replace(/[\n\r]/g, '');
-          const urls = urlBlock.split('|').map(u => u.trim()).filter(u => u.startsWith('http'));
-          const cleaned = text.slice(0, idx).trimEnd();
-          return { urls, cleaned };
-        };
+        let imgAccumulating = false;
+        let imgBuffer = '';
 
         const processChunk = (rawContent: string) => {
-          const { urls, cleaned } = extractImgMarker(rawContent);
-          if (urls.length > 0) streamImages = urls.map(url => ({ url }));
-          const chunk = cleaned;
+          // Una vez que empieza [[IMGS]]: acumular URLs sin mostrar en pantalla
+          if (imgAccumulating) {
+            imgBuffer += rawContent;
+            return;
+          }
+
+          const markerIdx = rawContent.indexOf('[[IMGS]]:');
+          let chunk = rawContent;
+          if (markerIdx !== -1) {
+            imgAccumulating = true;
+            imgBuffer = rawContent.slice(markerIdx + '[[IMGS]]:'.length);
+            chunk = rawContent.slice(0, markerIdx).trimEnd();
+          }
+
           if (!chunk) return;
           if (!streamMsgId) {
             streamMsgId = newId();
@@ -302,22 +306,16 @@ export default function SaraChatPage() {
             buffer = lines.pop() ?? '';
             for (const line of lines) processLine(line.trim());
           }
-          // Procesar línea residual sin \n final
           if (buffer.trim()) processLine(buffer.trim());
         } finally {
           reader.releaseLock();
         }
 
-        // Fallback: buscar [[IMGS]] en el texto acumulado si quedó embebido en el stream
-        if (streamImages.length === 0 && accumulated.includes('[[IMGS]]:')) {
-          const { urls, cleaned } = extractImgMarker(accumulated);
-          if (urls.length > 0) {
-            streamImages = urls.map(url => ({ url }));
-            accumulated = cleaned;
-            if (streamMsgId) {
-              setMessages(prev => prev.map(m => m.id === streamMsgId ? { ...m, content: accumulated } : m));
-            }
-          }
+        // Extraer imágenes del buffer acumulado tras el stream
+        if (imgAccumulating && imgBuffer) {
+          const urlString = imgBuffer.replace(/[\n\r]/g, '');
+          const urls = urlString.split('|').map(u => u.trim()).filter(u => u.startsWith('http'));
+          if (urls.length > 0) streamImages = urls.map(url => ({ url }));
         }
 
         if (!streamMsgId) {
