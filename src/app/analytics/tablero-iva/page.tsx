@@ -114,10 +114,7 @@ export default function TableroIvaPage() {
   const filteredData = useMemo(() => {
     let result = data.filter(item => {
       const matchNemonico = filterNemonico === 'Todos' || item.Nemonico === filterNemonico;
-      
-      // Fix: Normalize percentage comparison to handle 15.00 vs 15 vs "15"
-      const matchPorcentaje = filterPorcentaje === 'Todos' || 
-        (parseFloat(item.Porcentaje) === parseFloat(filterPorcentaje));
+      const matchPorcentaje = filterPorcentaje === 'Todos' || (parseFloat(item.Porcentaje) === parseFloat(filterPorcentaje));
       
       let matchStatus = true;
       if (filterStatus === 'Autorizados') matchStatus = Number(item.Autorizado) === 1;
@@ -165,8 +162,6 @@ export default function TableroIvaPage() {
         }
       });
 
-      // User requested: "presenta el top de emisores con documentos no autorizados"
-      // So we sort primarily by no_autorizados
       return Object.entries(companySummary)
         .map(([nemonico, stats]) => ({
           name: nemonico,
@@ -209,15 +204,17 @@ export default function TableroIvaPage() {
   };
 
   const handleChartClick = (state: any) => {
-    if (state && state.activePayload && state.activePayload.length > 0) {
-      const clickedKey = state.activePayload[0].name;
-      if (clickedKey === 'Autorizados') setFilterStatus('Autorizados');
-      else if (clickedKey === 'No Autorizados') setFilterStatus('No Autorizados');
+    // Si el usuario hace clic en el gráfico de barras (Top Empresas)
+    if (filterNemonico === 'Todos' && state && state.activeLabel) {
+      setFilterNemonico(state.activeLabel);
       
-      if (filterNemonico === 'Todos' && state.activeLabel) {
-        setFilterNemonico(state.activeLabel);
+      // Si además hizo clic en una barra específica (Autorizado/No Autorizado)
+      if (state.activePayload && state.activePayload.length > 0) {
+        // En un BarChart agrupado, activePayload[0] suele ser la barra sobre la que se hizo clic/hover
+        // Pero para ser más precisos con el clic, Recharts a veces requiere lógica adicional.
+        // Aquí simplificamos: si hace clic en la columna de una empresa, filtramos por esa empresa.
       }
-
+      
       document.getElementById('grid-area')?.scrollIntoView({ behavior: 'smooth' });
     }
   };
@@ -236,7 +233,7 @@ export default function TableroIvaPage() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-4 p-8 bg-white dark:bg-[#0c0c0c] border border-[#71BF44]/20 rounded-3xl shadow-2xl">
             <RefreshCw className="w-12 h-12 text-[#71BF44] animate-spin" />
-            <span className="text-[#71BF44] font-black uppercase tracking-widest text-xs">Sincronizando Reporte IVA</span>
+            <span className="text-[#71BF44] font-black uppercase tracking-widest text-xs">Actualizando Tablero IVA</span>
           </div>
         </div>
       )}
@@ -253,7 +250,7 @@ export default function TableroIvaPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
           <div className="flex items-center gap-6">
             <div className="p-4 bg-[#71BF44]/10 border border-[#71BF44]/20 rounded-2xl flex items-center justify-center">
-              <AlertTriangle className="w-8 h-8 text-[#71BF44]" />
+              <TrendingUp className="w-8 h-8 text-[#71BF44]" />
             </div>
             <div>
               <h1 className="text-4xl font-black text-neutral-900 dark:text-white tracking-tighter mb-1">
@@ -261,10 +258,10 @@ export default function TableroIvaPage() {
               </h1>
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 bg-[#71BF44]/10 text-[#71BF44] rounded text-[10px] font-bold tracking-widest uppercase">V5 Ambiente</span>
+                  <span className="px-2 py-0.5 bg-[#71BF44]/10 text-[#71BF44] rounded text-[10px] font-bold tracking-widest uppercase">Ambiente V5</span>
                 </div>
                 <div className="w-1 h-1 rounded-full bg-neutral-300" />
-                <p className="text-xs text-neutral-500 font-medium tracking-tight">Top de incidencias y comprobantes no autorizados por emisor.</p>
+                <p className="text-xs text-neutral-500 font-medium tracking-tight">Monitoreo de cumplimiento y errores por emisor.</p>
               </div>
             </div>
           </div>
@@ -275,7 +272,7 @@ export default function TableroIvaPage() {
             className="bg-neutral-900 dark:bg-white dark:text-black text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all hover:scale-105 active:scale-95 flex items-center gap-3"
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            Sincronizar Datos
+            Refrescar Datos
           </button>
         </div>
       </header>
@@ -283,12 +280,12 @@ export default function TableroIvaPage() {
       {/* Stats Summary */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
         <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm">
-          <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">Empresas Reportadas</p>
+          <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">Empresas</p>
           <h3 className="text-3xl font-black text-neutral-900 dark:text-white leading-none">{nemonicosList.length - 1}</h3>
         </div>
 
         <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm">
-          <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">Total Comprobantes</p>
+          <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">Comprobantes</p>
           <h3 className="text-3xl font-black text-neutral-900 dark:text-white leading-none">
             {data.reduce((acc, curr) => acc + (Number(curr.CantidadComprobantes) || 0), 0).toLocaleString()}
           </h3>
@@ -319,20 +316,23 @@ export default function TableroIvaPage() {
       <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm mb-10">
         <div className="flex items-center justify-between mb-10">
           <div className="flex items-center gap-3">
-            <TrendingUp className="w-5 h-5 text-[#71BF44]" />
+            <Activity className="w-5 h-5 text-[#71BF44]" />
             <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
-              {filterNemonico === 'Todos' ? 'Top 10 Emisores con Documentos No Autorizados' : `Análisis: ${filterNemonico}`}
+              {filterNemonico === 'Todos' ? 'Top 10 Emisores con Incidencias' : `Tendencia de Empresa: ${filterNemonico}`}
             </h3>
           </div>
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-[#71BF44]" />
-              <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Autorizados</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-red-500" />
-              <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">No Autorizados</span>
-            </div>
+          <div className="flex flex-col items-end gap-1">
+             <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Haz clic en una empresa para filtrarla abajo</p>
+             <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-[#71BF44]" />
+                  <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Autorizados</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-red-500" />
+                  <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">No Autorizados</span>
+                </div>
+             </div>
           </div>
         </div>
         
@@ -409,7 +409,7 @@ export default function TableroIvaPage() {
             
             {/* Global Search */}
             <div className="flex flex-col gap-2 flex-1 min-w-[300px]">
-              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Buscar Emisor o Documento</label>
+              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Buscar en Emisor o Documento</label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
                 <input 
@@ -461,7 +461,7 @@ export default function TableroIvaPage() {
                 <th className="px-8 py-5 text-right cursor-pointer hover:text-[#71BF44] transition-colors" onClick={() => toggleSort('CantidadComprobantes')}>
                   Cantidad {sortField === 'CantidadComprobantes' && (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
                 </th>
-                <th className="px-8 py-5">Estado Autorización</th>
+                <th className="px-8 py-5">Estado</th>
                 <th className="px-8 py-5 cursor-pointer hover:text-[#71BF44] transition-colors" onClick={() => toggleSort('FechaReporte')}>
                   Fecha {sortField === 'FechaReporte' && (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
                 </th>
@@ -531,7 +531,7 @@ export default function TableroIvaPage() {
             </div>
             <div className="flex flex-col">
               <span className="text-[11px] font-black uppercase tracking-[0.4em] text-neutral-900 dark:text-white leading-none">Satcom Engine</span>
-              <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-[0.2em] mt-1">IVA Analysis Module v1.2</span>
+              <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-[0.2em] mt-1">IVA Analysis Module v1.3</span>
             </div>
          </div>
       </footer>
