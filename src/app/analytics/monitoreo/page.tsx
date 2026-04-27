@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import MonitoreoChart from '@/components/MonitoreoChart';
 import MonitoreoWidget from '@/components/MonitoreoWidget';
-import { ChevronLeft, BarChart2, FilterX, Calendar, Globe, Activity, TrendingUp, Clock, CalendarDays, RefreshCw } from 'lucide-react';
+import { ChevronLeft, BarChart2, FilterX, Calendar, Globe, Activity, Clock, CalendarDays, RefreshCw } from 'lucide-react';
 import { formatDate } from '@/lib/formatters';
 
 const POLL_INTERVAL = 60_000; // 60 segundos
@@ -32,7 +32,7 @@ export default function MonitoreoSubpage() {
   const [selectedDateFilter, setSelectedDateFilter] = useState<string | null>(null);
 
   // Active counter for highlight
-  const [activeCounter, setActiveCounter] = useState<'total' | 'mes' | 'mesAnterior' | 'semana' | 'hoy' | null>(null);
+  const [activeCounter, setActiveCounter] = useState<'mes' | 'mesAnterior' | 'semana' | 'hoy' | null>(null);
 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -146,7 +146,7 @@ export default function MonitoreoSubpage() {
   const toDateString = (d: Date) => d.toISOString().split('T')[0];
 
   // Counter click: sets the date filter range matching the period
-  const handleCounterClick = useCallback((counter: 'total' | 'mes' | 'mesAnterior' | 'semana' | 'hoy') => {
+  const handleCounterClick = useCallback((counter: 'mes' | 'mesAnterior' | 'semana' | 'hoy') => {
     // Toggle off if same counter clicked again
     if (activeCounter === counter) {
       setActiveCounter(null);
@@ -157,17 +157,6 @@ export default function MonitoreoSubpage() {
 
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-    if (counter === 'total') {
-      setStartDate('');
-      setEndDate('');
-      setActiveCounter('total');
-      setSelectedDateFilter(null);
-      setTimeout(() => {
-        document.getElementById('bitacora-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100);
-      return;
-    }
 
     let start: Date;
     let end: Date = today;
@@ -272,29 +261,6 @@ export default function MonitoreoSubpage() {
       {/* Summary Metrics — clickable to filter */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
 
-        {/* Total Eventos */}
-        <button
-          onClick={() => handleCounterClick('total')}
-          title="Ver todos los eventos"
-          className={`bg-[#71BF44]/5 border rounded-2xl p-6 flex items-center gap-4 transition-all hover:-translate-y-1 cursor-pointer text-left w-full group ${
-            activeCounter === 'total'
-              ? 'border-[#71BF44] ring-2 ring-[#71BF44]/40 shadow-lg'
-              : 'border-[#71BF44]/20 hover:border-[#71BF44]/50'
-          }`}
-        >
-          <div className="w-12 h-12 rounded-full bg-[#71BF44] flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform">
-            <TrendingUp className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-xs font-bold text-[#71BF44] uppercase tracking-wider">Total Eventos</p>
-            {loading ? (
-              <div className="h-8 w-16 bg-neutral-200 dark:bg-neutral-700 rounded-lg animate-pulse mt-1" />
-            ) : (
-              <h4 className="text-2xl font-black text-neutral-900 dark:text-white">{metricas.total.toLocaleString()}</h4>
-            )}
-            <p className="text-[10px] text-neutral-400 mt-0.5">Clic para ver todos</p>
-          </div>
-        </button>
 
         {/* Este Mes */}
         <button
