@@ -258,16 +258,19 @@ export default function SaraChatPage() {
         let streamMsgId: string | null = null;
         let streamImages: ImageAttachment[] = [];
 
+        const extractImgMarker = (text: string): { urls: string[]; cleaned: string } => {
+          const idx = text.indexOf('[[IMGS]]:');
+          if (idx === -1) return { urls: [], cleaned: text };
+          const urlBlock = text.slice(idx + '[[IMGS]]:'.length).replace(/[\n\r]/g, '');
+          const urls = urlBlock.split('|').map(u => u.trim()).filter(u => u.startsWith('http'));
+          const cleaned = text.slice(0, idx).trimEnd();
+          return { urls, cleaned };
+        };
+
         const processChunk = (rawContent: string) => {
-          let chunk = rawContent;
-          const imgMarker = chunk.match(/\[\[IMGS\]\]:([^\n\r]*)/);
-          if (imgMarker) {
-            console.log('[SARA-DBG] imgMarker[1] repr:', JSON.stringify(imgMarker[1]));
-            const urls = imgMarker[1].split('|').map(u => u.trim()).filter(u => u.startsWith('http'));
-            console.log('[SARA-DBG] urls array:', urls);
-            if (urls.length > 0) streamImages = urls.map(url => ({ url }));
-            chunk = chunk.replace(/\n?\[\[IMGS\]\]:[^\n\r]*/g, '').trimEnd();
-          }
+          const { urls, cleaned } = extractImgMarker(rawContent);
+          if (urls.length > 0) streamImages = urls.map(url => ({ url }));
+          const chunk = cleaned;
           if (!chunk) return;
           if (!streamMsgId) {
             streamMsgId = newId();
@@ -305,16 +308,15 @@ export default function SaraChatPage() {
           reader.releaseLock();
         }
 
-        // Fallback: buscar [[IMGS]] en el texto acumulado si el marcador no llegó como chunk separado
+        // Fallback: buscar [[IMGS]] en el texto acumulado si quedó embebido en el stream
         if (streamImages.length === 0 && accumulated.includes('[[IMGS]]:')) {
-          const m = accumulated.match(/\[\[IMGS\]\]:([^\n\r]*)/);
-          if (m) {
-            const urls = m[1].split('|').map(u => u.trim()).filter(u => u.startsWith('http'));
-            if (urls.length > 0) streamImages = urls.map(url => ({ url }));
-          }
-          accumulated = accumulated.replace(/\n?\[\[IMGS\]\]:[^\n\r]*/g, '').trimEnd();
-          if (streamMsgId) {
-            setMessages(prev => prev.map(m => m.id === streamMsgId ? { ...m, content: accumulated } : m));
+          const { urls, cleaned } = extractImgMarker(accumulated);
+          if (urls.length > 0) {
+            streamImages = urls.map(url => ({ url }));
+            accumulated = cleaned;
+            if (streamMsgId) {
+              setMessages(prev => prev.map(m => m.id === streamMsgId ? { ...m, content: accumulated } : m));
+            }
           }
         }
 
