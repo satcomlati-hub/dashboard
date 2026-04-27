@@ -262,7 +262,9 @@ export default function SaraChatPage() {
           let chunk = rawContent;
           const imgMarker = chunk.match(/\[\[IMGS\]\]:([^\n\r]*)/);
           if (imgMarker) {
+            console.log('[SARA-DBG] imgMarker[1] repr:', JSON.stringify(imgMarker[1]));
             const urls = imgMarker[1].split('|').map(u => u.trim()).filter(u => u.startsWith('http'));
+            console.log('[SARA-DBG] urls array:', urls);
             if (urls.length > 0) streamImages = urls.map(url => ({ url }));
             chunk = chunk.replace(/\n?\[\[IMGS\]\]:[^\n\r]*/g, '').trimEnd();
           }
