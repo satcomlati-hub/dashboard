@@ -258,6 +258,35 @@ export default function SaraChatPage() {
         let streamMsgId: string | null = null;
         let streamImages: ImageAttachment[] = [];
 
+        const processChunk = (rawContent: string) => {
+          let chunk = rawContent;
+          const imgMarker = chunk.match(/\[\[IMGS\]\]:([^\n\r]*)/);
+          if (imgMarker) {
+            const urls = imgMarker[1].split('|').map(u => u.trim()).filter(u => u.startsWith('http'));
+            if (urls.length > 0) streamImages = urls.map(url => ({ url }));
+            chunk = chunk.replace(/\n?\[\[IMGS\]\]:[^\n\r]*/g, '').trimEnd();
+          }
+          if (!chunk) return;
+          if (!streamMsgId) {
+            streamMsgId = newId();
+            accumulated = chunk;
+            setIsLoading(false);
+            setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: chunk, timestamp: Date.now() }]);
+          } else {
+            accumulated += chunk;
+            setMessages(prev => prev.map(m => m.id === streamMsgId ? { ...m, content: accumulated } : m));
+          }
+        };
+
+        const processLine = (trimmed: string) => {
+          if (!trimmed) return;
+          try {
+            const parsed = JSON.parse(trimmed);
+            if (parsed.type !== 'item' || !parsed.content) return;
+            processChunk(parsed.content as string);
+          } catch { /* línea no parseable, ignorar */ }
+        };
+
         try {
           while (true) {
             const { done, value } = await reader.read();
@@ -266,47 +295,25 @@ export default function SaraChatPage() {
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
             buffer = lines.pop() ?? '';
-
-            for (const line of lines) {
-              const trimmed = line.trim();
-              if (!trimmed) continue;
-
-              try {
-                const parsed = JSON.parse(trimmed);
-                // n8n emite {type:"item", content:"..."} por cada chunk
-                if (parsed.type !== 'item' || !parsed.content) continue;
-                let chunk: string = parsed.content;
-
-                // Detectar marcador de imágenes [[IMGS]]:url1|url2 al final del chunk
-                const imgMarker = chunk.match(/\[\[IMGS\]\]:([^\n]*)/);
-                if (imgMarker) {
-                  streamImages = imgMarker[1].split('|')
-                    .map(u => u.trim())
-                    .filter(u => u.startsWith('http'))
-                    .map(url => ({ url }));
-                  chunk = chunk.replace(/\n?\[\[IMGS\]\]:[^\n]*/g, '').trimEnd();
-                }
-
-                if (!chunk) continue;
-
-                if (!streamMsgId) {
-                  streamMsgId = newId();
-                  accumulated = chunk;
-                  setIsLoading(false);
-                  setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: chunk, timestamp: Date.now() }]);
-                } else {
-                  accumulated += chunk;
-                  setMessages(prev =>
-                    prev.map(m => m.id === streamMsgId ? { ...m, content: accumulated } : m)
-                  );
-                }
-              } catch {
-                // línea no parseable, ignorar
-              }
-            }
+            for (const line of lines) processLine(line.trim());
           }
+          // Procesar línea residual sin \n final
+          if (buffer.trim()) processLine(buffer.trim());
         } finally {
           reader.releaseLock();
+        }
+
+        // Fallback: buscar [[IMGS]] en el texto acumulado si el marcador no llegó como chunk separado
+        if (streamImages.length === 0 && accumulated.includes('[[IMGS]]:')) {
+          const m = accumulated.match(/\[\[IMGS\]\]:([^\n\r]*)/);
+          if (m) {
+            const urls = m[1].split('|').map(u => u.trim()).filter(u => u.startsWith('http'));
+            if (urls.length > 0) streamImages = urls.map(url => ({ url }));
+          }
+          accumulated = accumulated.replace(/\n?\[\[IMGS\]\]:[^\n\r]*/g, '').trimEnd();
+          if (streamMsgId) {
+            setMessages(prev => prev.map(m => m.id === streamMsgId ? { ...m, content: accumulated } : m));
+          }
         }
 
         if (!streamMsgId) {
