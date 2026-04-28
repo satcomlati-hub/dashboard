@@ -16,8 +16,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Session ID is required' }, { status: 400 });
     }
 
-    const query = 'DELETE FROM sara_chat_memory WHERE session_id = $1';
-    await pool.query(query, [sessionId]);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM n8n_chat_histories WHERE session_id = $1', [sessionId]);
+      await client.query('DELETE FROM sara_sessions_index WHERE session_id = $1', [sessionId]);
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
 
     return NextResponse.json({ success: true, message: 'Chat history deleted' });
   } catch (error) {

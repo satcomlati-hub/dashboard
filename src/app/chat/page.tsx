@@ -110,7 +110,7 @@ export default function SaraChatPage() {
   const fileRef     = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load sessions
+  // Load sessions (localStorage cache → instant UI)
   useEffect(() => {
     try {
       const raw = localStorage.getItem('sara_sessions');
@@ -127,6 +127,69 @@ export default function SaraChatPage() {
     createSession(true, true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Sync sessions index with backend (cross-device list)
+  useEffect(() => {
+    if (!session?.user?.email) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/chat/sessions');
+        if (!res.ok) return;
+        const data = await res.json() as { sessions: { id: string; title: string; preview: string; timestamp: number }[] };
+        if (cancelled) return;
+        setSessions(prev => {
+          const localById = new Map(prev.map(s => [s.id, s]));
+          const merged: StoredSession[] = data.sessions.map(rs => {
+            const local = localById.get(rs.id);
+            return {
+              id: rs.id,
+              title: rs.title || local?.title || 'Sesión',
+              preview: rs.preview || local?.preview || '',
+              timestamp: rs.timestamp,
+              messages: local?.messages ?? [],
+            };
+          });
+          // keep purely-local sessions that haven't been persisted yet
+          const remoteIds = new Set(merged.map(s => s.id));
+          for (const l of prev) if (!remoteIds.has(l.id)) merged.push(l);
+          merged.sort((a, b) => b.timestamp - a.timestamp);
+          localStorage.setItem('sara_sessions', JSON.stringify(merged));
+          return merged;
+        });
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [session?.user?.email]);
+
+  async function upsertSessionRemote(s: { id: string; title: string; preview: string }) {
+    try {
+      await fetch('/api/chat/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: s.id, title: s.title, preview: s.preview }),
+      });
+    } catch { /* ignore */ }
+  }
+
+  async function hydrateSessionMessages(sessionId: string) {
+    try {
+      const res = await fetch(`/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`);
+      if (!res.ok) return;
+      const data = await res.json() as { messages: { id: string; role: 'user' | 'assistant'; content: string }[] };
+      if (!data.messages?.length) return;
+      const hydrated: Message[] = data.messages.map(m => ({ ...m, timestamp: Date.now() }));
+      setSessions(prev => {
+        const next = prev.map(s => s.id === sessionId ? { ...s, messages: hydrated } : s);
+        localStorage.setItem('sara_sessions', JSON.stringify(next));
+        return next;
+      });
+      setActiveId(curr => {
+        if (curr === sessionId) setMessages(hydrated);
+        return curr;
+      });
+    } catch { /* ignore */ }
+  }
 
   function createSession(initial = false, firstLoad = false) {
     const id = `sara_${newId()}`;
@@ -147,6 +210,7 @@ export default function SaraChatPage() {
     setMessages(s.messages);
     setInput('');
     clearFile();
+    if (s.messages.length === 0) hydrateSessionMessages(s.id);
   }
 
   async function deleteSession(sessionId: string) {
@@ -198,6 +262,10 @@ export default function SaraChatPage() {
         messages:  sanitizedMessages,
       });
       localStorage.setItem('sara_sessions', JSON.stringify(next));
+      const touched = next.find(s => s.id === sid);
+      if (touched && updated.some(m => m.role === 'user')) {
+        upsertSessionRemote({ id: touched.id, title: touched.title, preview: touched.preview });
+      }
       return next;
     });
   }

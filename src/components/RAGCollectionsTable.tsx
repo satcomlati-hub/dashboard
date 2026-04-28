@@ -4,7 +4,7 @@ import { useSession } from 'next-auth/react';
 import {
   BookOpen, ChevronDown, ChevronRight, ExternalLink, RefreshCw,
   BookMarked, FileText, Globe, Lock, Trash2, UploadCloud, X, Upload,
-  Info, UserPlus, UserMinus, Filter, Power,
+  Info, UserPlus, UserMinus, Filter, Power, RotateCcw,
 } from 'lucide-react';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
@@ -122,6 +122,176 @@ function PdfUpdateModal({ art, userEmail, onClose }: {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Modal: Actualizar manual completo (solo admin) ───────────────────────────
+
+function BulkUpdateModal({ group, userEmail, onClose }: {
+  group: ManualGroup; userEmail: string; onClose: () => void;
+}) {
+  const zohoArts = group.articulos.filter(a => a.source_url.includes('zohopublic'));
+  const pdfArts  = group.articulos.filter(a => !a.source_url.includes('zohopublic'));
+  const totalZoho = zohoArts.length;
+
+  const [status, setStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+  const [progress, setProgress] = useState(0);
+  const [currentArt, setCurrentArt] = useState('');
+  const [errors, setErrors] = useState<string[]>([]);
+  const abortRef = useRef(false);
+
+  const handleStart = async () => {
+    if (totalZoho === 0) return;
+    setStatus('running');
+    setProgress(0);
+    setErrors([]);
+    abortRef.current = false;
+
+    const errList: string[] = [];
+    for (let i = 0; i < zohoArts.length; i++) {
+      if (abortRef.current) break;
+      const art = zohoArts[i];
+      setCurrentArt(art.articulo);
+      try {
+        await fetch('https://sara.mysatcomla.com/webhook/ingesta', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify([{
+            'Links de Zoho Learn': art.source_url,
+            'Correo del responsable': userEmail,
+            submittedAt: new Date().toISOString(),
+            formMode: 'production',
+          }]),
+        });
+      } catch {
+        errList.push(art.articulo);
+      }
+      setProgress(i + 1);
+    }
+    setErrors(errList);
+    setCurrentArt('');
+    setStatus(errList.length > 0 ? 'error' : 'done');
+  };
+
+  const handleCancel = () => {
+    abortRef.current = true;
+  };
+
+  const pct = totalZoho > 0 ? Math.round((progress / totalZoho) * 100) : 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-3xl shadow-2xl p-6 w-full max-w-md mx-4">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-5">
+          <div>
+            <h2 className="text-base font-bold dark:text-white flex items-center gap-2">
+              <RotateCcw className="w-4 h-4 text-[#71BF44]" /> Actualizar manual completo
+            </h2>
+            <p className="text-xs text-neutral-500 mt-1 truncate max-w-[320px]">{group.manual}</p>
+          </div>
+          <button onClick={onClose} disabled={status === 'running'}
+            className="p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 disabled:opacity-30">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Contenido */}
+        <div className="space-y-4">
+          {/* Resumen */}
+          <div className="bg-neutral-50 dark:bg-[#1A1A1A] rounded-2xl p-4 space-y-2">
+            <div className="flex justify-between text-xs">
+              <span className="text-neutral-500">Artículos Zoho Learn</span>
+              <span className="font-bold text-[#71BF44]">{totalZoho}</span>
+            </div>
+            {pdfArts.length > 0 && (
+              <div className="flex justify-between text-xs">
+                <span className="text-neutral-500">Artículos PDF (se omiten)</span>
+                <span className="font-bold text-amber-400">{pdfArts.length}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-xs">
+              <span className="text-neutral-500">Total</span>
+              <span className="font-bold dark:text-white">{group.articulos.length}</span>
+            </div>
+          </div>
+
+          {pdfArts.length > 0 && (
+            <p className="text-[10px] text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded-lg px-3 py-2">
+              Los artículos PDF no se actualizan masivamente — deben subirse individualmente.
+            </p>
+          )}
+
+          {totalZoho === 0 && (
+            <p className="text-xs text-neutral-400 text-center py-2">
+              Este manual no contiene artículos de Zoho Learn para actualizar.
+            </p>
+          )}
+
+          {/* Barra de progreso */}
+          {status !== 'idle' && (
+            <div className="space-y-2">
+              <div className="w-full bg-neutral-200 dark:bg-neutral-800 rounded-full h-2.5 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ease-out ${
+                    status === 'error' ? 'bg-amber-400' : status === 'done' ? 'bg-[#71BF44]' : 'bg-[#71BF44] animate-pulse'
+                  }`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[10px]">
+                <span className="text-neutral-500">
+                  {status === 'running' ? 'Procesando...' : status === 'done' ? '¡Completado!' : `${errors.length} error(es)`}
+                </span>
+                <span className="font-bold text-neutral-400">{progress}/{totalZoho} ({pct}%)</span>
+              </div>
+              {currentArt && (
+                <p className="text-[10px] text-neutral-400 truncate">
+                  → {currentArt}
+                </p>
+              )}
+              {errors.length > 0 && (
+                <div className="text-[10px] text-red-500 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 max-h-20 overflow-y-auto">
+                  {errors.map((e, i) => <p key={i}>Error: {e}</p>)}
+                </div>
+              )}
+            </div>
+          )}
+
+          {status === 'done' && (
+            <p className="text-xs text-[#71BF44] bg-[#71BF44]/10 border border-[#71BF44]/20 rounded-lg px-3 py-2 text-center">
+              Se enviaron {progress} artículo(s) a SARA para re-ingesta.
+            </p>
+          )}
+        </div>
+
+        {/* Botones */}
+        <div className="flex gap-3 mt-5">
+          {status === 'idle' ? (
+            <>
+              <button onClick={onClose}
+                className="flex-1 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-sm font-medium text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={handleStart} disabled={totalZoho === 0}
+                className="flex-1 py-2.5 rounded-xl bg-[#71BF44] hover:bg-[#60A339] text-white text-sm font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                <RotateCcw className="w-4 h-4" /> Actualizar {totalZoho} artículos
+              </button>
+            </>
+          ) : status === 'running' ? (
+            <button onClick={handleCancel}
+              className="flex-1 py-2.5 rounded-xl border border-red-300 dark:border-red-800 text-sm font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors">
+              Detener
+            </button>
+          ) : (
+            <button onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl bg-[#71BF44] hover:bg-[#60A339] text-white text-sm font-bold transition-colors">
+              Cerrar
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -571,6 +741,7 @@ export default function RAGCollectionsTable() {
   const [pdfModal,         setPdfModal]         = useState<Articulo | null>(null);
   const [detailsModal,     setDetailsModal]     = useState<Articulo | null>(null);
   const [manualModal,      setManualModal]      = useState<ManualGroup | null>(null);
+  const [bulkUpdateModal,  setBulkUpdateModal]  = useState<ManualGroup | null>(null);
   const [onlyEditable,     setOnlyEditable]     = useState(false);
   const [visibilityFilter, setVisibilityFilter] = useState<'all' | 'public' | 'private'>('all');
   const [activeFilter,     setActiveFilter]     = useState<'all' | 'active' | 'inactive'>('all');
@@ -823,6 +994,7 @@ export default function RAGCollectionsTable() {
       {pdfModal     && <PdfUpdateModal art={pdfModal}     userEmail={userEmail} onClose={() => setPdfModal(null)} />}
       {detailsModal && <DetailsModal   art={detailsModal} isAdmin={isAdmin}     onClose={() => setDetailsModal(null)} onEditorsChange={handleEditorsChange} onCreatorChange={handleCreatorChange} />}
       {manualModal  && <ManualDetailsModal group={manualModal} isAdmin={isAdmin} onClose={() => setManualModal(null)} onEditorsChange={handleManualEditorsChange} onManualCreatorChange={handleManualCreatorChange} />}
+      {bulkUpdateModal && <BulkUpdateModal group={bulkUpdateModal} userEmail={userEmail} onClose={() => setBulkUpdateModal(null)} />}
 
       <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-3xl overflow-hidden shadow-xl ring-1 ring-black/5 dark:ring-white/5">
         {/* ── Header ── */}
@@ -1033,6 +1205,13 @@ export default function RAGCollectionsTable() {
                             title={allActive ? 'Desactivar todo del RAG' : 'Activar todo en el RAG'}>
                             {isTogglingActive ? <RefreshCw className="w-2.5 h-2.5 animate-spin" /> : <Power className="w-2.5 h-2.5" />}
                             {allActive ? 'RAG activo' : 'RAG inactivo'}
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button onClick={e => { e.stopPropagation(); setBulkUpdateModal(group); }}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide bg-amber-400/10 text-amber-500 hover:bg-amber-400/20 transition-all"
+                            title="Actualizar todos los artículos del manual">
+                            <RotateCcw className="w-2.5 h-2.5" /> Actualizar todo
                           </button>
                         )}
                         {isAdmin && hasZoho && (
