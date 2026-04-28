@@ -104,6 +104,7 @@ export default function SaraChatPage() {
   const [isLoading, setIsLoading]           = useState(false);
   const [selectedFile, setSelectedFile]     = useState<File | null>(null);
   const [previewUrl, setPreviewUrl]         = useState<string | null>(null);
+  const [isDragging, setIsDragging]         = useState(false);
 
   const endRef      = useRef<HTMLDivElement>(null);
   const fileRef     = useRef<HTMLInputElement>(null);
@@ -216,14 +217,51 @@ export default function SaraChatPage() {
     if (fileRef.current) fileRef.current.value = '';
   }
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleImageFile = (file: File) => {
+    if (!file.type.startsWith('image/')) return;
     if (file.size > 10 * 1024 * 1024) { alert('Máximo 10MB.'); return; }
     setSelectedFile(file);
     const r = new FileReader();
     r.onloadend = () => setPreviewUrl(r.result as string);
     r.readAsDataURL(file);
+  };
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleImageFile(file);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) handleImageFile(file);
+        return;
+      }
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleImageFile(file);
   };
 
   const handleSubmit = async (e: React.SyntheticEvent) => {
@@ -632,7 +670,22 @@ export default function SaraChatPage() {
         {/* ── Input area ──────────────────────────────────────────────────────── */}
         <div className="shrink-0 pb-6 px-6 md:px-12 lg:px-24 w-full max-w-5xl mx-auto relative z-20">
 
-          <div className="bg-white/80 dark:bg-[#1f1f1f]/80 backdrop-blur-xl rounded-3xl p-3 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] border border-black/5 dark:border-white/5">
+          <div
+            className={`bg-white/80 dark:bg-[#1f1f1f]/80 backdrop-blur-xl rounded-3xl p-3 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] border transition-colors relative ${
+              isDragging
+                ? 'border-[#71BF44] border-2 bg-[#71BF44]/5'
+                : 'border-black/5 dark:border-white/5'
+            }`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            {/* Drag overlay */}
+            {isDragging && (
+              <div className="absolute inset-0 rounded-3xl bg-[#71BF44]/10 border-2 border-dashed border-[#71BF44] flex items-center justify-center z-30 pointer-events-none">
+                <span className="text-[#71BF44] font-bold text-sm">Suelta la imagen aquí</span>
+              </div>
+            )}
             {/* Image preview */}
             {previewUrl && (
               <div className="mb-3 ml-3 relative inline-block animate-in zoom-in-95">
@@ -663,6 +716,7 @@ export default function SaraChatPage() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(e); } }}
+                  onPaste={handlePaste}
                   placeholder="Instruye a SARA..."
                   rows={1}
                   className="flex-1 bg-transparent border-none outline-none resize-none text-[15px] text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 py-3.5 min-h-[48px] max-h-40"
