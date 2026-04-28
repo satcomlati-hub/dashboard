@@ -1225,10 +1225,10 @@ export default function RAGCollectionsTable() {
                 const canEditManual    = isAdmin || (group.articulos.length > 0 && group.articulos.every(a => a.can_edit));
 
                 return (
-                  <div key={group.manual} className="border border-neutral-100 dark:border-neutral-800 rounded-2xl overflow-hidden">
+                  <div key={group.manual} className="border border-neutral-100 dark:border-neutral-800 rounded-2xl">
                     {/* Cabecera de manual */}
                     <div onClick={() => toggleManual(group.manual)}
-                      className="flex items-center justify-between px-4 py-3 bg-neutral-50 dark:bg-[#1A1A1A] hover:bg-neutral-100 dark:hover:bg-[#222] cursor-pointer transition-colors">
+                      className={`flex items-center justify-between px-4 py-3 bg-neutral-50 dark:bg-[#1A1A1A] hover:bg-neutral-100 dark:hover:bg-[#222] cursor-pointer transition-colors ${isOpen ? 'rounded-t-2xl' : 'rounded-2xl'}`}>
                       <div className="flex items-center gap-3">
                         <div className="p-1.5 rounded-lg bg-[#71BF44]/10"><BookOpen className="w-4 h-4 text-[#71BF44]" /></div>
                         <span className="text-sm font-semibold dark:text-white">{group.manual}</span>
@@ -1325,7 +1325,7 @@ export default function RAGCollectionsTable() {
 
                     {/* Artículos */}
                     {isOpen && (
-                      <div className="divide-y divide-neutral-100 dark:divide-neutral-800/80">
+                      <div className="divide-y divide-neutral-100 dark:divide-neutral-800/80 rounded-b-2xl overflow-hidden">
                         {/* Cabecera tabla */}
                         <div className="grid grid-cols-12 px-4 py-2 bg-white dark:bg-[#131313]">
                           <span className="col-span-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Artículo</span>
