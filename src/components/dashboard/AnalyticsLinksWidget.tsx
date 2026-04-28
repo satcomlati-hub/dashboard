@@ -38,6 +38,13 @@ const ANALYTICS_SECTIONS = [
     color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
     dot: 'bg-blue-500',
   },
+  {
+    id: 'actividad-emisores',
+    name: 'Actividad Emisores',
+    href: '/analytics/actividad-emisores',
+    color: 'bg-[#71BF44]/10 text-[#71BF44] dark:text-[#71BF44]',
+    dot: 'bg-[#71BF44]',
+  },
 ];
 
 export default function AnalyticsLinksWidget() {
