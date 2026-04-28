@@ -18,7 +18,8 @@ import {
   ChevronDown,
   ChevronUp,
   ExternalLink,
-  ArrowRight
+  ArrowRight,
+  X
 } from 'lucide-react';
 import {
   ResponsiveContainer,
