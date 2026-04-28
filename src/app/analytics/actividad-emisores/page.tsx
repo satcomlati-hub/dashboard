@@ -12,39 +12,33 @@ import {
   XCircle,
   Building2,
   Calendar,
-  ArrowUpRight,
-  ArrowDownRight,
-  FileText,
   Clock,
-  Download,
-  AlertCircle,
-  X,
   Globe,
-  Database
+  Database,
+  X
 } from 'lucide-react';
 import { formatDate } from '@/lib/formatters';
 import {
-  BarChart,
-  Bar,
+  ResponsiveContainer,
+  Tooltip,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-  LineChart,
-  Line,
-  AreaChart,
-  Area
+  CartesianGrid
 } from 'recharts';
 
-interface ActividadEmisor {
-  ID_Emisor: number;
+interface CatalogEmisor {
+  IdEmisor: number;
   Nemonico: string;
   Identificacion: string;
   RazonSocial: string;
-  Pais_ID: number;
-  NombrePais: string;
+  IdPais: number;
+  NombrePais?: string;
+}
+
+interface ActivityRecord {
+  ID_Emisor: number;
   Establecimiento: string;
   PuntoEmision: string;
   EstadoReporte: string;
@@ -58,8 +52,16 @@ interface ActividadEmisor {
   FechaSincronizacion: string;
 }
 
+interface MergedActividad extends ActivityRecord {
+  Nemonico: string;
+  Identificacion: string;
+  RazonSocial: string;
+  Pais_ID: number;
+  NombrePais: string;
+}
+
 export default function ActividadEmisoresPage() {
-  const [data, setData] = useState<ActividadEmisor[]>([]);
+  const [data, setData] = useState<MergedActividad[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -67,32 +69,70 @@ export default function ActividadEmisoresPage() {
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEstado, setFilterEstado] = useState('Todos');
-  const [filterNemonico, setFilterNemonico] = useState('Todos');
 
   const fetchData = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       
-      const res = await fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=V5&Proceso=consulta_tablero_actividad_emisor_2026`);
+      // Llamadas en paralelo a Catálogo y Actividad
+      const [resCatalog, resActivity] = await Promise.all([
+        fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=V5&Proceso=consulta_tablero_emisores_2026`),
+        fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=V5&Proceso=consulta_tablero_actividad_emisor_2026`)
+      ]);
 
-      if (!res.ok) throw new Error('Error al obtener datos de actividad');
+      if (!resCatalog.ok || !resActivity.ok) throw new Error('Error al obtener datos de los servicios');
       
-      const json: any = await res.json();
-      let flattened: ActividadEmisor[] = [];
-      
-      if (Array.isArray(json)) {
-        json.forEach(item => {
-          if (item.data) {
-            const parsed = typeof item.data === 'string' ? JSON.parse(item.data) : item.data;
-            if (Array.isArray(parsed)) flattened = [...flattened, ...parsed];
-          } else {
-            flattened.push(item);
-          }
+      const [jsonCatalog, jsonActivity]: [any, any] = await Promise.all([
+        resCatalog.json(),
+        resActivity.json()
+      ]);
+
+      // Procesar catálogo
+      let catalog: CatalogEmisor[] = [];
+      if (Array.isArray(jsonCatalog)) {
+        jsonCatalog.forEach(item => {
+          const parsed = item.data ? (typeof item.data === 'string' ? JSON.parse(item.data) : item.data) : item;
+          if (Array.isArray(parsed)) catalog = [...catalog, ...parsed];
+          else if (parsed.IdEmisor) catalog.push(parsed);
         });
       }
+
+      // Procesar actividad
+      let activity: ActivityRecord[] = [];
+      if (Array.isArray(jsonActivity)) {
+        jsonActivity.forEach(item => {
+          const parsed = item.data ? (typeof item.data === 'string' ? JSON.parse(item.data) : item.data) : item;
+          if (Array.isArray(parsed)) activity = [...activity, ...parsed];
+          else if (parsed.ID_Emisor) activity.push(parsed);
+        });
+      }
+
+      // Cruce en caliente (Merge)
+      const merged: MergedActividad[] = catalog.map(c => {
+        const act = activity.find(a => a.ID_Emisor === c.IdEmisor);
+        return {
+          ID_Emisor: c.IdEmisor,
+          Nemonico: c.Nemonico,
+          Identificacion: c.Identificacion,
+          RazonSocial: c.RazonSocial,
+          Pais_ID: c.IdPais,
+          NombrePais: c.NombrePais || 'Ecuador', // Fallback si no viene el nombre
+          Establecimiento: act?.Establecimiento || '001',
+          PuntoEmision: act?.PuntoEmision || '---',
+          EstadoReporte: act?.EstadoReporte || 'SIN ACTIVIDAD',
+          TotalAutorizados: Number(act?.TotalAutorizados) || 0,
+          TotalErrores: Number(act?.TotalErrores) || 0,
+          UltimaFechaAutorizacion: act?.UltimaFechaAutorizacion || '',
+          UltimaHoraIngreso: act?.UltimaHoraIngreso || '',
+          UltimaFechaError: act?.UltimaFechaError || '',
+          UltimaHoraError: act?.UltimaHoraError || '',
+          CodigoTipoDocumento: act?.CodigoTipoDocumento || '',
+          FechaSincronizacion: act?.FechaSincronizacion || ''
+        };
+      });
       
-      setData(flattened);
+      setData(merged);
       setError(null);
     } catch (err: any) {
       setError(err.message || 'Error desconocido');
@@ -115,16 +155,10 @@ export default function ActividadEmisoresPage() {
         item.NombrePais?.toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchEstado = filterEstado === 'Todos' || item.EstadoReporte === filterEstado;
-      const matchNemonico = filterNemonico === 'Todos' || item.Nemonico === filterNemonico;
 
-      return matchSearch && matchEstado && matchNemonico;
+      return matchSearch && matchEstado;
     });
-  }, [data, searchTerm, filterEstado, filterNemonico]);
-
-  const nemonicosList = useMemo(() => {
-    const list = Array.from(new Set(data.map(d => d.Nemonico))).filter(Boolean).sort();
-    return ['Todos', ...list];
-  }, [data]);
+  }, [data, searchTerm, filterEstado]);
 
   // KPIs
   const kpis = useMemo(() => {
@@ -133,9 +167,8 @@ export default function ActividadEmisoresPage() {
     const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
     const yesterdayStr = yesterday.toDateString();
     const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - 7);
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const calculateStats = (filterFn: (d: ActividadEmisor) => boolean) => {
+    const calculateStats = (filterFn: (d: MergedActividad) => boolean) => {
       const filtered = data.filter(filterFn);
       return {
         ok: filtered.reduce((acc, curr) => acc + (Number(curr.TotalAutorizados) || 0), 0),
@@ -148,8 +181,8 @@ export default function ActividadEmisoresPage() {
       ayer: calculateStats(d => !!d.UltimaFechaAutorizacion && new Date(d.UltimaFechaAutorizacion).toDateString() === yesterdayStr),
       semana: calculateStats(d => !!d.UltimaFechaAutorizacion && new Date(d.UltimaFechaAutorizacion) >= startOfWeek),
       global: calculateStats(() => true),
-      activos: new Set(data.filter(d => Number(d.TotalAutorizados) > 0).map(d => d.ID_Emisor)).size,
-      totalEmitters: new Set(data.map(d => d.ID_Emisor)).size
+      activos: data.filter(d => d.TotalAutorizados > 0).length,
+      totalEmitters: data.length
     };
   }, [data]);
 
@@ -159,17 +192,14 @@ export default function ActividadEmisoresPage() {
     data.forEach(item => {
       if (item.UltimaFechaAutorizacion) {
         const date = item.UltimaFechaAutorizacion.split(' ')[0];
-        if (!grouped[date]) grouped[date] = { date, ok: 0, error: 0 };
-        grouped[date].ok += Number(item.TotalAutorizados) || 0;
-      }
-      if (item.UltimaFechaError) {
-        const date = item.UltimaFechaError.split(' ')[0];
-        if (!grouped[date]) grouped[date] = { date, ok: 0, error: 0 };
-        grouped[date].error += Number(item.TotalErrores) || 0;
+        if (date && date !== '---') {
+          if (!grouped[date]) grouped[date] = { date, ok: 0, error: 0 };
+          grouped[date].ok += Number(item.TotalAutorizados) || 0;
+        }
       }
     });
 
-    return Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date)).slice(-20);
+    return Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date)).slice(-15);
   }, [data]);
 
   const KPICard = ({ title, stats, icon: Icon, period }: { title: string, stats: { ok: number, error: number }, icon: any, period: string }) => (
@@ -205,7 +235,7 @@ export default function ActividadEmisoresPage() {
         </span>
         <div className="flex items-center gap-1 text-[#71BF44]">
           <CheckCircle2 className="w-3 h-3" />
-          <span className="text-[9px] font-bold">ACTIVO</span>
+          <span className="text-[9px] font-bold tracking-tight uppercase">Activo</span>
         </div>
       </div>
     </div>
@@ -233,10 +263,10 @@ export default function ActividadEmisoresPage() {
               </h1>
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 bg-[#71BF44]/10 text-[#71BF44] rounded text-[10px] font-bold tracking-widest uppercase">V5 Engine</span>
+                  <span className="px-2 py-0.5 bg-[#71BF44]/10 text-[#71BF44] rounded text-[10px] font-bold tracking-widest uppercase">V5 Hybrid Engine</span>
                 </div>
                 <div className="w-1 h-1 rounded-full bg-neutral-300" />
-                <p className="text-xs text-neutral-500 font-medium tracking-tight">Monitoreo de volumen operativo agrupado por periodos de tiempo.</p>
+                <p className="text-xs text-neutral-500 font-medium tracking-tight">Monitoreo sincronizado de catálogo y actividad transaccional.</p>
               </div>
             </div>
           </div>
@@ -252,6 +282,7 @@ export default function ActividadEmisoresPage() {
         </div>
       </header>
 
+      {/* KPI Cards Section */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
         <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm group hover:border-[#71BF44] transition-all overflow-hidden relative">
           <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">
@@ -279,7 +310,7 @@ export default function ActividadEmisoresPage() {
           </div>
           <div className="mt-4 pt-4 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
             <span className="px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded text-[8px] font-black text-neutral-500 uppercase tracking-widest">
-              Catálogo V5
+              Cruce Catálogo + Log
             </span>
             <div className="flex items-center gap-1 text-[#71BF44]">
               <Globe className="w-3 h-3" />
@@ -290,22 +321,17 @@ export default function ActividadEmisoresPage() {
         <KPICard title="Hoy" stats={kpis.hoy} icon={Clock} period="Hoy" />
         <KPICard title="Ayer" stats={kpis.ayer} icon={Calendar} period="Últimas 24h" />
         <KPICard title="Esta Semana" stats={kpis.semana} icon={Activity} period="7 Días" />
-        <KPICard title="Total Global" stats={kpis.global} icon={Database} period="Histórico" />
       </div>
 
       {/* Charts Area */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
         <div className="lg:col-span-2 bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
           <div className="flex items-center justify-between mb-8">
-            <h3 className="text-xs font-black text-neutral-900 dark:text-white uppercase tracking-widest">Volumen de Procesamiento Diario</h3>
+            <h3 className="text-xs font-black text-neutral-900 dark:text-white uppercase tracking-widest">Historial de Procesamiento</h3>
             <div className="flex gap-4">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-[#71BF44]" />
-                <span className="text-[9px] font-bold text-neutral-400 uppercase">OK</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-red-500" />
-                <span className="text-[9px] font-bold text-neutral-400 uppercase">ERROR</span>
+                <span className="text-[9px] font-bold text-neutral-400 uppercase">Autorizados</span>
               </div>
             </div>
           </div>
@@ -334,7 +360,6 @@ export default function ActividadEmisoresPage() {
                   contentStyle={{ backgroundColor: '#1a1a1a', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '10px' }}
                 />
                 <Area type="monotone" dataKey="ok" stroke="#71BF44" strokeWidth={3} fillOpacity={1} fill="url(#colorOk)" />
-                <Area type="monotone" dataKey="error" stroke="#ef4444" strokeWidth={2} fillOpacity={0} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -344,10 +369,10 @@ export default function ActividadEmisoresPage() {
           <div className="w-20 h-20 rounded-full bg-[#71BF44]/10 flex items-center justify-center mb-6">
             <Building2 className="w-10 h-10 text-[#71BF44]" />
           </div>
-          <h4 className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">Empresas con Actividad</h4>
-          <h2 className="text-5xl font-black text-neutral-900 dark:text-white tracking-tighter mb-4">{kpis.activos}</h2>
+          <h4 className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">Métricas de Conectividad</h4>
+          <h2 className="text-5xl font-black text-neutral-900 dark:text-white tracking-tighter mb-4">{Math.round((kpis.activos / (kpis.totalEmitters || 1)) * 100)}%</h2>
           <p className="text-xs text-neutral-500 font-medium max-w-[200px]">
-            Emisores únicos que han reportado al menos un comprobante autorizado.
+            Porcentaje de emisores con actividad transaccional reportada.
           </p>
         </div>
       </div>
@@ -383,8 +408,8 @@ export default function ActividadEmisoresPage() {
                 <th className="px-8 py-5">País / Emisor</th>
                 <th className="px-8 py-5">Sucursal / Punto</th>
                 <th className="px-8 py-5 text-right">Autorizados (OK)</th>
-                <th className="px-8 py-5 text-right">No Autorizados (Error)</th>
-                <th className="px-8 py-5">Última Sincronización</th>
+                <th className="px-8 py-5 text-right">Errores (Fail)</th>
+                <th className="px-8 py-5">Última Fecha</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/50">
@@ -393,14 +418,14 @@ export default function ActividadEmisoresPage() {
                   <td className="px-8 py-6">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center flex-shrink-0">
-                         <Globe className="w-5 h-5 text-blue-500" />
+                         <Globe className={`w-5 h-5 ${row.TotalAutorizados > 0 ? 'text-[#71BF44]' : 'text-neutral-400 opacity-30'}`} />
                       </div>
                       <div className="flex flex-col">
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-black text-neutral-900 dark:text-white uppercase line-clamp-1">{row.RazonSocial}</span>
                           <span className="text-[10px] font-bold text-[#71BF44]">{row.Nemonico}</span>
                         </div>
-                        <span className="text-[9px] font-black text-neutral-400 uppercase tracking-[0.2em]">{row.NombrePais || 'País Desconocido'}</span>
+                        <span className="text-[9px] font-black text-neutral-400 uppercase tracking-[0.2em]">{row.NombrePais}</span>
                       </div>
                     </div>
                   </td>
@@ -412,21 +437,23 @@ export default function ActividadEmisoresPage() {
                   </td>
                   <td className="px-8 py-6 text-right">
                     <div className="flex flex-col items-end">
-                      <span className="text-xl font-black text-[#71BF44] tracking-tighter">{Number(row.TotalAutorizados).toLocaleString()}</span>
+                      <span className={`text-xl font-black tracking-tighter ${row.TotalAutorizados > 0 ? 'text-[#71BF44]' : 'text-neutral-300'}`}>
+                        {row.TotalAutorizados.toLocaleString()}
+                      </span>
                       <div className="flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3 text-[#71BF44]" />
-                        <span className="text-[9px] font-black text-[#71BF44] uppercase">Correctos</span>
+                        <CheckCircle2 className={`w-3 h-3 ${row.TotalAutorizados > 0 ? 'text-[#71BF44]' : 'text-neutral-300'}`} />
+                        <span className={`text-[9px] font-black uppercase ${row.TotalAutorizados > 0 ? 'text-[#71BF44]' : 'text-neutral-300'}`}>OK</span>
                       </div>
                     </div>
                   </td>
                   <td className="px-8 py-6 text-right">
                     <div className="flex flex-col items-end">
-                      <span className={`text-xl font-black tracking-tighter ${Number(row.TotalErrores) > 0 ? 'text-red-500' : 'text-neutral-300'}`}>
-                        {Number(row.TotalErrores).toLocaleString()}
+                      <span className={`text-xl font-black tracking-tighter ${row.TotalErrores > 0 ? 'text-red-500' : 'text-neutral-200'}`}>
+                        {row.TotalErrores.toLocaleString()}
                       </span>
                       <div className="flex items-center gap-1">
-                        <XCircle className={`w-3 h-3 ${Number(row.TotalErrores) > 0 ? 'text-red-500' : 'text-neutral-300'}`} />
-                        <span className={`text-[9px] font-black uppercase ${Number(row.TotalErrores) > 0 ? 'text-red-500' : 'text-neutral-300'}`}>Fallidos</span>
+                        <XCircle className={`w-3 h-3 ${row.TotalErrores > 0 ? 'text-red-500' : 'text-neutral-200'}`} />
+                        <span className={`text-[9px] font-black uppercase ${row.TotalErrores > 0 ? 'text-red-500' : 'text-neutral-200'}`}>FAIL</span>
                       </div>
                     </div>
                   </td>
@@ -434,11 +461,11 @@ export default function ActividadEmisoresPage() {
                     <div className="flex flex-col">
                       <span className="text-[11px] font-black text-neutral-700 dark:text-neutral-300 flex items-center gap-1">
                         <Calendar className="w-3 h-3 text-neutral-400" />
-                        {row.UltimaFechaAutorizacion ? row.UltimaFechaAutorizacion.split(' ')[0] : '---'}
+                        {row.UltimaFechaAutorizacion ? row.UltimaFechaAutorizacion.split(' ')[0] : 'Sin actividad'}
                       </span>
                       <span className="text-[10px] font-bold text-neutral-400 uppercase flex items-center gap-1">
                         <Clock className="w-3 h-3 text-neutral-300" />
-                        {row.UltimaHoraIngreso || '---'}
+                        {row.UltimaHoraIngreso || '--:--'}
                       </span>
                     </div>
                   </td>
