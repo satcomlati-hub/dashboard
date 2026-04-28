@@ -7,22 +7,23 @@ import {
   RefreshCw, 
   Search, 
   Activity, 
-  CheckCircle2,
-  XCircle,
-  Building2,
-  Calendar,
-  Clock,
-  Globe,
-  ChevronDown,
-  ChevronUp,
-  X,
-  AlertCircle,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  Store,
-  Filter,
-  LayoutGrid
+  CheckCircle2, 
+  XCircle, 
+  Building2, 
+  Calendar, 
+  Clock, 
+  Globe, 
+  ChevronDown, 
+  ChevronUp, 
+  X, 
+  AlertCircle, 
+  ArrowUpDown, 
+  ArrowUp, 
+  ArrowDown, 
+  Store, 
+  Filter, 
+  LayoutGrid,
+  Hash
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -73,7 +74,7 @@ interface EmitterGroup {
   details: ActivityRecord[];
 }
 
-type SortKey = 'RazonSocial' | 'ultimaAutorizacion' | 'ultimaError' | 'totalOk' | 'estabCount' | 'puntosCount';
+type SortKey = 'ID_Emisor' | 'RazonSocial' | 'ultimaAutorizacion' | 'ultimaError' | 'totalOk' | 'estabCount' | 'puntosCount';
 
 export default function ActividadEmisoresPage() {
   const [emitterGroups, setEmitterGroups] = useState<EmitterGroup[]>([]);
@@ -338,7 +339,7 @@ export default function ActividadEmisoresPage() {
           </div>
           {(selectedEmisorId || statusFilter) && (
             <button onClick={() => { setSelectedEmisorId(null); setStatusFilter(null); }} className="text-[10px] font-black text-red-500 uppercase flex items-center gap-2 px-5 py-2.5 bg-red-50 dark:bg-red-500/10 rounded-xl transition-all hover:scale-105 active:scale-95 border border-red-100 dark:border-red-500/20">
-              Limpiar Selección <X className="w-4 h-4" />
+              Limpiar Filtros <X className="w-4 h-4" />
             </button>
           )}
         </div>
@@ -347,6 +348,9 @@ export default function ActividadEmisoresPage() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] border-b border-neutral-100 dark:border-neutral-800">
+                <th className="px-8 py-5 cursor-pointer hover:bg-neutral-50 dark:hover:bg-white/[0.02]" onClick={() => handleSort('ID_Emisor')}>
+                  <div className="flex items-center gap-2"><Hash className="w-3 h-3" /> ID {renderSortIcon('ID_Emisor')}</div>
+                </th>
                 <th className="px-8 py-5 cursor-pointer hover:bg-neutral-50 dark:hover:bg-white/[0.02]" onClick={() => handleSort('RazonSocial')}>
                   <div className="flex items-center gap-2">Emisor {renderSortIcon('RazonSocial')}</div>
                 </th>
@@ -375,6 +379,9 @@ export default function ActividadEmisoresPage() {
                     className={`group transition-all cursor-pointer ${selectedEmisorId === g.ID_Emisor ? 'bg-[#71BF44]/5' : 'hover:bg-neutral-50 dark:hover:bg-white/[0.01]'}`}
                     onClick={() => setSelectedEmisorId(g.ID_Emisor)}
                   >
+                    <td className="px-8 py-6">
+                       <span className="text-[11px] font-black text-neutral-400">#{g.ID_Emisor}</span>
+                    </td>
                     <td className="px-8 py-6">
                       <div className="flex items-center gap-4">
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 ${g.estadoReporte === 'ACTIVO' ? 'bg-[#71BF44]/10 text-[#71BF44]' : g.estadoReporte === 'AÑOS ANTERIORES' ? 'bg-orange-400/10 text-orange-400' : 'bg-red-500/10 text-red-500'}`}>
@@ -431,7 +438,7 @@ export default function ActividadEmisoresPage() {
                   
                   {expandedEmisores.has(g.ID_Emisor) && (
                     <tr className="bg-neutral-50/50 dark:bg-neutral-900/40">
-                      <td colSpan={7} className="px-10 py-10">
+                      <td colSpan={8} className="px-10 py-10 border-b border-neutral-100 dark:border-neutral-800">
                         <div className="max-w-[1400px] animate-in fade-in slide-in-from-top-4 duration-500">
                            <div className="flex items-center gap-4 mb-8">
                               <div className="p-3 bg-white dark:bg-neutral-800 rounded-2xl shadow-sm border border-neutral-100 dark:border-neutral-700">
@@ -464,7 +471,6 @@ export default function ActividadEmisoresPage() {
                                      <div className="h-px flex-1 mx-8 bg-neutral-200 dark:bg-neutral-800"></div>
                                   </div>
                                   
-                                  {/* SUBGRID en lugar de Cards */}
                                   <div className="overflow-hidden bg-white dark:bg-[#111] rounded-[24px] border border-neutral-200 dark:border-neutral-800 shadow-sm">
                                      <table className="w-full text-left text-[11px]">
                                         <thead>
