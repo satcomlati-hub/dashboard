@@ -148,7 +148,8 @@ export default function ActividadEmisoresPage() {
       ayer: calculateStats(d => d.UltimaFechaAutorizacion && new Date(d.UltimaFechaAutorizacion).toDateString() === yesterdayStr),
       semana: calculateStats(d => d.UltimaFechaAutorizacion && new Date(d.UltimaFechaAutorizacion) >= startOfWeek),
       global: calculateStats(() => true),
-      activos: new Set(data.filter(d => Number(d.TotalAutorizados) > 0).map(d => d.ID_Emisor)).size
+      activos: new Set(data.filter(d => Number(d.TotalAutorizados) > 0).map(d => d.ID_Emisor)).size,
+      totalEmitters: new Set(data.map(d => d.ID_Emisor)).size
     };
   }, [data]);
 
@@ -251,8 +252,41 @@ export default function ActividadEmisoresPage() {
         </div>
       </header>
 
-      {/* KPI Cards Section */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+        <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm group hover:border-[#71BF44] transition-all overflow-hidden relative">
+          <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">
+            <Building2 className="w-16 h-16" />
+          </div>
+          <p className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+            <span className="w-1 h-3 bg-[#71BF44] rounded-full" />
+            Emisores Totales
+          </p>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-baseline justify-between">
+              <div className="flex flex-col">
+                <span className="text-[9px] font-black text-[#71BF44] uppercase tracking-widest">Con Actividad</span>
+                <h3 className="text-3xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">
+                  {kpis.activos}
+                </h3>
+              </div>
+              <div className="flex flex-col items-end">
+                 <span className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">Registrados</span>
+                 <h4 className="text-lg font-black text-neutral-400 tracking-tighter leading-none">
+                   {kpis.totalEmitters}
+                 </h4>
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 pt-4 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
+            <span className="px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded text-[8px] font-black text-neutral-500 uppercase tracking-widest">
+              Catálogo V5
+            </span>
+            <div className="flex items-center gap-1 text-[#71BF44]">
+              <Globe className="w-3 h-3" />
+              <span className="text-[9px] font-bold">MULTIPAÍS</span>
+            </div>
+          </div>
+        </div>
         <KPICard title="Hoy" stats={kpis.hoy} icon={Clock} period="Hoy" />
         <KPICard title="Ayer" stats={kpis.ayer} icon={Calendar} period="Últimas 24h" />
         <KPICard title="Esta Semana" stats={kpis.semana} icon={Activity} period="7 Días" />

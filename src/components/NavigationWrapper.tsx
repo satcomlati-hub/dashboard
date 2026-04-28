@@ -11,6 +11,7 @@ interface NavigationWrapperProps {
 
 export default function NavigationWrapper({ children }: NavigationWrapperProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const pathname = usePathname();
 
   // Auth pages render standalone without navigation
@@ -27,10 +28,12 @@ export default function NavigationWrapper({ children }: NavigationWrapperProps) 
 
       <Sidebar
         isOpen={isSidebarOpen}
+        isCollapsed={isCollapsed}
         onClose={() => setIsSidebarOpen(false)}
+        onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
       />
 
-      <main className={`flex-1 overflow-hidden ${isChat ? '' : 'p-4 lg:p-8 overflow-y-auto'}`}>
+      <main className={`flex-1 overflow-hidden transition-all duration-300 ${isChat ? '' : 'p-4 lg:p-8 overflow-y-auto'} ${isCollapsed ? 'lg:ml-0' : ''}`}>
         {children}
       </main>
 
