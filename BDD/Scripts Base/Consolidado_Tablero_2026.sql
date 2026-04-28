@@ -37,18 +37,20 @@ BEGIN
         A.Ultima_Fecha_Error_Reciente AS UltimaFechaError,
         A.Hora_Ultimo_Error_Reciente AS UltimaHoraError,
         A.CodigoTipoDocumento,
-        A.Fecha_Proceso AS FechaSincronizacion
+        A.Fecha_Proceso AS FechaSincronizacion,
+        E.NombrePais
     FROM sat_logging..log_actividad_emisor A
-    LEFT JOIN sat_catalogo..sc_emisor EM ON EM.em_id_emisor = A.ID_Emisor
-    -- Cruce con el SP de emisores (usando la lógica de la vista interna)
+    -- Cruce con el catálogo enriquecido
     OUTER APPLY (
         SELECT 
-            em_nemonico AS Nemonico,
-            em_identificacion_principal AS Identificacion,
-            em_razon_social AS RazonSocial,
-            em_pais AS CodigoPais
-        FROM sat_catalogo..sc_emisor 
-        WHERE em_id_emisor = A.ID_Emisor
+            EM.em_nemonico AS Nemonico,
+            EM.em_identificacion_principal AS Identificacion,
+            EM.em_razon_social AS RazonSocial,
+            EM.em_pais AS CodigoPais,
+            P.pa_nombre AS NombrePais
+        FROM sat_catalogo..sc_emisor EM
+        LEFT JOIN sat_catalogo..sc_pais P ON P.pa_id_pais = EM.em_pais
+        WHERE EM.em_id_emisor = A.ID_Emisor
     ) E
     ORDER BY A.Fecha_Proceso DESC, A.ID_Emisor;
 END;
