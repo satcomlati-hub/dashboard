@@ -312,9 +312,14 @@ export default function SaraChatPage() {
         }
 
         // Extraer imágenes del buffer acumulado tras el stream
+        console.log('[SARA-DBG2] imgAccumulating:', imgAccumulating, '| imgBuffer len:', imgBuffer.length);
+        console.log('[SARA-DBG2] imgBuffer raw:', JSON.stringify(imgBuffer.slice(0, 300)));
         if (imgAccumulating && imgBuffer) {
           const urlString = imgBuffer.replace(/[\n\r]/g, '');
-          const urls = urlString.split('|').map(u => u.trim()).filter(u => u.startsWith('http'));
+          const parts = urlString.split('|');
+          console.log('[SARA-DBG2] parts after split:', parts.length, parts.map(p => p.slice(0, 60)));
+          const urls = parts.map(u => u.trim()).filter(u => u.startsWith('http'));
+          console.log('[SARA-DBG2] final urls:', urls.length, urls);
           if (urls.length > 0) streamImages = urls.map(url => ({ url }));
         }
 
