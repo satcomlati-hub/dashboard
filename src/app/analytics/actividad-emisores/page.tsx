@@ -144,9 +144,9 @@ export default function ActividadEmisoresPage() {
     };
 
     return {
-      hoy: calculateStats(d => d.UltimaFechaAutorizacion && new Date(d.UltimaFechaAutorizacion).toDateString() === todayStr),
-      ayer: calculateStats(d => d.UltimaFechaAutorizacion && new Date(d.UltimaFechaAutorizacion).toDateString() === yesterdayStr),
-      semana: calculateStats(d => d.UltimaFechaAutorizacion && new Date(d.UltimaFechaAutorizacion) >= startOfWeek),
+      hoy: calculateStats(d => !!d.UltimaFechaAutorizacion && new Date(d.UltimaFechaAutorizacion).toDateString() === todayStr),
+      ayer: calculateStats(d => !!d.UltimaFechaAutorizacion && new Date(d.UltimaFechaAutorizacion).toDateString() === yesterdayStr),
+      semana: calculateStats(d => !!d.UltimaFechaAutorizacion && new Date(d.UltimaFechaAutorizacion) >= startOfWeek),
       global: calculateStats(() => true),
       activos: new Set(data.filter(d => Number(d.TotalAutorizados) > 0).map(d => d.ID_Emisor)).size,
       totalEmitters: new Set(data.map(d => d.ID_Emisor)).size
