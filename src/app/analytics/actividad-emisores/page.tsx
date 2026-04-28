@@ -13,11 +13,14 @@ import {
   Calendar,
   Clock,
   Globe,
-  Database,
   ChevronDown,
   ChevronUp,
   X,
-  AlertCircle
+  AlertCircle,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Store
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -63,9 +66,11 @@ interface EmitterGroup {
   ultimaAutorizacion: string;
   ultimaError: string;
   puntosCount: number;
-  transaccionoAyer: boolean;
+  estadoReporte: string; // Tomado del primer registro o mayor jerarquía
   details: ActivityRecord[];
 }
+
+type SortKey = 'RazonSocial' | 'ultimaAutorizacion' | 'ultimaError' | 'totalOk';
 
 export default function ActividadEmisoresPage() {
   const [emitterGroups, setEmitterGroups] = useState<EmitterGroup[]>([]);
@@ -76,6 +81,7 @@ export default function ActividadEmisoresPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedEmisores, setExpandedEmisores] = useState<Set<number>>(new Set());
   const [selectedEmisorId, setSelectedEmisorId] = useState<number | null>(null);
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey, direction: 'asc' | 'desc' } | null>({ key: 'totalOk', direction: 'desc' });
 
   const toggleExpand = (id: number) => {
     const newSet = new Set(expandedEmisores);
@@ -84,15 +90,19 @@ export default function ActividadEmisoresPage() {
     setExpandedEmisores(newSet);
   };
 
+  const handleSort = (key: SortKey) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
   const fetchData = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split('T')[0];
-
       const [resCatalog, resActivity] = await Promise.all([
         fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=V5&Proceso=consulta_tablero_emisores_2026`),
         fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=V5&Proceso=consulta_tablero_actividad_emisor_2026`)
@@ -116,7 +126,7 @@ export default function ActividadEmisoresPage() {
         jsonActivity.forEach(item => {
           const p = item.data ? (typeof item.data === 'string' ? JSON.parse(item.data) : item.data) : item;
           if (Array.isArray(p)) activity = [...activity, ...p];
-          else if (p.IdEmisor) activity.push(p); // Cambio de ID_Emisor a IdEmisor
+          else if (p.IdEmisor) activity.push(p);
         });
       }
 
@@ -128,12 +138,14 @@ export default function ActividadEmisoresPage() {
         
         const maxDate = (records: ActivityRecord[], field: keyof ActivityRecord) => {
           const vals = records.map(r => String(r[field])).filter(d => d && d !== '---' && d !== 'NULL').sort((a, b) => b.localeCompare(a));
-          return vals[0] || 'Sin registro';
+          return vals[0] || '---';
         };
 
-        const transaccionoAyer = emisorActivities.some(a => {
-           return a.UltimoAutorizado === yesterdayStr;
-        });
+        // Jerarquía de estados: ACTIVO > AÑOS ANTERIORES > SIN ACTIVIDAD
+        const estados = emisorActivities.map(a => a.EstadoReporte?.toUpperCase());
+        let estado = 'SIN ACTIVIDAD';
+        if (estados.includes('ACTIVO')) estado = 'ACTIVO';
+        else if (estados.includes('AÑOS ANTERIORES')) estado = 'AÑOS ANTERIORES';
 
         return {
           ID_Emisor: c.IdEmisor,
@@ -147,7 +159,7 @@ export default function ActividadEmisoresPage() {
           ultimaAutorizacion: maxDate(emisorActivities, 'UltimoAutorizado'),
           ultimaError: maxDate(emisorActivities, 'UltimoNoAutorizado'),
           puntosCount: emisorActivities.length,
-          transaccionoAyer,
+          estadoReporte: estado,
           details: emisorActivities
         };
       });
@@ -166,8 +178,8 @@ export default function ActividadEmisoresPage() {
     fetchData();
   }, [fetchData]);
 
-  const filteredGroups = useMemo(() => {
-    return emitterGroups.filter(g => {
+  const sortedAndFilteredGroups = useMemo(() => {
+    let result = emitterGroups.filter(g => {
       const matchSearch = !searchTerm || 
         g.Nemonico?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         g.RazonSocial?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -177,35 +189,40 @@ export default function ActividadEmisoresPage() {
 
       return matchSearch && matchSelected;
     });
-  }, [emitterGroups, searchTerm, selectedEmisorId]);
+
+    if (sortConfig) {
+      result.sort((a, b) => {
+        const aValue = a[sortConfig.key];
+        const bValue = b[sortConfig.key];
+        
+        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return result;
+  }, [emitterGroups, searchTerm, selectedEmisorId, sortConfig]);
 
   const kpis = useMemo(() => {
-    const activosAyer = emitterGroups.filter(g => g.transaccionoAyer).length;
-    const inactivosAyer = emitterGroups.length - activosAyer;
+    const counts = {
+      activo: emitterGroups.filter(g => g.estadoReporte === 'ACTIVO').length,
+      aniosAnteriores: emitterGroups.filter(g => g.estadoReporte === 'AÑOS ANTERIORES').length,
+      sinActividad: emitterGroups.filter(g => g.estadoReporte === 'SIN ACTIVIDAD').length,
+      total: emitterGroups.length
+    };
 
     return {
-      activosAyer,
-      inactivosAyer,
-      totalEmitters: emitterGroups.length,
+      ...counts,
       globalOk: emitterGroups.reduce((acc, g) => acc + g.totalOk, 0),
       globalError: emitterGroups.reduce((acc, g) => acc + g.totalError, 0)
     };
   }, [emitterGroups]);
 
-  const timelineData = useMemo(() => {
-    const daily: Record<string, { date: string, ok: number, error: number }> = {};
-    emitterGroups.forEach(g => {
-      g.details.forEach(d => {
-        const date = d.UltimoAutorizado;
-        if (date && date !== '---' && date !== 'Sin registro' && date !== 'NULL') {
-          if (!daily[date]) daily[date] = { date, ok: 0, error: 0 };
-          daily[date].ok += Number(d.TotalAutorizados) || 0;
-          daily[date].error += Number(d.TotalErrores) || 0;
-        }
-      });
-    });
-    return Object.values(daily).sort((a, b) => a.date.localeCompare(b.date)).slice(-10);
-  }, [emitterGroups]);
+  const renderSortIcon = (key: SortKey) => {
+    if (sortConfig?.key !== key) return <ArrowUpDown className="w-3 h-3 opacity-30" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 text-[#71BF44]" /> : <ArrowDown className="w-3 h-3 text-[#71BF44]" />;
+  };
 
   return (
     <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 pb-20">
@@ -228,8 +245,8 @@ export default function ActividadEmisoresPage() {
                 Actividad de Emisores <span className="text-[#71BF44] opacity-50 text-sm ml-2 font-black">2026</span>
               </h1>
               <div className="flex items-center gap-4">
-                <span className="px-2 py-0.5 bg-[#71BF44]/10 text-[#71BF44] rounded text-[10px] font-bold uppercase">Estado Operativo</span>
-                <p className="text-xs text-neutral-500 font-medium">Análisis de actividad transaccional basada en logs de ayer.</p>
+                <span className="px-2 py-0.5 bg-[#71BF44]/10 text-[#71BF44] rounded text-[10px] font-bold uppercase">Consolidado V5</span>
+                <p className="text-xs text-neutral-500 font-medium italic">Auditoría basada en Estado de Reporte y Volumen de Documentos.</p>
               </div>
             </div>
           </div>
@@ -241,46 +258,35 @@ export default function ActividadEmisoresPage() {
         </div>
       </header>
 
-      {/* KPI Cards Focus: Yesterday */}
+      {/* KPI Cards Focus: EstadoReporte */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
-        <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm group hover:border-[#71BF44] transition-all relative overflow-hidden">
-           <Building2 className="absolute -right-4 -bottom-4 w-24 h-24 text-[#71BF44] opacity-[0.03]" />
-           <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-4">Total Catálogo</p>
-           <h3 className="text-4xl font-black text-neutral-900 dark:text-white tracking-tighter">{kpis.totalEmitters}</h3>
-           <p className="text-[10px] font-bold text-neutral-400 uppercase mt-1 tracking-tight">Empresas registradas en V5</p>
+        <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm group border-l-4 border-l-[#71BF44]">
+           <p className="text-[10px] font-black text-[#71BF44] uppercase tracking-widest mb-4">Emisores Activos</p>
+           <h3 className="text-4xl font-black text-neutral-900 dark:text-white tracking-tighter">{kpis.activo}</h3>
+           <p className="text-[10px] font-bold text-neutral-400 uppercase mt-1 tracking-tight">Estado: ACTIVO</p>
         </div>
 
-        <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm group hover:border-[#71BF44] transition-all border-l-4 border-l-[#71BF44]">
-           <p className="text-[10px] font-black text-[#71BF44] uppercase tracking-widest mb-4">Activos (Ayer)</p>
-           <div className="flex items-baseline gap-2">
-             <h3 className="text-4xl font-black text-neutral-900 dark:text-white tracking-tighter">{kpis.activosAyer}</h3>
-             <span className="text-xs font-bold text-[#71BF44]">Empresas</span>
-           </div>
-           <p className="text-[9px] font-medium text-neutral-400 mt-2 uppercase tracking-widest flex items-center gap-1">
-             <Clock className="w-3 h-3" /> Transaccionaron ayer
-           </p>
+        <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm group border-l-4 border-l-orange-400">
+           <p className="text-[10px] font-black text-orange-400 uppercase tracking-widest mb-4">Años Anteriores</p>
+           <h3 className="text-4xl font-black text-neutral-900 dark:text-white tracking-tighter">{kpis.aniosAnteriores}</h3>
+           <p className="text-[10px] font-bold text-neutral-400 uppercase mt-1 tracking-tight">Histórico Reportado</p>
         </div>
 
-        <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm group hover:border-red-500 transition-all border-l-4 border-l-red-500">
-           <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-4">Inactivos (Ayer)</p>
-           <div className="flex items-baseline gap-2">
-             <h3 className="text-4xl font-black text-neutral-900 dark:text-white tracking-tighter">{kpis.inactivosAyer}</h3>
-             <span className="text-xs font-bold text-red-500">Empresas</span>
-           </div>
-           <p className="text-[9px] font-medium text-neutral-400 mt-2 uppercase tracking-widest flex items-center gap-1">
-             <AlertCircle className="w-3 h-3" /> Sin actividad ayer
-           </p>
+        <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm group border-l-4 border-l-red-500">
+           <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-4">Sin Actividad</p>
+           <h3 className="text-4xl font-black text-neutral-900 dark:text-white tracking-tighter">{kpis.sinActividad}</h3>
+           <p className="text-[10px] font-bold text-neutral-400 uppercase mt-1 tracking-tight">Cruce Catálogo vacío</p>
         </div>
 
         <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm">
            <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-4">Volumen Global</p>
            <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
-                <span className="text-[9px] font-black text-[#71BF44] uppercase">OK</span>
+                <span className="text-[9px] font-black text-[#71BF44] uppercase tracking-wider">OK</span>
                 <span className="text-xl font-black text-neutral-900 dark:text-white">{kpis.globalOk.toLocaleString()}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-[9px] font-black text-red-500 uppercase">Fail</span>
+                <span className="text-[9px] font-black text-red-500 uppercase tracking-wider">Fail</span>
                 <span className="text-xl font-black text-red-500">{kpis.globalError.toLocaleString()}</span>
               </div>
            </div>
@@ -294,7 +300,7 @@ export default function ActividadEmisoresPage() {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
             <input 
               type="text" 
-              placeholder="Filtrar por Nemónico, Razón Social..." 
+              placeholder="Buscar por Nemónico o Razón Social..." 
               value={searchTerm} 
               onChange={e => setSearchTerm(e.target.value)}
               className="w-full bg-neutral-50 dark:bg-neutral-800 border-none rounded-2xl pl-12 pr-4 py-3 text-xs font-bold"
@@ -311,15 +317,23 @@ export default function ActividadEmisoresPage() {
           <table className="w-full text-left">
             <thead>
               <tr className="text-[10px] font-black text-neutral-400 uppercase tracking-widest border-b border-neutral-100 dark:border-neutral-800">
-                <th className="px-8 py-5">Emisor</th>
-                <th className="px-8 py-5">Último Autorizado (OK)</th>
-                <th className="px-8 py-5">Último No Autorizado (FAIL)</th>
-                <th className="px-8 py-5 text-right">Volumen</th>
+                <th className="px-8 py-5 cursor-pointer hover:bg-neutral-50 dark:hover:bg-white/[0.02]" onClick={() => handleSort('RazonSocial')}>
+                  <div className="flex items-center gap-2">Emisor {renderSortIcon('RazonSocial')}</div>
+                </th>
+                <th className="px-8 py-5 cursor-pointer hover:bg-neutral-50 dark:hover:bg-white/[0.02]" onClick={() => handleSort('ultimaAutorizacion')}>
+                  <div className="flex items-center gap-2">Último Autorizado (OK) {renderSortIcon('ultimaAutorizacion')}</div>
+                </th>
+                <th className="px-8 py-5 cursor-pointer hover:bg-neutral-50 dark:hover:bg-white/[0.02]" onClick={() => handleSort('ultimaError')}>
+                  <div className="flex items-center gap-2">Último No Autorizado (FAIL) {renderSortIcon('ultimaError')}</div>
+                </th>
+                <th className="px-8 py-5 text-right cursor-pointer hover:bg-neutral-50 dark:hover:bg-white/[0.02]" onClick={() => handleSort('totalOk')}>
+                  <div className="flex items-center justify-end gap-2">Volumen {renderSortIcon('totalOk')}</div>
+                </th>
                 <th className="px-8 py-5 w-20"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/50">
-              {filteredGroups.map(g => (
+            <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/50 text-[11px] font-bold">
+              {sortedAndFilteredGroups.map(g => (
                 <Fragment key={g.ID_Emisor}>
                   <tr 
                     className={`group transition-all cursor-pointer ${selectedEmisorId === g.ID_Emisor ? 'bg-[#71BF44]/5' : 'hover:bg-neutral-50 dark:hover:bg-white/[0.01]'}`}
@@ -327,30 +341,35 @@ export default function ActividadEmisoresPage() {
                   >
                     <td className="px-8 py-6">
                       <div className="flex items-center gap-4">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${g.transaccionoAyer ? 'bg-[#71BF44]/10 text-[#71BF44]' : 'bg-neutral-100 text-neutral-400'}`}>
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 ${g.estadoReporte === 'ACTIVO' ? 'bg-[#71BF44]/10 text-[#71BF44]' : g.estadoReporte === 'AÑOS ANTERIORES' ? 'bg-orange-400/10 text-orange-400' : 'bg-neutral-100 text-neutral-400'}`}>
                           <Globe className="w-5 h-5" />
                         </div>
                         <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-black uppercase">{g.RazonSocial}</span>
-                            <span className="text-[10px] font-bold text-[#71BF44]">{g.Nemonico}</span>
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-xs font-black uppercase text-neutral-800 dark:text-neutral-200">{g.RazonSocial}</span>
+                            <span className="text-[10px] font-black text-[#71BF44] bg-[#71BF44]/5 px-1.5 py-0.5 rounded">{g.Nemonico}</span>
                           </div>
-                          <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">{g.NombrePais}</p>
+                          <div className="flex items-center gap-3">
+                             <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">{g.NombrePais}</p>
+                             <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded ${g.estadoReporte === 'ACTIVO' ? 'bg-[#71BF44]/10 text-[#71BF44]' : g.estadoReporte === 'AÑOS ANTERIORES' ? 'bg-orange-400/10 text-orange-400' : 'bg-red-500/10 text-red-500'}`}>
+                                {g.estadoReporte}
+                             </span>
+                          </div>
                         </div>
                       </div>
                     </td>
                     <td className="px-8 py-6">
                       <div className="flex items-center gap-2">
-                        <CheckCircle2 className={`w-4 h-4 ${g.ultimaAutorizacion !== 'Sin registro' ? 'text-[#71BF44]' : 'text-neutral-200'}`} />
-                        <span className={`text-[11px] font-black ${g.ultimaAutorizacion !== 'Sin registro' ? 'text-neutral-700 dark:text-neutral-300' : 'text-neutral-300'}`}>
+                        <CheckCircle2 className={`w-3.5 h-3.5 ${g.ultimaAutorizacion !== '---' ? 'text-[#71BF44]' : 'text-neutral-200'}`} />
+                        <span className={g.ultimaAutorizacion !== '---' ? 'text-neutral-600 dark:text-neutral-400' : 'text-neutral-300 italic'}>
                           {g.ultimaAutorizacion}
                         </span>
                       </div>
                     </td>
                     <td className="px-8 py-6">
                       <div className="flex items-center gap-2">
-                        <XCircle className={`w-4 h-4 ${g.ultimaError !== 'Sin registro' ? 'text-red-500' : 'text-neutral-200'}`} />
-                        <span className={`text-[11px] font-black ${g.ultimaError !== 'Sin registro' ? 'text-neutral-700 dark:text-neutral-300' : 'text-neutral-300'}`}>
+                        <XCircle className={`w-3.5 h-3.5 ${g.ultimaError !== '---' ? 'text-red-500' : 'text-neutral-200'}`} />
+                        <span className={g.ultimaError !== '---' ? 'text-neutral-600 dark:text-neutral-400' : 'text-neutral-300 italic'}>
                           {g.ultimaError}
                         </span>
                       </div>
@@ -358,56 +377,74 @@ export default function ActividadEmisoresPage() {
                     <td className="px-8 py-6 text-right">
                        <div className="flex flex-col items-end">
                          <span className="text-lg font-black text-neutral-900 dark:text-white tracking-tighter">{g.totalOk.toLocaleString()}</span>
-                         <span className="text-[9px] font-black text-neutral-400 uppercase">Docs</span>
+                         <span className="text-[8px] font-black text-neutral-400 uppercase tracking-[0.2em]">Autorizados</span>
                        </div>
                     </td>
                     <td className="px-8 py-6">
-                       <button onClick={(e) => { e.stopPropagation(); toggleExpand(g.ID_Emisor); }} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg">
+                       <button onClick={(e) => { e.stopPropagation(); toggleExpand(g.ID_Emisor); }} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors">
                          {expandedEmisores.has(g.ID_Emisor) ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                        </button>
                     </td>
                   </tr>
                   
                   {expandedEmisores.has(g.ID_Emisor) && (
-                    <tr className="bg-neutral-50 dark:bg-neutral-900/30">
-                      <td colSpan={5} className="px-8 py-6">
-                        <div className="space-y-4">
-                           <h4 className="text-[9px] font-black text-neutral-400 uppercase tracking-[0.3em]">Detalle por Puntos y Tipos de Documento</h4>
-                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                             {g.details.map((d, idx) => (
-                               <div key={idx} className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 shadow-sm">
-                                  <div className="flex justify-between items-start mb-4">
-                                    <div>
-                                      <p className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">Estab. {d.Establecimiento} - Caja {d.PuntoEmision}</p>
-                                      <p className="text-[9px] font-bold text-[#71BF44] uppercase">{d.CodigoTipoDocumento || 'S/N'}</p>
-                                    </div>
-                                    <span className="text-[8px] font-black px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded text-neutral-500 uppercase">
-                                      V5 ID: {d.IdEmisor}
-                                    </span>
+                    <tr className="bg-neutral-50 dark:bg-neutral-900/40">
+                      <td colSpan={5} className="px-8 py-8">
+                        <div className="max-w-[1200px]">
+                           <h4 className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.4em] mb-6 flex items-center gap-3">
+                             <Store className="w-4 h-4" /> Desglose por Establecimiento y Punto de Emisión
+                           </h4>
+                           
+                           <div className="space-y-6">
+                             {Object.entries(g.details.reduce((acc, d) => {
+                               if (!acc[d.Establecimiento]) acc[d.Establecimiento] = [];
+                               acc[d.Establecimiento].push(d);
+                               return acc;
+                             }, {} as Record<string, ActivityRecord[]>)).map(([estab, points]) => (
+                               <div key={estab} className="border-l-2 border-[#71BF44]/20 pl-6 space-y-3">
+                                  <div className="flex items-center gap-3 mb-4">
+                                    <span className="text-[10px] font-black bg-[#71BF44] text-white px-3 py-1 rounded-full uppercase">Establecimiento {estab}</span>
+                                    <div className="h-px flex-1 bg-neutral-200 dark:bg-neutral-800"></div>
                                   </div>
                                   
-                                  <div className="space-y-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
-                                     <div className="flex justify-between items-center">
-                                       <span className="text-[9px] font-black text-neutral-400 uppercase">Último Autorizado</span>
-                                       <span className="text-[10px] font-bold text-[#71BF44]">{d.UltimoAutorizado || '---'}</span>
-                                     </div>
-                                     <div className="flex justify-between items-center">
-                                       <span className="text-[9px] font-black text-neutral-400 uppercase">Último Fallido</span>
-                                       <span className="text-[10px] font-bold text-red-500">{d.UltimoNoAutorizado || '---'}</span>
-                                     </div>
-                                     <div className="flex justify-between items-center">
-                                       <span className="text-[9px] font-black text-neutral-400 uppercase">Transacción Ayer</span>
-                                       <span className={`text-[10px] font-bold ${d.UltimoAutorizado === new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().split('T')[0] ? 'text-[#71BF44]' : 'text-neutral-300'}`}>
-                                          {d.UltimoAutorizado === new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().split('T')[0] ? 'SÍ' : 'NO'}
-                                       </span>
-                                     </div>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {points.map((p, idx) => (
+                                      <div key={idx} className="bg-white dark:bg-[#151515] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 shadow-sm hover:border-[#71BF44]/40 transition-colors">
+                                         <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                              <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-1">Caja / Punto</p>
+                                              <p className="text-xs font-black text-neutral-800 dark:text-neutral-200">{p.PuntoEmision}</p>
+                                            </div>
+                                            <div className="text-right">
+                                              <p className="text-[9px] font-black text-[#71BF44] uppercase mb-1">Tipo Doc</p>
+                                              <p className="text-xs font-black text-neutral-800 dark:text-neutral-200">{p.CodigoTipoDocumento}</p>
+                                            </div>
+                                         </div>
+                                         
+                                         <div className="space-y-2.5 pt-4 border-t border-neutral-100 dark:border-neutral-800">
+                                            <div className="flex justify-between items-center text-[10px]">
+                                              <span className="text-neutral-400 font-bold uppercase">Último OK</span>
+                                              <span className="text-[#71BF44] font-black">{p.UltimoAutorizado || '---'}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-[10px]">
+                                              <span className="text-neutral-400 font-bold uppercase">Último Fail</span>
+                                              <span className="text-red-500 font-black">{p.UltimoNoAutorizado || '---'}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-[10px]">
+                                              <span className="text-neutral-400 font-bold uppercase">Volumen</span>
+                                              <span className="text-neutral-800 dark:text-neutral-200 font-black">{Number(p.TotalAutorizados).toLocaleString()}</span>
+                                            </div>
+                                         </div>
+                                      </div>
+                                    ))}
                                   </div>
                                </div>
                              ))}
+                             
                              {g.details.length === 0 && (
-                               <div className="col-span-full py-10 flex flex-col items-center justify-center text-neutral-400 gap-2">
-                                 <AlertCircle className="w-8 h-8 opacity-20" />
-                                 <p className="text-[10px] font-black uppercase tracking-widest">Sin actividad detallada registrada</p>
+                               <div className="py-12 text-center">
+                                  <AlertCircle className="w-10 h-10 text-neutral-200 mx-auto mb-4" />
+                                  <p className="text-xs font-black text-neutral-400 uppercase tracking-widest italic">Sin registros de actividad para este emisor</p>
                                </div>
                              )}
                            </div>
