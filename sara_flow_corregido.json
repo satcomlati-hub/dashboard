@@ -1,0 +1,152 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sara-chat",
+        "responseMode": "streaming",
+        "options": { "binaryPropertyName": "image" }
+      },
+      "id": "171de614-ec90-463d-bb09-603b43d328cd",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [9696, 4928],
+      "webhookId": "54820d77-d83e-4f01-bacd-a519dee4018f"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT role, content FROM sara_chat_memory WHERE session_id = '{{ $('Webhook').item.json.body.sessionId || 'default' }}' ORDER BY id DESC LIMIT 10;",
+        "options": {}
+      },
+      "id": "559b359a-3b34-48c0-84bb-e1c1afccfa9c",
+      "name": "Fetch Memory",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [9888, 4928],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": { "id": "e9lRiPBv5aq4p35i", "name": "Postgres SATCOMTI" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const webhookItem = $('Webhook').first();\nconst webhookData = webhookItem.json.body || {};\nconst rawHistory = $input.all().map(i => i.json);\nconst chatHistory = rawHistory.filter(msg => msg && msg.role && msg.content).reverse();\nconst webhookBinary = webhookItem.binary;\nconst imageBase64 = (webhookBinary && webhookBinary.image && webhookBinary.image.data) ? webhookBinary.image.data : null;\nreturn [{ json: {\n  query: webhookData.query || \"\",\n  base: webhookData.base || \"privada\",\n  user_name: webhookData.userName || webhookData.user_name || \"Usuario\",\n  user_email: webhookData.userEmail || webhookData.user_email || \"no-email@satcomla.com\",\n  session_id: webhookData.sessionId || webhookData.session_id || \"unknown\",\n  image_base64: imageBase64,\n  chat_history: chatHistory\n} }];"
+      },
+      "id": "0d20bbbd-f7dd-44c0-96d3-4d2852fe9d1c",
+      "name": "Map Parameters",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [10096, 4928]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://satcomla.app.n8n.cloud/webhook/rag-query5.3",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: $json.query, user_name: $json.user_name, base: $json.base }) }}",
+        "options": { "timeout": 15000 }
+      },
+      "id": "570622be-ddb1-4fac-a433-4041fc5289c9",
+      "name": "Fetch_Top_Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [10288, 4928],
+      "alwaysOutputData": true,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Webhook').item.json.body.query }}",
+        "options": {
+          "systemMessage": "=## Perfil\nEres SARA, la asistente técnica experta y profesional de Satcom. Tu tono es amistoso, formal y servicial.\nFecha actual: {{ $now }}.\nEl nombre de la persona que pregunta es: {{ $('Webhook').item.json.body.userName }}\nTrata al usuario solo por su primer nombre.\n\n## Tu Función y Flujo de Trabajo\nTu propósito es brindar soporte técnico y resolver las dudas del usuario. Debes evaluar cada mensaje entrante y decidir el mejor curso de acción:\n\n1. Interacciones rápidas (SIN usar herramientas): Si el mensaje es un saludo, despedida, agradecimiento o pregunta conversacional básica, responde directo. NO invoques herramientas.\n2. Consultas de soporte (USANDO herramientas): Si el mensaje es técnico o de procedimientos, invoca obligatoriamente 'ConsultaRAG'.\n\n## Contexto (Historial del chat)\n{{ $('Fetch Memory').item.json}}\n\n## Reglas\n- 'ConsultaRAG' solo para info técnica.\n- Si el rag no devuelve una respuesta reintenta, interactúa un máximo de 5 veces con el rag para dar la mejor respuesta.\n- Adjunta las fuentes que uses obteniendolas del sourse_url.\n- Nunca menciones 'n8n', 'ConsultaRAG', 'RAG', 'Base de datos'.\n- No inventes datos.\n- Mantente en tu rol de soporte técnico.\n\n## Regla de Imágenes\n{{ $('Fetch_Top_Image').first()?.json?.top_image_url ? '- Se encontró una imagen relevante del manual. Al FINAL de tu respuesta (después de tu último párrafo), copia esta línea exacta sin modificar ningún carácter:\\n[[IMGS]]:' + $('Fetch_Top_Image').first().json.top_image_url : '- Si ConsultaRAG devuelve un campo \"top_image_url\" con una URL válida (que empiece con https://), al FINAL de tu respuesta agrega esta línea exacta reemplazando URL_IMAGEN por la URL real del campo top_image_url:\\n[[IMGS]]:URL_IMAGEN\\n- Solo incluye el marcador [[IMGS]] si la URL existe y es relevante a tu respuesta.' }}",
+          "autoSaveHighlightedData": false,
+          "enableStreaming": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [10480, 4928],
+      "id": "f3b25c95-f7db-4d84-aa95-c14c730a8d6c",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "projectId": { "__rl": true, "value": "gen-lang-client-0781304366", "mode": "id" },
+        "modelName": "gemini-3-flash-preview",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleVertex",
+      "typeVersion": 1,
+      "position": [10160, 5296],
+      "id": "f5880bf8-e464-4f36-a121-af21f817e95c",
+      "name": "Google Vertex Chat Model",
+      "credentials": {
+        "googleApi": { "id": "My46Wumso28RIj4S", "name": "Vertex" }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Fuente de verdad técnica. Envía consultas claras y directas. REGLA DE BÚSQUEDA: Tu primera búsqueda debe incluir el contexto y el país (si aplica). SI EL RAG NO DEVUELVE RESULTADOS ÚTILES, DEBES ejecutar la herramienta una segunda o tercera vez usando ÚNICAMENTE las palabras clave técnicas (ej: 'archivos rtp', 'error 500') eliminando el país y el texto de relleno para ampliar la búsqueda. IMÁGENES: La respuesta puede incluir un campo 'top_image_url' con la URL de una imagen del manual. Si existe y es relevante a la consulta del usuario, al FINAL de tu respuesta agrega el marcador [[IMGS]]:URL usando esa URL.",
+        "method": "POST",
+        "url": "https://satcomla.app.n8n.cloud/webhook/rag-query5.3",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Pregunta a la base vectorial`, 'string') }}"
+            },
+            {
+              "name": "user_name",
+              "value": "={{ $('Webhook').item.json.body.userName }}"
+            },
+            {
+              "name": "base",
+              "value": "privada"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [10784, 5280],
+      "id": "547bd649-f7ba-4287-8c7f-d6f88cca324a",
+      "name": "ConsultaRAG"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ `INSERT INTO sara_chat_memory (session_id, role, content, user_name, user_email) VALUES ('${$('Map Parameters').item.json.session_id}', 'user', '${$('Map Parameters').item.json.query?.replace(/'/g, \"''\") || \"[Imagen]\"}', '${$('Map Parameters').item.json.user_name}', '${$('Map Parameters').item.json.user_email}'), ('${$('Map Parameters').item.json.session_id}', 'assistant', '${$json.output ? $json.output.replace(/'/g, \"''\") : \"Error en respuesta\"}', '${$('Map Parameters').item.json.user_name}', '${$('Map Parameters').item.json.user_email}');` }}",
+        "options": {}
+      },
+      "id": "30763951-c103-4d2d-bb0c-1c1513acde2f",
+      "name": "Save Memory",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [11136, 4912],
+      "credentials": {
+        "postgres": { "id": "e9lRiPBv5aq4p35i", "name": "Postgres SATCOMTI" }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Fetch Memory", "type": "main", "index": 0 }]] },
+    "Fetch Memory": { "main": [[{ "node": "Map Parameters", "type": "main", "index": 0 }]] },
+    "Map Parameters": { "main": [[{ "node": "Fetch_Top_Image", "type": "main", "index": 0 }]] },
+    "Fetch_Top_Image": { "main": [[{ "node": "AI Agent", "type": "main", "index": 0 }]] },
+    "AI Agent": { "main": [[{ "node": "Save Memory", "type": "main", "index": 0 }]] },
+    "Google Vertex Chat Model": { "ai_languageModel": [[{ "node": "AI Agent", "type": "ai_languageModel", "index": 0 }]] },
+    "ConsultaRAG": { "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]] }
+  },
+  "pinData": {},
+  "meta": {
+    "aiBuilderAssisted": true,
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7a4c9fd8836bc2d6ba5a64e1f0b740983e9d5ef18d4a53a468a5b9bfbc0d9885"
+  }
+}

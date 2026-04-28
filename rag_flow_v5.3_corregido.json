@@ -1,0 +1,258 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rag-query5.3",
+        "responseMode": "responseNode",
+        "options": {
+          "binaryPropertyName": "image"
+        }
+      },
+      "id": "fad4f786-59c4-47a5-8e0f-503f6bd453d6",
+      "name": "Webhook_RAG",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [896, 992],
+      "webhookId": "rag-v51-webhook-id-placeholder"
+    },
+    {
+      "parameters": {
+        "jsCode": "// V5.3: Clasificacion heuristica local\nconst body = $json.body ?? $json;\nconst binaryData = $binary ?? {};\nconst image = binaryData.image ?? null;\n\nconst query = String(body.query ?? body.pregunta ?? '').trim().slice(0, 2000);\nconst sessionId = String(body.sessionId ?? body.session_id ?? 'default').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);\nconst userName = String(body.userName ?? body.user_name ?? 'Usuario').slice(0, 100);\nconst userEmail = String(body.userEmail ?? body.user_email ?? 'no-email@satcomla.com').slice(0, 200);\nconst base = ['publica', 'privada'].includes(body.base) ? body.base : 'privada';\n\nif (!query && !image) {\n  throw new Error('Query vacia y sin imagen adjunta');\n}\n\nconst querySearch = query || 'consulta visual';\n\nreturn [{\n  json: {\n    query,\n    querySearch,\n    sessionId,\n    userName,\n    userEmail,\n    base,\n    hasImage: !!image,\n    imageMimeType: image?.mimeType ?? null,\n    imageData: image?.data ?? null\n  }\n}];"
+      },
+      "id": "79d9ae2e-b66e-482e-aae2-dbead8e6c177",
+      "name": "Validar_Clasificar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 992]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:embedContent",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googlePalmApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: 'models/gemini-embedding-2',\n  content: {\n    parts: [\n      ...($json.hasImage ? [{ inline_data: { mime_type: $json.imageMimeType, data: $json.imageData } }] : []),\n      { text: $json.querySearch }\n    ]\n  },\n  outputDimensionality: 3072\n}) }}",
+        "options": { "timeout": 30000 }
+      },
+      "id": "714dd7f6-e6e3-4a88-97ec-5965308ad183",
+      "name": "Generar_Embedding",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1344, 992],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googlePalmApi": { "id": "mMMNu6JhrqIAX7Q7", "name": "Vertex" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://wpzfbpvtxrfyejoqjecu.supabase.co/rest/v1/rpc/match_zoho_learn_images_v1",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  query_embedding: '[' + $json.embedding.values.join(',') + ']',\n  query_text: $('Validar_Clasificar').item.json.querySearch,\n  match_threshold: 0.10,\n  match_count: 3\n}) }}",
+        "options": { "timeout": 20000 }
+      },
+      "id": "e3e240ee-5bfa-4f10-ae55-fadf1a12e5b3",
+      "name": "Search_Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1536, 992],
+      "retryOnFail": false,
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": { "id": "U1bOrR6LS3XwbTIy", "name": "SUPABASE_SERVICE_ROLE_KEY" }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// V5.3-fix: extrae top_image_url y relevant_images; corrige sort por similarity\nconst embeddingData = $('Generar_Embedding').first().json;\nconst imageItems = $input.all()\n  .map(i => i.json)\n  .filter(r =>\n    r && r.id &&\n    r.type === 'image' &&\n    r.metadata?.image_url &&\n    r.metadata?.image_description &&\n    r.metadata.image_description.length > 80\n  );\nimageItems.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));\nconst topImageUrl = imageItems[0]?.metadata?.image_url || null;\nconst relevantImages = imageItems.map(img => ({\n  url: img.metadata.image_url,\n  description: (img.metadata.image_description || '').substring(0, 200),\n  article_title: img.metadata.article_title || null,\n  similarity: img.similarity || 0\n}));\n\nreturn [{ json: {\n  ...embeddingData,\n  top_image_url: topImageUrl,\n  relevant_images: relevantImages\n} }];"
+      },
+      "id": "bb2173ab-3380-46dc-8a48-88208a34b6d6",
+      "name": "Unify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1760, 992]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 },
+                "conditions": [
+                  { "id": "cond-switch-publica", "leftValue": "={{ $('Validar_Clasificar').item.json.base }}", "rightValue": "publica", "operator": { "type": "string", "operation": "equals" } }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "publica"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 },
+                "conditions": [
+                  { "id": "cond-switch-privada", "leftValue": "={{ $('Validar_Clasificar').item.json.base }}", "rightValue": "privada", "operator": { "type": "string", "operation": "equals" } }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "privada"
+            }
+          ]
+        },
+        "options": { "fallbackOutput": "extra" }
+      },
+      "id": "8fc64833-b289-4cea-8f46-139d409e98f2",
+      "name": "Switch_Base",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1984, 992]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://wpzfbpvtxrfyejoqjecu.supabase.co/rest/v1/rpc/match_mm_base_publica",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  query_embedding: '[' + $json.embedding.values.join(',') + ']',\n  query_text: $('Validar_Clasificar').item.json.querySearch,\n  match_threshold: 0.22,\n  match_count: 8,\n  filter_type: 'text'\n}) }}",
+        "options": { "timeout": 20000 }
+      },
+      "id": "1b4e9880-8f2f-439e-b762-0a6419570dfe",
+      "name": "Search_Publica",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2208, 848],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": { "id": "U1bOrR6LS3XwbTIy", "name": "SUPABASE_SERVICE_ROLE_KEY" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://wpzfbpvtxrfyejoqjecu.supabase.co/rest/v1/rpc/match_zoho_learn_vectors_v4",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  query_embedding: '[' + $json.embedding.values.join(',') + ']',\n  query_text: $('Validar_Clasificar').item.json.querySearch,\n  match_threshold: 0.22,\n  match_count: 10,\n  filter_type: 'text'\n}) }}",
+        "options": {}
+      },
+      "id": "e8a84ce4-ab66-4b75-b2d9-d51ac43f065b",
+      "name": "Search_Privada",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2208, 1120],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": { "id": "U1bOrR6LS3XwbTIy", "name": "SUPABASE_SERVICE_ROLE_KEY" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// V5.3-fix: incluye relevant_images del nodo Unify\nconst results = $input.all().map(i => i.json).filter(r => r && r.id);\nconst input = $('Validar_Clasificar').item.json;\n\nconst MIN_CONTENT = 50;\nconst meaningful = results.filter(r => {\n  const content = (r.content || '').trim();\n  return content.length >= MIN_CONTENT && r.type !== 'image';\n});\n\nconst topImageUrl = $('Unify').first().json.top_image_url || null;\nconst relevantImages = $('Unify').first().json.relevant_images || [];\n\nconst skipReranker = meaningful.length < 4;\n\nif (meaningful.length === 0) {\n  return [{ json: {\n    allResults: results,\n    meaningfulResults: [],\n    skipReranker: true,\n    reranker_prompt: null,\n    noResults: true,\n    top_image_url: topImageUrl,\n    relevant_images: relevantImages,\n    ...input\n  } }];\n}\n\nif (skipReranker) {\n  return [{ json: {\n    allResults: results,\n    meaningfulResults: meaningful,\n    skipReranker: true,\n    reranker_prompt: null,\n    noResults: false,\n    top_image_url: topImageUrl,\n    relevant_images: relevantImages,\n    ...input\n  } }];\n}\n\nconst summaries = meaningful.map((r, i) => {\n  const manual = r.metadata?.manual_name || r.metadata?.collection_name || '';\n  const article = r.metadata?.article_title || '';\n  const content = (r.content || '').trim().substring(0, 250);\n  return `[${i}]${manual ? ' Manual: ' + manual : ''}${article ? ' | Articulo: ' + article : ''}\\n${content}`;\n}).join('\\n\\n');\n\nreturn [{ json: {\n  allResults: results,\n  meaningfulResults: meaningful,\n  skipReranker: false,\n  noResults: false,\n  top_image_url: topImageUrl,\n  relevant_images: relevantImages,\n  ...input\n} }];"
+      },
+      "id": "ad0b535f-31e6-48a3-b51e-5388e5b21dc1",
+      "name": "Filtrar_Candidatos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2432, 992]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ \nJSON.stringify({\n  \"query\": $json.query,\n  \"sessionId\": $json.sessionId,\n  \"base_consultada\": $json.base,\n  \"no_results\": $json.noResults,\n  \"reranker_needed\": !$json.skipReranker,\n  \"top_image_url\": $json.top_image_url,\n  \"relevant_images\": $json.relevant_images || [],\n  \"payload\": {\n    \"prompt_para_llm\": $json.reranker_prompt,\n    \"contexto_crudo\": $json.meaningfulResults,\n    \"tiene_imagen\": $json.hasImage\n  }\n}) \n}}",
+        "options": {}
+      },
+      "id": "6177cc45-9fef-4c23-8135-fb3ae3567168",
+      "name": "Respond_Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [3520, 1008]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 },
+          "conditions": [
+            { "id": "cond-noresults-001", "leftValue": "={{ $json.noResults }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a3c4af46-366b-4068-bf82-89c3107ae99e",
+      "name": "IF_NoResults",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2656, 992]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Validar_Clasificar').item.json.base === 'publica' ? 'https://wpzfbpvtxrfyejoqjecu.supabase.co/rest/v1/rpc/match_mm_base_publica' : 'https://wpzfbpvtxrfyejoqjecu.supabase.co/rest/v1/rpc/match_zoho_learn_vectors_v4' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  query_embedding: '[' + $('Generar_Embedding').item.json.embedding.values.join(',') + ']',\n  query_text: $('Validar_Clasificar').item.json.querySearch,\n  match_threshold: 0.15,\n  match_count: 10,\n  filter_type: 'text'\n}) }}",
+        "options": { "timeout": 20000 }
+      },
+      "id": "43eb58af-32dd-4cd6-aa2c-665047666419",
+      "name": "Search_Retry",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2880, 880],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": { "id": "U1bOrR6LS3XwbTIy", "name": "SUPABASE_SERVICE_ROLE_KEY" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// V5.3-fix: incluye relevant_images del nodo Unify\nconst results = $input.all().map(i => i.json).filter(r => r && r.id);\nconst input = $('Validar_Clasificar').item.json;\nconst MIN_CONTENT = 50;\nconst meaningful = results.filter(r => {\n  const content = (r.content || '').trim();\n  return content.length >= MIN_CONTENT && r.type !== 'image';\n});\n\nconst topImageUrl = $('Unify').first().json.top_image_url || null;\nconst relevantImages = $('Unify').first().json.relevant_images || [];\n\nreturn [{ json: {\n  allResults: results,\n  meaningfulResults: meaningful,\n  skipReranker: true,\n  reranker_prompt: null,\n  noResults: meaningful.length === 0,\n  top_image_url: topImageUrl,\n  relevant_images: relevantImages,\n  ...input\n} }];"
+      },
+      "id": "7f6c49c4-64cc-4f99-8186-7c7a9c14a2f6",
+      "name": "Filtrar_Retry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3104, 880]
+    }
+  ],
+  "connections": {
+    "Webhook_RAG": { "main": [[{ "node": "Validar_Clasificar", "type": "main", "index": 0 }]] },
+    "Validar_Clasificar": { "main": [[{ "node": "Generar_Embedding", "type": "main", "index": 0 }]] },
+    "Generar_Embedding": { "main": [[{ "node": "Search_Image", "type": "main", "index": 0 }]] },
+    "Search_Image": { "main": [[{ "node": "Unify", "type": "main", "index": 0 }]] },
+    "Unify": { "main": [[{ "node": "Switch_Base", "type": "main", "index": 0 }]] },
+    "Switch_Base": { "main": [[{ "node": "Search_Publica", "type": "main", "index": 0 }], [{ "node": "Search_Privada", "type": "main", "index": 0 }]] },
+    "Search_Publica": { "main": [[{ "node": "Filtrar_Candidatos", "type": "main", "index": 0 }]] },
+    "Search_Privada": { "main": [[{ "node": "Filtrar_Candidatos", "type": "main", "index": 0 }]] },
+    "Filtrar_Candidatos": { "main": [[{ "node": "IF_NoResults", "type": "main", "index": 0 }]] },
+    "IF_NoResults": { "main": [[{ "node": "Search_Retry", "type": "main", "index": 0 }], [{ "node": "Respond_Webhook", "type": "main", "index": 0 }]] },
+    "Search_Retry": { "main": [[{ "node": "Filtrar_Retry", "type": "main", "index": 0 }]] },
+    "Filtrar_Retry": { "main": [[{ "node": "Respond_Webhook", "type": "main", "index": 0 }]] }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "160646786e3ce04fb151bda0b500e5743a06432e2a8594b0f55e8d90a14a7e96"
+  }
+}

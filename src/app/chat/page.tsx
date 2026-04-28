@@ -544,6 +544,14 @@ export default function SaraChatPage() {
                                   {children}
                                 </blockquote>
                               ),
+                              img: ({ src, alt }) => (
+                                <a href={src} target="_blank" rel="noopener noreferrer" className="group relative block overflow-hidden rounded-xl border border-black/5 dark:border-white/5 bg-white dark:bg-[#1a1a1a] my-3">
+                                  <img src={src} alt={alt || 'Imagen del manual'}
+                                    className="max-h-80 w-full object-contain group-hover:scale-[1.02] transition-transform duration-500" />
+                                  <div className="absolute inset-0 ring-1 ring-inset ring-black/10 group-hover:ring-[#71BF44]/50 transition-colors rounded-xl" />
+                                  {alt && <p className="text-xs text-neutral-500 dark:text-neutral-400 px-3 py-1.5 text-center bg-white/80 dark:bg-[#1a1a1a]/80">{alt}</p>}
+                                </a>
+                              ),
                             }}
                           >
                             {m.content}
