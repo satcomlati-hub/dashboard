@@ -125,6 +125,24 @@ export default async function AnalyticsPage() {
         flowId: 'VOfL2rAriW1s0TeQ',
         method: 'SP: consulta_tablero_iva_ec_2026'
       }
+    },
+    {
+      id: 'actividad-emisores',
+      name: 'Actividad de Emisores',
+      description: 'Consolidado de comprobantes autorizados y errores por emisor en tiempo real.',
+      href: '/analytics/actividad-emisores',
+      icon: (
+        <svg className="w-6 h-6 text-[#71BF44]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+      ),
+      connection: {
+        type: 'n8n',
+        source: 'https://sara.mysatcomla.com/webhook/GetData',
+        flowName: 'Monitoreo Procesos Consulta SP',
+        flowId: 'VOfL2rAriW1s0TeQ',
+        method: 'SP: consulta_tablero_actividad_emisor_2026'
+      }
     }
   ];
 
