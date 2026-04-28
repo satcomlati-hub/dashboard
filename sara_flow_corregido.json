@@ -32,7 +32,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const webhookItem = $('Webhook').first();\nconst webhookData = webhookItem.json.body || {};\nconst rawHistory = $input.all().map(i => i.json);\nconst chatHistory = rawHistory.filter(msg => msg && msg.role && msg.content).reverse();\nconst webhookBinary = webhookItem.binary;\nconst imageBin = webhookBinary?.image ?? null;\nconst imageBase64 = imageBin?.data ?? null;\nconst imageMimeType = imageBin?.mimeType ?? null;\nreturn [{ json: {\n  query: webhookData.query || \"\",\n  base: webhookData.base || \"privada\",\n  user_name: webhookData.userName || webhookData.user_name || \"Usuario\",\n  user_email: webhookData.userEmail || webhookData.user_email || \"no-email@satcomla.com\",\n  session_id: webhookData.sessionId || webhookData.session_id || \"unknown\",\n  image_base64: imageBase64,\n  image_mime_type: imageMimeType,\n  chat_history: chatHistory\n} }];"
+        "jsCode": "const webhookItem = $('Webhook').first();\nconst webhookData = webhookItem.json.body || {};\nconst rawHistory = $input.all().map(i => i.json);\nconst chatHistory = rawHistory.filter(msg => msg && msg.role && msg.content).reverse();\nconst webhookBinary = webhookItem.binary;\nconst imageBin = webhookBinary?.image ?? null;\nconst imageBase64 = imageBin?.data ?? null;\nconst imageMimeType = imageBin?.mimeType ?? null;\nconst imageUrl = webhookData.imageUrl || null;\nreturn [{ json: {\n  query: webhookData.query || \"\",\n  base: webhookData.base || \"privada\",\n  user_name: webhookData.userName || webhookData.user_name || \"Usuario\",\n  user_email: webhookData.userEmail || webhookData.user_email || \"no-email@satcomla.com\",\n  session_id: webhookData.sessionId || webhookData.session_id || \"unknown\",\n  image_base64: imageBase64,\n  image_mime_type: imageMimeType,\n  image_url: imageUrl,\n  chat_history: chatHistory\n} }];"
       },
       "id": "0d20bbbd-f7dd-44c0-96d3-4d2852fe9d1c",
       "name": "Map Parameters",
@@ -46,7 +46,7 @@
         "url": "https://satcomla.app.n8n.cloud/webhook/rag-query5.3",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ query: $json.query, user_name: $json.user_name, base: $json.base, image_base64: $json.image_base64 || null, image_mime_type: $json.image_mime_type || null }) }}",
+        "jsonBody": "={{ JSON.stringify({ query: $json.query, user_name: $json.user_name, base: $json.base, image_url: $json.image_url || null, image_base64: $json.image_base64 || null, image_mime_type: $json.image_mime_type || null }) }}",
         "options": { "timeout": 15000 }
       },
       "id": "570622be-ddb1-4fac-a433-4041fc5289c9",

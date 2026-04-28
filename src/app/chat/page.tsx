@@ -277,11 +277,24 @@ export default function SaraChatPage() {
     setIsLoading(true);
 
     try {
+      // Si hay imagen, subirla a Supabase Storage primero
+      let imageUrl: string | null = null;
+      if (f) {
+        const uploadFd = new FormData();
+        uploadFd.append('image', f);
+        const uploadRes = await fetch('/api/upload-image', { method: 'POST', body: uploadFd });
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json();
+          imageUrl = uploadData.url;
+        }
+      }
+
       const fd = new FormData();
       fd.append('query', q);
       fd.append('sessionId', sid);
       if (session?.user?.name) fd.append('userName', session.user.name);
       if (session?.user?.email) fd.append('userEmail', session.user.email);
+      if (imageUrl) fd.append('imageUrl', imageUrl);
       if (f) fd.append('image', f);
 
       const res = await fetch('/api/chat', { method: 'POST', body: fd });
