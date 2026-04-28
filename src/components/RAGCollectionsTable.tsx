@@ -4,7 +4,8 @@ import { useSession } from 'next-auth/react';
 import {
   BookOpen, ChevronDown, ChevronRight, ExternalLink, RefreshCw,
   BookMarked, FileText, Globe, Lock, Trash2, UploadCloud, X, Upload,
-  Info, UserPlus, UserMinus, Filter, Power, RotateCcw,
+  Info, UserPlus, UserMinus, Power, RotateCcw, Search,
+  MoreVertical, SlidersHorizontal,
 } from 'lucide-react';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
@@ -747,6 +748,8 @@ export default function RAGCollectionsTable() {
   const [activeFilter,     setActiveFilter]     = useState<'all' | 'active' | 'inactive'>('all');
   const [responsibleFilter, setResponsibleFilter] = useState<string>('all');
   const [responsibles,     setResponsibles]     = useState<string[]>([]);
+  const [filtersOpen,      setFiltersOpen]      = useState(false);
+  const [openManualActions, setOpenManualActions] = useState<string | null>(null);
 
 
   // ── Carga de datos ─────────────────────────────────────────────────
@@ -957,6 +960,9 @@ export default function RAGCollectionsTable() {
   const totalPublicos   = data.reduce((s, m) => s + m.articulos.filter(a => a.is_public).length, 0);
   const totalEditables  = data.reduce((s, m) => s + m.articulos.filter(a => a.can_edit).length, 0);
   const totalInactivos  = data.reduce((s, m) => s + m.articulos.filter(a => !a.is_active).length, 0);
+  const totalActivos    = totalArticulos - totalInactivos;
+  const totalPrivados   = totalArticulos - totalPublicos;
+  const activeFiltersCount = [visibilityFilter !== 'all', activeFilter !== 'all', responsibleFilter !== 'all', onlyEditable].filter(Boolean).length;
 
   // ── Filtrado ───────────────────────────────────────────────────────
   const filteredData = data
@@ -998,158 +1004,196 @@ export default function RAGCollectionsTable() {
 
       <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-3xl overflow-hidden shadow-xl ring-1 ring-black/5 dark:ring-white/5">
         {/* ── Header ── */}
-        <div className="bg-neutral-50 dark:bg-[#1A1A1A] border-b border-neutral-200 dark:border-neutral-800 px-6 py-5">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-2xl bg-white dark:bg-[#131313] shadow-inner border border-neutral-200 dark:border-neutral-800 text-[#71BF44]">
+        <div className="bg-neutral-50 dark:bg-[#1A1A1A] border-b border-neutral-200 dark:border-neutral-800 px-6 py-5 space-y-4">
+          {/* Row 1: Título + Acciones */}
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-white dark:bg-[#131313] shadow-inner border border-neutral-200 dark:border-neutral-800 text-[#71BF44]">
                 <BookMarked className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-base font-bold dark:text-white flex items-center gap-2 flex-wrap">
-                  Base de Conocimiento
-                  <span className="px-2 py-0.5 rounded-full bg-[#71BF44]/10 text-[#71BF44] text-[10px] font-bold uppercase tracking-wider">{data.length} manuales</span>
-                  <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500 text-[10px] font-bold uppercase tracking-wider">{totalArticulos} artículos</span>
-                  {totalPublicos > 0 && (
-                    <span className="px-2 py-0.5 rounded-full bg-sky-400/10 text-sky-400 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
-                      <Globe className="w-2.5 h-2.5" />{totalPublicos} públicos
-                    </span>
-                  )}
-                  {totalEditables > 0 && (
-                    <span className="px-2 py-0.5 rounded-full bg-amber-400/10 text-amber-400 text-[10px] font-bold uppercase tracking-wider">
-                      {totalEditables} editables
-                    </span>
-                  )}
-                  {totalInactivos > 0 && (
-                    <span className="px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
-                      <Power className="w-2.5 h-2.5" />{totalInactivos} inactivos
-                    </span>
-                  )}
-                </h3>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
+                <h3 className="text-base font-bold dark:text-white">Base de Conocimiento</h3>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
                   Manuales y artículos procesados en Supabase
-                  {lastUpdated && <span className="ml-2 text-[10px] text-neutral-400">· {lastUpdated.toLocaleTimeString()}</span>}
+                  {lastUpdated && <span className="ml-1 text-neutral-400">· {lastUpdated.toLocaleTimeString()}</span>}
                 </p>
               </div>
             </div>
-
-            {/* Controles */}
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Buscador */}
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400 group-focus-within:text-[#71BF44] transition-colors">
-                  <BookMarked className="w-3.5 h-3.5" />
-                </div>
-                <input type="text" placeholder="Buscar..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                  className="w-44 bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-700 rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#71BF44]/30 focus:border-[#71BF44] dark:text-white transition-all shadow-sm" />
-              </div>
-
-              {/* Filtro: solo editables */}
-              <button
-                onClick={() => setOnlyEditable(v => !v)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all ${
-                  onlyEditable
-                    ? 'bg-amber-400/10 border-amber-400/30 text-amber-400'
-                    : 'border-neutral-200 dark:border-neutral-700 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-                }`}
-                title={onlyEditable ? 'Mostrar todos' : 'Solo donde puedo editar'}
-              >
-                <Filter className="w-3.5 h-3.5" />
-                <span className="text-[11px] font-bold uppercase tracking-wide">
-                  {onlyEditable ? 'Mis permisos' : 'Todos'}
-                </span>
-              </button>
-
-              {syncMsg && <span className="text-[11px] text-sky-400 font-medium px-2 py-1 rounded-lg bg-sky-400/10">{syncMsg}</span>}
+            <div className="flex items-center gap-1.5">
+              {syncMsg && <span className="text-[11px] text-sky-400 font-medium px-2.5 py-1 rounded-lg bg-sky-400/10">{syncMsg}</span>}
               <button onClick={handleSync} disabled={syncing} title="Sincronizar base pública"
-                className="p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-neutral-400 hover:text-sky-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-all disabled:opacity-50">
+                className="p-2 rounded-xl border border-neutral-200 dark:border-neutral-700 text-neutral-400 hover:text-sky-400 hover:border-sky-400/30 hover:bg-sky-400/5 transition-all disabled:opacity-50">
                 <Globe className={`w-4 h-4 ${syncing ? 'animate-pulse' : ''}`} />
               </button>
               <button onClick={fetchData} title="Recargar"
-                className="p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-neutral-400 hover:text-[#71BF44] hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-all">
+                className="p-2 rounded-xl border border-neutral-200 dark:border-neutral-700 text-neutral-400 hover:text-[#71BF44] hover:border-[#71BF44]/30 hover:bg-[#71BF44]/5 transition-all">
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
               </button>
             </div>
           </div>
-        </div>
-        
-        {/* ── Filtros Avanzados ── */}
-        <div className="bg-neutral-50/50 dark:bg-[#1A1A1A]/50 border-b border-neutral-200 dark:border-neutral-800 px-6 py-3 flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Visibilidad:</span>
-            <div className="flex bg-white dark:bg-[#131313] rounded-lg p-1 border border-neutral-200 dark:border-neutral-800">
-              <FilterButton 
-                active={visibilityFilter === 'all'} 
-                onClick={() => setVisibilityFilter('all')}
-                label="Todos"
-              />
-              <FilterButton 
-                active={visibilityFilter === 'public'} 
-                onClick={() => setVisibilityFilter('public')}
-                icon={<Globe className="w-3 h-3" />}
-                label="Públicos"
-              />
-              <FilterButton 
-                active={visibilityFilter === 'private'} 
-                onClick={() => setVisibilityFilter('private')}
-                icon={<Lock className="w-3 h-3" />}
-                label="Privados"
-              />
+
+          {/* Row 2: Stats compactas */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800">
+              <BookOpen className="w-3.5 h-3.5 text-[#71BF44]" />
+              <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">{data.length}</span>
+              <span className="text-[10px] text-neutral-400">manuales</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800">
+              <FileText className="w-3.5 h-3.5 text-blue-500" />
+              <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">{totalArticulos}</span>
+              <span className="text-[10px] text-neutral-400">artículos</span>
+            </div>
+            <div className="w-px h-5 bg-neutral-200 dark:bg-neutral-700" />
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800">
+              <Globe className="w-3.5 h-3.5 text-sky-400" />
+              <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">{totalPublicos}</span>
+              <span className="text-[10px] text-neutral-400">públicos</span>
+              <span className="text-[10px] text-neutral-400 mx-0.5">·</span>
+              <Lock className="w-3 h-3 text-neutral-400" />
+              <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">{totalPrivados}</span>
+              <span className="text-[10px] text-neutral-400">privados</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800">
+              <Power className="w-3.5 h-3.5 text-[#71BF44]" />
+              <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">{totalActivos}</span>
+              <span className="text-[10px] text-neutral-400">activos</span>
+              {totalInactivos > 0 && (
+                <>
+                  <span className="text-[10px] text-neutral-400 mx-0.5">·</span>
+                  <Power className="w-3 h-3 text-red-400" />
+                  <span className="text-xs font-bold text-red-400">{totalInactivos}</span>
+                  <span className="text-[10px] text-red-400">inactivos</span>
+                </>
+              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">RAG:</span>
-            <div className="flex bg-white dark:bg-[#131313] rounded-lg p-1 border border-neutral-200 dark:border-neutral-800">
-              <FilterButton 
-                active={activeFilter === 'all'} 
-                onClick={() => setActiveFilter('all')}
-                label="Todos"
+          {/* Row 3: Buscador + Filtros dropdown */}
+          <div className="flex items-center gap-3">
+            {/* Buscador mejorado */}
+            <div className="relative flex-1 max-w-md group">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-400 group-focus-within:text-[#71BF44] transition-colors">
+                <Search className="w-4 h-4" />
+              </div>
+              <input
+                type="text"
+                placeholder="Buscar manuales o artículos..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-700 rounded-xl pl-10 pr-9 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#71BF44]/30 focus:border-[#71BF44] dark:text-white transition-all shadow-sm placeholder:text-neutral-400"
               />
-              <FilterButton 
-                active={activeFilter === 'active'} 
-                onClick={() => setActiveFilter('active')}
-                icon={<Power className="w-3 h-3" />}
-                label="Activos"
-                activeClass="text-[#71BF44] bg-[#71BF44]/10"
-              />
-              <FilterButton 
-                active={activeFilter === 'inactive'} 
-                onClick={() => setActiveFilter('inactive')}
-                icon={<Power className="w-3 h-3" />}
-                label="Inactivos"
-                activeClass="text-red-500 bg-red-500/10"
-              />
+              {searchTerm && (
+                <button onClick={() => setSearchTerm('')}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Dropdown de filtros */}
+            <div className="relative">
+              <button
+                onClick={() => setFiltersOpen(v => !v)}
+                className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                  activeFiltersCount > 0
+                    ? 'bg-[#71BF44]/10 border-[#71BF44]/30 text-[#71BF44]'
+                    : 'bg-white dark:bg-[#131313] border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:border-neutral-300 dark:hover:border-neutral-600'
+                }`}
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+                <span className="text-xs font-bold uppercase tracking-wide">Filtros</span>
+                {activeFiltersCount > 0 && (
+                  <span className="w-5 h-5 rounded-full bg-[#71BF44] text-white text-[10px] font-bold flex items-center justify-center">{activeFiltersCount}</span>
+                )}
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${filtersOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {filtersOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setFiltersOpen(false)} />
+                  <div className="absolute right-0 top-full mt-2 z-40 w-72 bg-white dark:bg-[#1A1A1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl p-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                    {/* Visibilidad */}
+                    <div>
+                      <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Visibilidad</span>
+                      <div className="flex mt-2 bg-neutral-50 dark:bg-[#131313] rounded-lg p-1 border border-neutral-200 dark:border-neutral-800">
+                        {[
+                          { val: 'all' as const, label: 'Todos' },
+                          { val: 'public' as const, label: 'Públicos', icon: <Globe className="w-3 h-3" /> },
+                          { val: 'private' as const, label: 'Privados', icon: <Lock className="w-3 h-3" /> },
+                        ].map(opt => (
+                          <button key={opt.val} onClick={() => setVisibilityFilter(opt.val)}
+                            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
+                              visibilityFilter === opt.val ? 'text-[#71BF44] bg-[#71BF44]/10 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'
+                            }`}>
+                            {opt.icon}{opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Estado RAG */}
+                    <div>
+                      <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Estado RAG</span>
+                      <div className="flex mt-2 bg-neutral-50 dark:bg-[#131313] rounded-lg p-1 border border-neutral-200 dark:border-neutral-800">
+                        {[
+                          { val: 'all' as const, label: 'Todos', cls: 'text-[#71BF44] bg-[#71BF44]/10' },
+                          { val: 'active' as const, label: 'Activos', icon: <Power className="w-3 h-3" />, cls: 'text-[#71BF44] bg-[#71BF44]/10' },
+                          { val: 'inactive' as const, label: 'Inactivos', icon: <Power className="w-3 h-3" />, cls: 'text-red-500 bg-red-500/10' },
+                        ].map(opt => (
+                          <button key={opt.val} onClick={() => setActiveFilter(opt.val)}
+                            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
+                              activeFilter === opt.val ? (opt.cls || 'text-[#71BF44] bg-[#71BF44]/10 shadow-sm') : 'text-neutral-400 hover:text-neutral-600'
+                            }`}>
+                            {opt.icon}{opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Responsable */}
+                    <div>
+                      <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Responsable</span>
+                      <select
+                        value={responsibleFilter}
+                        onChange={(e) => setResponsibleFilter(e.target.value)}
+                        className="w-full mt-2 bg-neutral-50 dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#71BF44] dark:text-neutral-300"
+                      >
+                        <option value="all">Todos los responsables</option>
+                        {responsibles.map(email => (
+                          <option key={email} value={email}>{email}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Solo editables */}
+                    <label className="flex items-center gap-3 cursor-pointer px-1">
+                      <div className={`w-8 h-4.5 rounded-full relative transition-colors ${onlyEditable ? 'bg-[#71BF44]' : 'bg-neutral-300 dark:bg-neutral-700'}`}
+                        onClick={() => setOnlyEditable(v => !v)}>
+                        <div className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${onlyEditable ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                      </div>
+                      <span className="text-xs text-neutral-600 dark:text-neutral-300 font-medium">Solo mis permisos de edición</span>
+                    </label>
+
+                    {/* Limpiar filtros */}
+                    {activeFiltersCount > 0 && (
+                      <button
+                        onClick={() => {
+                          setVisibilityFilter('all');
+                          setActiveFilter('all');
+                          setResponsibleFilter('all');
+                          setOnlyEditable(false);
+                        }}
+                        className="w-full py-2 rounded-xl text-xs font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center justify-center gap-1.5 border border-red-200 dark:border-red-900/30"
+                      >
+                        <X className="w-3 h-3" /> Limpiar filtros
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Responsable:</span>
-            <select 
-              value={responsibleFilter}
-              onChange={(e) => setResponsibleFilter(e.target.value)}
-              className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#71BF44] dark:text-neutral-300 min-w-[150px]"
-            >
-              <option value="all">Todos los responsables</option>
-              {responsibles.map(email => (
-                <option key={email} value={email}>{email}</option>
-              ))}
-            </select>
-          </div>
-
-          {(visibilityFilter !== 'all' || activeFilter !== 'all' || responsibleFilter !== 'all' || onlyEditable || searchTerm) && (
-            <button 
-              onClick={() => {
-                setVisibilityFilter('all');
-                setActiveFilter('all');
-                setResponsibleFilter('all');
-                setOnlyEditable(false);
-                setSearchTerm('');
-              }}
-              className="ml-auto text-[10px] font-bold text-red-500 hover:text-red-600 uppercase tracking-widest flex items-center gap-1 transition-colors"
-            >
-              <X className="w-3 h-3" /> Limpiar Filtros
-            </button>
-          )}
         </div>
 
 
@@ -1191,42 +1235,90 @@ export default function RAGCollectionsTable() {
                         <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500 text-[10px] font-bold">{group.total} art.</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        {canEditManual && (
-                          <button onClick={e => toggleManualPublic(group.manual, allPublic, e)} disabled={isUpdating}
-                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all disabled:opacity-60 ${allPublic ? 'bg-sky-400/15 text-sky-400 hover:bg-sky-400/25' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 hover:bg-neutral-200'}`}
-                            title={allPublic ? 'Hacer todo privado' : 'Hacer todo público'}>
-                            {isUpdating ? <RefreshCw className="w-2.5 h-2.5 animate-spin" /> : allPublic ? <Globe className="w-2.5 h-2.5" /> : <Lock className="w-2.5 h-2.5" />}
-                            {allPublic ? 'Todo público' : 'Todo privado'}
+                        {/* Status badges compactos */}
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide ${allPublic ? 'bg-sky-400/15 text-sky-400' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400'}`}>
+                          {allPublic ? 'Público' : 'Privado'}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide ${allActive ? 'bg-[#71BF44]/15 text-[#71BF44]' : 'bg-red-500/10 text-red-400'}`}>
+                          {allActive ? 'Activo' : 'Inactivo'}
+                        </span>
+
+                        {/* Dropdown de acciones */}
+                        <div className="relative">
+                          <button
+                            onClick={e => { e.stopPropagation(); setOpenManualActions(prev => prev === group.manual ? null : group.manual); }}
+                            className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
+                            title="Acciones del manual"
+                          >
+                            <MoreVertical className="w-4 h-4" />
                           </button>
-                        )}
-                        {isAdmin && (
-                          <button onClick={e => toggleManualActive(group.manual, allActive, e)} disabled={isTogglingActive}
-                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all disabled:opacity-60 ${allActive ? 'bg-[#71BF44]/15 text-[#71BF44] hover:bg-[#71BF44]/25' : 'bg-red-500/10 text-red-400 hover:bg-red-500/20'}`}
-                            title={allActive ? 'Desactivar todo del RAG' : 'Activar todo en el RAG'}>
-                            {isTogglingActive ? <RefreshCw className="w-2.5 h-2.5 animate-spin" /> : <Power className="w-2.5 h-2.5" />}
-                            {allActive ? 'RAG activo' : 'RAG inactivo'}
-                          </button>
-                        )}
-                        {isAdmin && (
-                          <button onClick={e => { e.stopPropagation(); setBulkUpdateModal(group); }}
-                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide bg-amber-400/10 text-amber-500 hover:bg-amber-400/20 transition-all"
-                            title="Actualizar todos los artículos del manual">
-                            <RotateCcw className="w-2.5 h-2.5" /> Actualizar todo
-                          </button>
-                        )}
-                        {isAdmin && hasZoho && (
-                          <button onClick={e => { e.stopPropagation(); setManualModal(group); }}
-                            className="flex items-center gap-1 text-[10px] font-medium text-neutral-400 hover:text-blue-400 transition-colors px-1"
-                            title="Gestionar editores del manual">
-                            <Info className="w-3 h-3" /> Editores
-                          </button>
-                        )}
-                        {canEditManual && (
-                          <button onClick={e => deleteManual(group.manual, group.total, e)} disabled={deletingManual.has(group.manual)}
-                            className="text-neutral-400 hover:text-red-500 disabled:opacity-50 p-1" title="Eliminar manual completo">
-                            {deletingManual.has(group.manual) ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                          </button>
-                        )}
+
+                          {openManualActions === group.manual && (
+                            <>
+                              <div className="fixed inset-0 z-30" onClick={e => { e.stopPropagation(); setOpenManualActions(null); }} />
+                              <div className="absolute right-0 top-full mt-1 z-40 w-56 bg-white dark:bg-[#1A1A1A] border border-neutral-200 dark:border-neutral-800 rounded-xl shadow-2xl py-1.5 animate-in fade-in slide-in-from-top-2 duration-150"
+                                onClick={e => e.stopPropagation()}>
+                                {/* Visibilidad */}
+                                {canEditManual && (
+                                  <button
+                                    onClick={e => { toggleManualPublic(group.manual, allPublic, e); setOpenManualActions(null); }}
+                                    disabled={isUpdating}
+                                    className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-[#222] transition-colors disabled:opacity-50"
+                                  >
+                                    {isUpdating ? <RefreshCw className="w-3.5 h-3.5 animate-spin text-neutral-400" /> : allPublic ? <Lock className="w-3.5 h-3.5 text-neutral-400" /> : <Globe className="w-3.5 h-3.5 text-sky-400" />}
+                                    {allPublic ? 'Hacer todo privado' : 'Hacer todo público'}
+                                  </button>
+                                )}
+                                {/* RAG (solo admin) */}
+                                {isAdmin && (
+                                  <button
+                                    onClick={e => { toggleManualActive(group.manual, allActive, e); setOpenManualActions(null); }}
+                                    disabled={isTogglingActive}
+                                    className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-[#222] transition-colors disabled:opacity-50"
+                                  >
+                                    {isTogglingActive ? <RefreshCw className="w-3.5 h-3.5 animate-spin text-neutral-400" /> : <Power className={`w-3.5 h-3.5 ${allActive ? 'text-red-400' : 'text-[#71BF44]'}`} />}
+                                    {allActive ? 'Desactivar del RAG' : 'Activar en RAG'}
+                                  </button>
+                                )}
+                                {/* Actualizar todo (solo admin) */}
+                                {isAdmin && (
+                                  <button
+                                    onClick={() => { setBulkUpdateModal(group); setOpenManualActions(null); }}
+                                    className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-[#222] transition-colors"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5 text-amber-500" />
+                                    Actualizar todo el manual
+                                  </button>
+                                )}
+                                {/* Editores (solo admin + zoho) */}
+                                {isAdmin && hasZoho && (
+                                  <button
+                                    onClick={() => { setManualModal(group); setOpenManualActions(null); }}
+                                    className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-[#222] transition-colors"
+                                  >
+                                    <Info className="w-3.5 h-3.5 text-blue-400" />
+                                    Gestionar editores
+                                  </button>
+                                )}
+                                {/* Separador + Eliminar */}
+                                {canEditManual && (
+                                  <>
+                                    <div className="my-1 border-t border-neutral-100 dark:border-neutral-800" />
+                                    <button
+                                      onClick={e => { deleteManual(group.manual, group.total, e); setOpenManualActions(null); }}
+                                      disabled={deletingManual.has(group.manual)}
+                                      className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+                                    >
+                                      {deletingManual.has(group.manual) ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                      Eliminar manual
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </div>
+
                         {isOpen ? <ChevronDown className="w-4 h-4 text-neutral-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-neutral-400 shrink-0" />}
                       </div>
                     </div>
@@ -1355,27 +1447,6 @@ export default function RAGCollectionsTable() {
   );
 }
 
+
 // ── Componentes Pequeños ──────────────────────────────────────────────────────
-
-function FilterButton({ active, onClick, icon, label, activeClass = 'text-[#71BF44] bg-[#71BF44]/10' }: {
-  active: boolean;
-  onClick: () => void;
-  icon?: React.ReactNode;
-  label: string;
-  activeClass?: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${
-        active 
-          ? activeClass 
-          : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200'
-      }`}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
+// (FilterButton eliminado - los filtros ahora están inline en el dropdown)
