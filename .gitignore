@@ -1,0 +1,16 @@
+# Entorno y Secretos
+.env
+*.log
+
+# Archivos de Sistema
+.DS_Store
+Thumbs.db
+
+# VS Code / Editores
+.vscode/
+.idea/
+*.swp
+
+# Temporales
+tmp/
+scratch/
