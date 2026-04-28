@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import ThemeToggle from './ThemeToggle';
-import { ChevronLeft, ChevronRight, LayoutGrid, BarChart3, Workflow, CreditCard, MessageSquare, Settings, Home, Briefcase } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LayoutGrid, BarChart3, Workflow, CreditCard, MessageSquare, Settings, Home, Briefcase, X } from 'lucide-react';
 
 interface SidebarProps {
   isOpen: boolean;
