@@ -39,16 +39,14 @@ interface CatalogEmisor {
 }
 
 interface ActivityRecord {
-  ID_Emisor: number;
+  IdEmisor: number;
   Establecimiento: string;
   PuntoEmision: string;
   EstadoReporte: string;
   TotalAutorizados: number;
   TotalErrores: number;
-  UltimaFechaAutorizacion: string;
-  UltimaHoraIngreso: string;
-  UltimaFechaError: string;
-  UltimaHoraError: string;
+  UltimoAutorizado: string;
+  UltimoNoAutorizado: string;
   CodigoTipoDocumento: string;
   FechaSincronizacion: string;
 }
@@ -118,24 +116,23 @@ export default function ActividadEmisoresPage() {
         jsonActivity.forEach(item => {
           const p = item.data ? (typeof item.data === 'string' ? JSON.parse(item.data) : item.data) : item;
           if (Array.isArray(p)) activity = [...activity, ...p];
-          else if (p.ID_Emisor) activity.push(p);
+          else if (p.IdEmisor) activity.push(p); // Cambio de ID_Emisor a IdEmisor
         });
       }
 
       const groups: EmitterGroup[] = catalog.map(c => {
-        const emisorActivities = activity.filter(a => Number(a.ID_Emisor) === Number(c.IdEmisor));
+        const emisorActivities = activity.filter(a => Number(a.IdEmisor) === Number(c.IdEmisor));
         
         const totalOk = emisorActivities.reduce((acc, curr) => acc + (Number(curr.TotalAutorizados) || 0), 0);
         const totalError = emisorActivities.reduce((acc, curr) => acc + (Number(curr.TotalErrores) || 0), 0);
         
         const maxDate = (records: ActivityRecord[], field: keyof ActivityRecord) => {
-          const vals = records.map(r => String(r[field])).filter(d => d && d !== '---').sort((a, b) => b.localeCompare(a));
+          const vals = records.map(r => String(r[field])).filter(d => d && d !== '---' && d !== 'NULL').sort((a, b) => b.localeCompare(a));
           return vals[0] || 'Sin registro';
         };
 
         const transaccionoAyer = emisorActivities.some(a => {
-           const fecha = a.UltimaFechaAutorizacion?.split(' ')[0];
-           return fecha === yesterdayStr;
+           return a.UltimoAutorizado === yesterdayStr;
         });
 
         return {
@@ -147,8 +144,8 @@ export default function ActividadEmisoresPage() {
           Pais_ID: c.IdPais,
           totalOk,
           totalError,
-          ultimaAutorizacion: maxDate(emisorActivities, 'UltimaFechaAutorizacion'),
-          ultimaError: maxDate(emisorActivities, 'UltimaFechaError'),
+          ultimaAutorizacion: maxDate(emisorActivities, 'UltimoAutorizado'),
+          ultimaError: maxDate(emisorActivities, 'UltimoNoAutorizado'),
           puntosCount: emisorActivities.length,
           transaccionoAyer,
           details: emisorActivities
@@ -199,8 +196,8 @@ export default function ActividadEmisoresPage() {
     const daily: Record<string, { date: string, ok: number, error: number }> = {};
     emitterGroups.forEach(g => {
       g.details.forEach(d => {
-        const date = d.UltimaFechaAutorizacion?.split(' ')[0];
-        if (date && date !== '---' && date !== 'Sin registro') {
+        const date = d.UltimoAutorizado;
+        if (date && date !== '---' && date !== 'Sin registro' && date !== 'NULL') {
           if (!daily[date]) daily[date] = { date, ok: 0, error: 0 };
           daily[date].ok += Number(d.TotalAutorizados) || 0;
           daily[date].error += Number(d.TotalErrores) || 0;
@@ -385,23 +382,23 @@ export default function ActividadEmisoresPage() {
                                       <p className="text-[9px] font-bold text-[#71BF44] uppercase">{d.CodigoTipoDocumento || 'S/N'}</p>
                                     </div>
                                     <span className="text-[8px] font-black px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded text-neutral-500 uppercase">
-                                      V5 ID: {d.ID_Emisor}
+                                      V5 ID: {d.IdEmisor}
                                     </span>
                                   </div>
                                   
                                   <div className="space-y-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
                                      <div className="flex justify-between items-center">
                                        <span className="text-[9px] font-black text-neutral-400 uppercase">Último Autorizado</span>
-                                       <span className="text-[10px] font-bold text-[#71BF44]">{d.UltimaFechaAutorizacion?.split(' ')[0] || '---'}</span>
+                                       <span className="text-[10px] font-bold text-[#71BF44]">{d.UltimoAutorizado || '---'}</span>
                                      </div>
                                      <div className="flex justify-between items-center">
                                        <span className="text-[9px] font-black text-neutral-400 uppercase">Último Fallido</span>
-                                       <span className="text-[10px] font-bold text-red-500">{d.UltimaFechaError?.split(' ')[0] || '---'}</span>
+                                       <span className="text-[10px] font-bold text-red-500">{d.UltimoNoAutorizado || '---'}</span>
                                      </div>
                                      <div className="flex justify-between items-center">
                                        <span className="text-[9px] font-black text-neutral-400 uppercase">Transacción Ayer</span>
-                                       <span className={`text-[10px] font-bold ${d.UltimaFechaAutorizacion?.startsWith(new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().split('T')[0]) ? 'text-[#71BF44]' : 'text-neutral-300'}`}>
-                                          {d.UltimaFechaAutorizacion?.startsWith(new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().split('T')[0]) ? 'SÍ' : 'NO'}
+                                       <span className={`text-[10px] font-bold ${d.UltimoAutorizado === new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().split('T')[0] ? 'text-[#71BF44]' : 'text-neutral-300'}`}>
+                                          {d.UltimoAutorizado === new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().split('T')[0] ? 'SÍ' : 'NO'}
                                        </span>
                                      </div>
                                   </div>
