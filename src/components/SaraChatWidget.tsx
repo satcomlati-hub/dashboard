@@ -156,11 +156,13 @@ export default function SaraChatWidget() {
                   streamMsgId = (Date.now() + 1).toString();
                   accumulated = chunk;
                   setLoading(false);
-                  setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: chunk, timestamp: Date.now() }]);
+                  const displayContent = accumulated.replace(/Calling\s+[\w-]+\s+with\s+input:\s*\{[\s\S]*?\}\n*/g, '').trimStart();
+                  setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: displayContent, timestamp: Date.now() }]);
                 } else {
                   accumulated += chunk;
+                  const displayContent = accumulated.replace(/Calling\s+[\w-]+\s+with\s+input:\s*\{[\s\S]*?\}\n*/g, '').trimStart();
                   setMessages(prev =>
-                    prev.map(m => m.id === streamMsgId ? { ...m, content: accumulated } : m)
+                    prev.map(m => m.id === streamMsgId ? { ...m, content: displayContent } : m)
                   );
                 }
               } catch {

@@ -280,10 +280,12 @@ export default function SaraChatPage() {
             streamMsgId = newId();
             accumulated = chunk;
             setIsLoading(false);
-            setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: chunk, timestamp: Date.now() }]);
+            const displayContent = accumulated.replace(/Calling\s+[\w-]+\s+with\s+input:\s*\{[\s\S]*?\}\n*/g, '').trimStart();
+            setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: displayContent, timestamp: Date.now() }]);
           } else {
             accumulated += chunk;
-            setMessages(prev => prev.map(m => m.id === streamMsgId ? { ...m, content: accumulated } : m));
+            const displayContent = accumulated.replace(/Calling\s+[\w-]+\s+with\s+input:\s*\{[\s\S]*?\}\n*/g, '').trimStart();
+            setMessages(prev => prev.map(m => m.id === streamMsgId ? { ...m, content: displayContent } : m));
           }
         };
 
@@ -336,7 +338,8 @@ export default function SaraChatPage() {
           );
         }
 
-        const finalMsg: Message = { id: streamMsgId, role: 'assistant', content: accumulated || 'Sin respuesta.', images: streamImages, timestamp: Date.now() };
+        const displayContent = accumulated.replace(/Calling\s+[\w-]+\s+with\s+input:\s*\{[\s\S]*?\}\n*/g, '').trimStart();
+        const finalMsg: Message = { id: streamMsgId, role: 'assistant', content: displayContent || 'Sin respuesta.', images: streamImages, timestamp: Date.now() };
         persist([...withUser, finalMsg], sid);
 
       } else {
