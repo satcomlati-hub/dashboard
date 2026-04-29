@@ -64,6 +64,7 @@ interface EmitterGroup {
   estabCount: number;
   puntosCount: number;
   estadoReporte: string;
+  isDisconnected: boolean;
   details: ActivityRecord[];
 }
 
@@ -79,6 +80,8 @@ export default function ActividadEmisoresPage() {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [expandedEmisores, setExpandedEmisores] = useState<Set<number>>(new Set());
   const [selectedEmisorId, setSelectedEmisorId] = useState<number | null>(null);
+  const [countryFilter, setCountryFilter] = useState<string | null>(null);
+  const [alertFilter, setAlertFilter] = useState(false);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey, direction: 'asc' | 'desc' } | null>({ key: 'ultimaAutorizacion', direction: 'desc' });
 
   const toggleExpand = (id: number) => {
@@ -145,6 +148,26 @@ export default function ActividadEmisoresPage() {
         else if (estados.includes('AÑOS ANTERIOR') || estados.includes('ULTIMO AUTORIZADO')) estado = 'AÑOS ANTERIOR';
 
         const estabs = new Set(emisorActivities.map(a => a.Establecimiento));
+        
+        // Lógica de Alertas (Desconexiones)
+        // Hoy es 29 de Abril 2026
+        const today = new Date('2026-04-29');
+        const threeDaysAgo = new Date(today);
+        threeDaysAgo.setDate(today.getDate() - 3);
+        const thirtyDaysAgo = new Date(today);
+        thirtyDaysAgo.setDate(today.getDate() - 30);
+
+        const parseDate = (d: string) => (d && d !== '---' && d !== 'NULL') ? new Date(d) : null;
+
+        const estabsStatus = Array.from(estabs).map(e => {
+           const eActivities = emisorActivities.filter(a => a.Establecimiento === e);
+           const lastOk = parseDate(maxDate(eActivities, 'UltimoAutorizado'));
+           return { id: e, lastOk };
+        });
+
+        const hasActiveLastMonth = estabsStatus.some(e => e.lastOk && e.lastOk >= thirtyDaysAgo);
+        const hasInactiveLast3Days = estabsStatus.some(e => !e.lastOk || e.lastOk < threeDaysAgo);
+        const isDisconnected = estado === 'ACTIVO' && hasActiveLastMonth && hasInactiveLast3Days;
 
         return {
           ID_Emisor: c.IdEmisor,
@@ -160,6 +183,7 @@ export default function ActividadEmisoresPage() {
           estabCount: estabs.size,
           puntosCount: emisorActivities.length,
           estadoReporte: estado,
+          isDisconnected,
           details: emisorActivities
         };
       });
@@ -186,9 +210,11 @@ export default function ActividadEmisoresPage() {
         g.Identificacion?.includes(searchTerm);
       
       const matchStatus = !statusFilter || g.estadoReporte === statusFilter;
+      const matchCountry = !countryFilter || g.NombrePais === countryFilter;
+      const matchAlert = !alertFilter || g.isDisconnected;
       const matchSelected = !selectedEmisorId || g.ID_Emisor === selectedEmisorId;
 
-      return matchSearch && matchStatus && matchSelected;
+      return matchSearch && matchStatus && matchCountry && matchAlert && matchSelected;
     });
 
     if (sortConfig) {
@@ -214,7 +240,12 @@ export default function ActividadEmisoresPage() {
     }
 
     return result;
-  }, [emitterGroups, searchTerm, statusFilter, selectedEmisorId, sortConfig]);
+  }, [emitterGroups, searchTerm, statusFilter, countryFilter, alertFilter, selectedEmisorId, sortConfig]);
+
+  const countries = useMemo(() => {
+    const set = new Set(emitterGroups.map(g => g.NombrePais));
+    return Array.from(set).sort();
+  }, [emitterGroups]);
 
   const kpis = useMemo(() => {
     const getStats = (status: string) => {
@@ -230,6 +261,7 @@ export default function ActividadEmisoresPage() {
       activo: getStats('ACTIVO'),
       ultimoAutorizado: getStats('AÑOS ANTERIOR'),
       sinActividad: getStats('SIN ACTIVIDAD'),
+      desconectados: emitterGroups.filter(g => g.isDisconnected).length,
       globalOk: emitterGroups.reduce((acc, g) => acc + g.totalOk, 0),
       globalError: emitterGroups.reduce((acc, g) => acc + g.totalError, 0)
     };
@@ -283,83 +315,20 @@ export default function ActividadEmisoresPage() {
       </header>
 
       {/* KPI Cards: Emisores (Grande), Estabs (Pequeño), Puntos (Pequeño) */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
         <div 
-          onClick={() => handleKPIFilter('ACTIVO')}
-          className={`cursor-pointer bg-white dark:bg-[#111] border rounded-[32px] p-8 shadow-sm transition-all border-l-8 ${statusFilter === 'ACTIVO' ? 'border-[#71BF44] ring-4 ring-[#71BF44]/10' : 'border-neutral-100 dark:border-neutral-800 border-l-[#71BF44] hover:border-neutral-200 hover:-translate-y-1'}`}
+          onClick={() => setAlertFilter(!alertFilter)}
+          className={`cursor-pointer bg-white dark:bg-[#111] border rounded-[32px] p-8 shadow-sm transition-all border-l-8 ${alertFilter ? 'border-red-600 ring-4 ring-red-600/10' : 'border-neutral-100 dark:border-neutral-800 border-l-red-600 hover:border-neutral-200 hover:-translate-y-1'}`}
         >
-           <p className="text-[10px] font-black text-[#71BF44] uppercase tracking-widest mb-6">Emisores Activos</p>
+           <p className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-6 flex items-center gap-2">
+             <AlertCircle className="w-3 h-3" /> Posibles Desconexiones
+           </p>
            <div className="flex items-baseline gap-2 mb-6">
-              <h3 className="text-6xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">{kpis.activo.emisores}</h3>
-              <span className="text-xs font-black text-neutral-400 uppercase tracking-widest">Empresas</span>
+              <h3 className="text-6xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">{kpis.desconectados}</h3>
+              <span className="text-xs font-black text-neutral-400 uppercase tracking-widest">Alertas</span>
            </div>
-           
-           <div className="grid grid-cols-2 gap-4 pt-6 border-t border-neutral-100 dark:border-neutral-800">
-              <div>
-                 <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
-                   <Layers className="w-3 h-3" /> Estabs.
-                 </p>
-                 <p className="text-lg font-black text-neutral-800 dark:text-neutral-200">{kpis.activo.estabs.toLocaleString()}</p>
-              </div>
-              <div>
-                 <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
-                   <MapPin className="w-3 h-3" /> Puntos
-                 </p>
-                 <p className="text-lg font-black text-neutral-800 dark:text-neutral-200">{kpis.activo.puntos.toLocaleString()}</p>
-              </div>
-           </div>
-        </div>
-
-        <div 
-          onClick={() => handleKPIFilter('AÑOS ANTERIOR')}
-          className={`cursor-pointer bg-white dark:bg-[#111] border rounded-[32px] p-8 shadow-sm transition-all border-l-8 ${statusFilter === 'AÑOS ANTERIOR' ? 'border-orange-400 ring-4 ring-orange-400/10' : 'border-neutral-100 dark:border-neutral-800 border-l-orange-400 hover:border-neutral-200 hover:-translate-y-1'}`}
-        >
-           <p className="text-[10px] font-black text-orange-400 uppercase tracking-widest mb-6">Años Anterior</p>
-           <div className="flex items-baseline gap-2 mb-6">
-              <h3 className="text-6xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">{kpis.ultimoAutorizado.emisores}</h3>
-              <span className="text-xs font-black text-neutral-400 uppercase tracking-widest">Empresas</span>
-           </div>
-           
-           <div className="grid grid-cols-2 gap-4 pt-6 border-t border-neutral-100 dark:border-neutral-800">
-              <div>
-                 <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
-                   <Layers className="w-3 h-3" /> Estabs.
-                 </p>
-                 <p className="text-lg font-black text-neutral-800 dark:text-neutral-200">{kpis.ultimoAutorizado.estabs.toLocaleString()}</p>
-              </div>
-              <div>
-                 <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
-                   <MapPin className="w-3 h-3" /> Puntos
-                 </p>
-                 <p className="text-lg font-black text-neutral-800 dark:text-neutral-200">{kpis.ultimoAutorizado.puntos.toLocaleString()}</p>
-              </div>
-           </div>
-        </div>
-
-        <div 
-          onClick={() => handleKPIFilter('SIN ACTIVIDAD')}
-          className={`cursor-pointer bg-white dark:bg-[#111] border rounded-[32px] p-8 shadow-sm transition-all border-l-8 ${statusFilter === 'SIN ACTIVIDAD' ? 'border-red-500 ring-4 ring-red-500/10' : 'border-neutral-100 dark:border-neutral-800 border-l-red-500 hover:border-neutral-200 hover:-translate-y-1'}`}
-        >
-           <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-6">Sin Actividad</p>
-           <div className="flex items-baseline gap-2 mb-6">
-              <h3 className="text-6xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">{kpis.sinActividad.emisores}</h3>
-              <span className="text-xs font-black text-neutral-400 uppercase tracking-widest">Empresas</span>
-           </div>
-           
-           <div className="grid grid-cols-2 gap-4 pt-6 border-t border-neutral-100 dark:border-neutral-800">
-              <div>
-                 <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
-                   <Layers className="w-3 h-3" /> Estabs.
-                 </p>
-                 <p className="text-lg font-black text-neutral-800 dark:text-neutral-200">{kpis.sinActividad.estabs.toLocaleString()}</p>
-              </div>
-              <div>
-                 <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
-                   <MapPin className="w-3 h-3" /> Puntos
-                 </p>
-                 <p className="text-lg font-black text-neutral-800 dark:text-neutral-200">{kpis.sinActividad.puntos.toLocaleString()}</p>
-              </div>
-           </div>
+           <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest leading-relaxed">
+             Emisores activos con puntos sin trx en +3 días
+           </p>
         </div>
 
         <div className="bg-white dark:bg-[#111] border border-neutral-100 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm flex flex-col justify-center">
@@ -367,14 +336,33 @@ export default function ActividadEmisoresPage() {
            <div className="space-y-4">
               <div className="flex items-center justify-between group">
                 <span className="text-[10px] font-black text-[#71BF44] uppercase tracking-widest group-hover:scale-110 transition-transform">Autorizados</span>
-                <span className="text-2xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">{kpis.globalOk.toLocaleString()}</span>
+                <span className="text-xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">{kpis.globalOk.toLocaleString()}</span>
               </div>
               <div className="flex items-center justify-between group">
                 <span className="text-[10px] font-black text-red-500 uppercase tracking-widest group-hover:scale-110 transition-transform">Errores</span>
-                <span className="text-2xl font-black text-red-500 tracking-tighter leading-none">{kpis.globalError.toLocaleString()}</span>
+                <span className="text-xl font-black text-red-500 tracking-tighter leading-none">{kpis.globalError.toLocaleString()}</span>
               </div>
            </div>
         </div>
+      </div>
+
+      {/* Filtro de País */}
+      <div className="flex flex-wrap items-center gap-3 mb-10 overflow-x-auto pb-2 no-scrollbar">
+         <button 
+           onClick={() => setCountryFilter(null)}
+           className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${!countryFilter ? 'bg-neutral-900 text-white border-neutral-900 dark:bg-white dark:text-neutral-900' : 'bg-white dark:bg-neutral-800 text-neutral-400 border-neutral-100 dark:border-neutral-700 hover:border-neutral-300'}`}
+         >
+           Todos los Países
+         </button>
+         {countries.map(c => (
+           <button 
+             key={c}
+             onClick={() => setCountryFilter(c)}
+             className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${countryFilter === c ? 'bg-[#71BF44] text-white border-[#71BF44] shadow-lg shadow-[#71BF44]/20' : 'bg-white dark:bg-neutral-800 text-neutral-400 border-neutral-100 dark:border-neutral-700 hover:border-neutral-300'}`}
+           >
+             <Globe className="w-3 h-3" /> {c}
+           </button>
+         ))}
       </div>
 
       {/* Grid Principal */}
@@ -390,8 +378,8 @@ export default function ActividadEmisoresPage() {
               className="w-full bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl pl-12 pr-4 py-4 text-xs font-bold focus:ring-4 focus:ring-[#71BF44]/10 outline-none transition-all placeholder:text-neutral-300 placeholder:italic"
             />
           </div>
-          {(selectedEmisorId || statusFilter) && (
-            <button onClick={() => { setSelectedEmisorId(null); setStatusFilter(null); }} className="text-[10px] font-black text-red-500 uppercase flex items-center gap-2 px-6 py-3 bg-red-50 dark:bg-red-500/10 rounded-2xl transition-all hover:scale-105 active:scale-95 border border-red-100 dark:border-red-500/20 shadow-lg shadow-red-500/5">
+          {(selectedEmisorId || statusFilter || countryFilter || alertFilter) && (
+            <button onClick={() => { setSelectedEmisorId(null); setStatusFilter(null); setCountryFilter(null); setAlertFilter(false); }} className="text-[10px] font-black text-red-500 uppercase flex items-center gap-2 px-6 py-3 bg-red-50 dark:bg-red-500/10 rounded-2xl transition-all hover:scale-105 active:scale-95 border border-red-100 dark:border-red-500/20 shadow-lg shadow-red-500/5">
               Reiniciar Auditoría <X className="w-4 h-4" />
             </button>
           )}
@@ -450,6 +438,12 @@ export default function ActividadEmisoresPage() {
                              <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${g.estadoReporte === 'ACTIVO' ? 'bg-[#71BF44]/10 text-[#71BF44]' : g.estadoReporte === 'AÑOS ANTERIOR' ? 'bg-orange-400/10 text-orange-400' : 'bg-red-500/10 text-red-500'}`}>
                                 {g.estadoReporte}
                              </span>
+                             {g.isDisconnected && (
+                                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-red-500/10 border border-red-500/20 rounded-md animate-pulse">
+                                  <AlertCircle className="w-3 h-3 text-red-500" />
+                                  <span className="text-[8px] font-black text-red-500 uppercase tracking-tighter">Posible Desconexión</span>
+                                </div>
+                             )}
                           </div>
                         </div>
                       </div>
