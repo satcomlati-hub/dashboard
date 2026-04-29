@@ -37,6 +37,7 @@ import {
   LifeBuoy
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
+import { supabase } from '@/lib/supabaseClient';
 import { useNotification } from '@/components/NotificationProvider';
 import { formatDate } from '@/lib/formatters';
 
@@ -113,6 +114,14 @@ export default function UnauthorizedVouchersPage() {
   const [caseArea, setCaseArea] = useState('Infraestructura');
   const [caseDept, setCaseDept] = useState('816030000000006907'); // Default: Soporte
   const [isSubmittingCase, setIsSubmittingCase] = useState(false);
+
+  // Estados para creación de Regla de Monitoreo
+  const [createRuleAlso, setCreateRuleAlso] = useState(false);
+  const [ruleName, setRuleName] = useState('');
+  const [ruleFrequency, setRuleFrequency] = useState('DIARIO');
+  const [ruleMinEvents, setRuleMinEvents] = useState(10);
+  const [ruleMainStatus, setRuleMainStatus] = useState('*');
+  const [ruleMainReason, setRuleMainReason] = useState('*');
 
   // Layout states
   const [currentPage, setCurrentPage] = useState(1);
@@ -452,6 +461,11 @@ export default function UnauthorizedVouchersPage() {
     const mainStatus = statuses[0] || 'N/A';
     const mainReason = errorMessages[0] ? (errorMessages[0].length > 50 ? errorMessages[0].substring(0, 47) + '...' : errorMessages[0]) : 'Sin detalle';
 
+    setRuleMainStatus(mainStatus);
+    setRuleMainReason(errorMessages[0] || '*');
+    setRuleName(`Alerta: ${mainStatus}`);
+    setCreateRuleAlso(false);
+
     const userName = session?.user?.name || 'Usuario Satcom';
     const activeFilters = Object.entries(filters).filter(([_, v]) => v).map(([k, v]) => `${k}: ${v}`).join(', ');
 
@@ -530,6 +544,30 @@ ${selectedIds.join(', ')}
       }
 
       showNotification('Caso creado exitosamente en la mesa de ayuda', 'ticket', ticketNum);
+      
+      // Crear Regla de Monitoreo si fue solicitada
+      if (createRuleAlso) {
+        try {
+          const { error } = await supabase.from('reglas_alertas').insert([{
+            nombre: ruleName,
+            ambiente: selectedAmbiente || 'Todos',
+            expresion_estado: ruleMainStatus,
+            expresion_motivo: ruleMainReason,
+            minimo_eventos: ruleMinEvents,
+            modo: 'POR_EMISOR',
+            frecuencia: ruleFrequency,
+            prioridad_ticket: casePriority.split('/')[0],
+            departamento_id: caseDept,
+            esta_activa: true
+          }]);
+          
+          if (error) throw error;
+          showNotification('Regla automática guardada en Configuración', 'success');
+        } catch (ruleErr: any) {
+          showNotification(`Caso creado, pero falló regla: ${ruleErr.message}`, 'error');
+        }
+      }
+
       setShowCaseModal(false);
     } catch (err: any) {
       showNotification(`Error al crear caso: ${err.message}`, 'error');
@@ -1243,6 +1281,55 @@ ${selectedIds.join(', ')}
                       className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-xs font-medium focus:ring-2 focus:ring-amber-500/20 outline-none transition-all resize-none"
                     />
                  </div>
+
+                 <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800">
+                    <label className="flex items-center gap-3 cursor-pointer group w-fit">
+                       <input 
+                         type="checkbox" 
+                         checked={createRuleAlso} 
+                         onChange={e => setCreateRuleAlso(e.target.checked)} 
+                         className="w-4 h-4 text-amber-500 bg-neutral-100 border-neutral-300 rounded focus:ring-amber-500 dark:bg-neutral-800 dark:border-neutral-700 transition-colors" 
+                       />
+                       <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300 group-hover:text-amber-500 transition-colors">
+                          Generar también como Regla de Monitoreo Automática
+                       </span>
+                    </label>
+                    
+                    {createRuleAlso && (
+                       <div className="mt-4 grid grid-cols-2 gap-4 p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl animate-in fade-in slide-in-from-top-2">
+                          <div className="col-span-2 space-y-1.5">
+                             <label className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Nombre de la Regla</label>
+                             <input 
+                               type="text" 
+                               value={ruleName} 
+                               onChange={e => setRuleName(e.target.value)} 
+                               className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-amber-500/50" 
+                             />
+                          </div>
+                          <div className="space-y-1.5">
+                             <label className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Eventos Mínimos</label>
+                             <input 
+                               type="number" 
+                               value={ruleMinEvents} 
+                               onChange={e => setRuleMinEvents(Number(e.target.value))} 
+                               className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-amber-500/50" 
+                             />
+                          </div>
+                          <div className="space-y-1.5">
+                             <label className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Frecuencia</label>
+                             <select 
+                               value={ruleFrequency} 
+                               onChange={e => setRuleFrequency(e.target.value)} 
+                               className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-amber-500/50 cursor-pointer"
+                             >
+                                <option value="TIEMPO_REAL">Tiempo Real</option>
+                                <option value="HORARIO">Cada Hora</option>
+                                <option value="DIARIO">Diario</option>
+                             </select>
+                          </div>
+                       </div>
+                    )}
+                 </div>
               </div>
 
               <div className="p-8 bg-neutral-50 dark:bg-neutral-900/50 border-t border-neutral-100 dark:border-neutral-800 flex gap-4">
@@ -1251,11 +1338,11 @@ ${selectedIds.join(', ')}
                  </button>
                  <button 
                    onClick={submitCase}
-                   disabled={isSubmittingCase || !caseSubject || !caseDescription}
+                   disabled={isSubmittingCase || !caseSubject || !caseDescription || (createRuleAlso && !ruleName)}
                    className="flex-[2] bg-amber-500 text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-amber-500/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-3"
                  >
                     {isSubmittingCase ? <RefreshCw className="w-4 h-4 animate-spin" /> : <LifeBuoy className="w-4 h-4" />}
-                    {isSubmittingCase ? 'Enviando...' : 'Confirmar y Crear Caso'}
+                    {isSubmittingCase ? 'Procesando...' : (createRuleAlso ? 'Crear Caso y Regla' : 'Confirmar y Crear Caso')}
                  </button>
               </div>
            </div>
