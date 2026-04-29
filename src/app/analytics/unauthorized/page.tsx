@@ -484,7 +484,7 @@ ${vouchers.map(v => v.Column1 || (v as any).co_id_comprobante).join(', ')}
             cf_area: caseDept === '816030000001304039' ? caseArea : "Soporte",
             cf_portal: selectedAmbiente || "Rocca"
           },
-          channel: "DashMon",
+          channel: "Dashboard-Monitoreo",
           status: "Abierto"
         })
       });
