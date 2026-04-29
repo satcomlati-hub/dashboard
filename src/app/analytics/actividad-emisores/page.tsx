@@ -622,7 +622,9 @@ export default function ActividadEmisoresPage() {
                                const isB = g.disconnectedEstabs.includes(estabB) ? 1 : 0;
                                return isB - isA;
                              })
-                             .map(([estab, points]) => (
+                             .map(([estab, points]) => {
+                                const lastEstabOk = points.map(p => p.UltimoAutorizado).filter(d => d && d !== '---' && d !== 'NULL').sort((a, b) => b.localeCompare(a))[0] || 'Sin registros';
+                                return (
                                <div key={estab} className="relative pl-12 border-l-4 border-dashed border-[#71BF44]/20 space-y-6">
                                   <div className="absolute -left-[14px] top-0 w-6 h-6 bg-[#71BF44] text-white rounded-full flex items-center justify-center ring-8 ring-white dark:ring-[#111] shadow-lg shadow-[#71BF44]/20">
                                      <Building2 className="w-3 h-3" />
@@ -639,6 +641,11 @@ export default function ActividadEmisoresPage() {
                                         <div className="flex items-center gap-3 px-4 py-2 bg-white dark:bg-neutral-800 rounded-xl border border-neutral-100 dark:border-neutral-700 shadow-sm mt-4">
                                            <span className="text-[11px] font-black text-neutral-800 dark:text-neutral-200">{points.length}</span>
                                            <span className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">Puntos Registrados</span>
+                                        </div>
+                                        <div className="flex items-center gap-3 px-4 py-2 bg-white dark:bg-neutral-800 rounded-xl border border-neutral-100 dark:border-neutral-700 shadow-sm mt-4">
+                                           <Calendar className="w-3 h-3 text-[#71BF44]" />
+                                           <span className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">Último OK:</span>
+                                           <span className="text-[11px] font-black text-neutral-800 dark:text-neutral-200">{lastEstabOk}</span>
                                         </div>
                                      </div>
                                      <div className="h-px flex-1 mx-12 bg-gradient-to-r from-neutral-200 via-neutral-100 to-transparent dark:from-neutral-800 dark:via-neutral-900"></div>
