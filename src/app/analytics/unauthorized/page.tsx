@@ -109,6 +109,7 @@ export default function UnauthorizedVouchersPage() {
   const [caseDescription, setCaseDescription] = useState('');
   const [caseTargetVouchers, setCaseTargetVouchers] = useState<Voucher[]>([]);
   const [caseArea, setCaseArea] = useState('Infraestructura');
+  const [caseDept, setCaseDept] = useState('816030000001906033'); // Default: Soporte Interno
   const [isSubmittingCase, setIsSubmittingCase] = useState(false);
 
   // Layout states
@@ -467,18 +468,18 @@ ${vouchers.map(v => v.Column1 || (v as any).co_id_comprobante).join(', ')}
           'Authorization': 'Basic QWRtaW46TUFJTkNyZWFyY2Fzb3MyMDI2ISE='
         },
         body: JSON.stringify({
-          departmentId: "816030000001304039",
+          departmentId: caseDept,
           contactId: "816030000008339646",
           subject: caseSubject,
           description: caseDescription,
-          priority: casePriority,
+          priority: casePriority.split('/')[0], // Use base priority (Crítica)
           classification: "Incidencia en producción",
           cf: {
             cf_existe_una_solucion_temporal_disponible_1: "No aplica",
-            cf_area: caseArea,
+            cf_area: caseDept === '816030000001304039' ? caseArea : "Soporte",
             cf_portal: selectedAmbiente || "Rocca"
           },
-          channel: "Chat",
+          channel: "DashMon",
           status: "Abierto"
         })
       });
@@ -1140,29 +1141,44 @@ ${vouchers.map(v => v.Column1 || (v as any).co_id_comprobante).join(', ')}
 
                  <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-2">
-                       <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Área Destino</label>
+                       <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Departamento</label>
                        <select 
-                         value={caseArea}
-                         onChange={(e) => setCaseArea(e.target.value)}
+                         value={caseDept}
+                         onChange={(e) => setCaseDept(e.target.value)}
                          className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-amber-500/20 outline-none transition-all appearance-none cursor-pointer"
                        >
-                         <option value="Infraestructura">Infraestructura</option>
-                         <option value="Desarrollo">Desarrollo</option>
+                         <option value="816030000000006907">Soporte</option>
+                         <option value="816030000001906033">Soporte Interno</option>
+                         <option value="816030000001304039">Tecnología</option>
                        </select>
                     </div>
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Prioridad</label>
-                       <div className="flex gap-2">
-                          {['Baja', 'Media', 'Alta', 'Crítica'].map(p => (
-                            <button 
-                              key={p}
-                              onClick={() => setCasePriority(p)}
-                              className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all border ${casePriority === p ? 'bg-amber-500 text-white border-amber-500 shadow-lg shadow-amber-500/20' : 'bg-neutral-50 dark:bg-neutral-900 text-neutral-400 border-neutral-100 dark:border-neutral-800 hover:border-amber-500/30'}`}
-                            >
-                               {p}
-                            </button>
-                          ))}
-                       </div>
+                    {caseDept === '816030000001304039' && (
+                      <div className="space-y-2 animate-in slide-in-from-left-2 duration-300">
+                         <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Área Destino</label>
+                         <select 
+                           value={caseArea}
+                           onChange={(e) => setCaseArea(e.target.value)}
+                           className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-amber-500/20 outline-none transition-all appearance-none cursor-pointer"
+                         >
+                           <option value="Infraestructura">Infraestructura</option>
+                           <option value="Desarrollo">Desarrollo</option>
+                         </select>
+                      </div>
+                    )}
+                 </div>
+
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Prioridad</label>
+                    <div className="flex gap-2">
+                       {['Baja', 'Media', 'Alta', 'Crítica/Urgente'].map(p => (
+                         <button 
+                           key={p}
+                           onClick={() => setCasePriority(p)}
+                           className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all border ${casePriority === p ? 'bg-amber-500 text-white border-amber-500 shadow-lg shadow-amber-500/20' : 'bg-neutral-50 dark:bg-neutral-900 text-neutral-400 border-neutral-100 dark:border-neutral-800 hover:border-amber-500/30'}`}
+                         >
+                            {p}
+                         </button>
+                       ))}
                     </div>
                  </div>
 
