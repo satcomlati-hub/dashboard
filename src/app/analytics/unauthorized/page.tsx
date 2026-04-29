@@ -495,7 +495,7 @@ ${selectedIds.join(', ')}
         },
         body: JSON.stringify({
           departmentId: caseDept,
-          contactId: "816030000008339646",
+          contactId: "816030000053275791",
           subject: caseSubject,
           description: caseDescription,
           priority: casePriority.split('/')[0], // Use base priority (Crítica)

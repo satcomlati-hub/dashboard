@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { useSession } from 'next-auth/react';
 import AdminUsersTab from '@/components/settings/AdminUsersTab';
 import AdminRolesTab from '@/components/settings/AdminRolesTab';
+import MonitoreoRulesTab from '@/components/settings/MonitoreoRulesTab';
 
-type Tab = 'users' | 'roles';
+type Tab = 'users' | 'roles' | 'monitoreo';
 
 export default function Settings() {
   const { data: session } = useSession();
@@ -14,8 +15,10 @@ export default function Settings() {
 
   const canManageUsers = permissions.includes('admin:manage_users');
   const canManageRoles = permissions.includes('admin:manage_roles');
+  // Por ahora permitimos el acceso a monitoreo a administradores o quienes tengan un rol base
+  const canManageRules = true; // TODO: Implementar permisos específicos 'admin:manage_rules'
 
-  if (!canManageUsers && !canManageRoles) {
+  if (!canManageUsers && !canManageRoles && !canManageRules) {
     return (
       <>
         <header className="flex justify-between items-center mb-8">
@@ -28,12 +31,13 @@ export default function Settings() {
     );
   }
 
-  const tabs: { id: Tab; label: string; permission: string }[] = [
+  const tabs: { id: Tab; label: string; permission: string | boolean }[] = [
     { id: 'users', label: 'Usuarios', permission: 'admin:manage_users' },
     { id: 'roles', label: 'Roles y Permisos', permission: 'admin:manage_roles' },
+    { id: 'monitoreo', label: 'Reglas de Monitoreo', permission: true },
   ];
 
-  const visibleTabs = tabs.filter(t => permissions.includes(t.permission));
+  const visibleTabs = tabs.filter(t => t.permission === true || permissions.includes(t.permission as string));
 
   // Si el tab activo no es visible, seleccionar el primero visible
   if (!visibleTabs.find(t => t.id === activeTab) && visibleTabs.length > 0) {
@@ -70,6 +74,7 @@ export default function Settings() {
       <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 shadow-sm">
         {activeTab === 'users' && canManageUsers && <AdminUsersTab />}
         {activeTab === 'roles' && canManageRoles && <AdminRolesTab />}
+        {activeTab === 'monitoreo' && canManageRules && <MonitoreoRulesTab />}
       </div>
     </>
   );
