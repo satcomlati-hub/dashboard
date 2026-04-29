@@ -65,6 +65,7 @@ interface EmitterGroup {
   puntosCount: number;
   estadoReporte: string;
   isDisconnected: boolean;
+  disconnectedEstabs: string[];
   details: ActivityRecord[];
 }
 
@@ -149,6 +150,16 @@ export default function ActividadEmisoresPage() {
 
         const estabs = new Set(emisorActivities.map(a => a.Establecimiento));
         
+        // Mapeo manual de países si el nombre no viene del SP
+        const COUNTRY_MAP: Record<number, string> = {
+          593: 'Ecuador',
+          506: 'Costa Rica',
+          507: 'Panamá',
+          57: 'Colombia'
+        };
+
+        const nombrePais = c.NombrePais || COUNTRY_MAP[c.IdPais] || 'Ecuador';
+
         // Lógica de Alertas (Desconexiones)
         // Hoy es 29 de Abril 2026
         const today = new Date('2026-04-29');
@@ -160,21 +171,27 @@ export default function ActividadEmisoresPage() {
         const parseDate = (d: string) => (d && d !== '---' && d !== 'NULL') ? new Date(d) : null;
 
         const estabsStatus = Array.from(estabs).map(e => {
-           const eActivities = emisorActivities.filter(a => a.Establecimiento === e);
+           // Excluir punto PPPPP de la lógica de alertas
+           const eActivities = emisorActivities.filter(a => a.Establecimiento === e && a.PuntoEmision !== 'PPPPP');
+           
+           if (eActivities.length === 0) return { id: e, lastOk: null, isAlerted: false };
+
            const lastOk = parseDate(maxDate(eActivities, 'UltimoAutorizado'));
-           return { id: e, lastOk };
+           const hasActiveLastMonth = lastOk && lastOk >= thirtyDaysAgo;
+           const hasInactiveLast3Days = !lastOk || lastOk < threeDaysAgo;
+           
+           return { id: e, lastOk, isAlerted: hasActiveLastMonth && hasInactiveLast3Days };
         });
 
-        const hasActiveLastMonth = estabsStatus.some(e => e.lastOk && e.lastOk >= thirtyDaysAgo);
-        const hasInactiveLast3Days = estabsStatus.some(e => !e.lastOk || e.lastOk < threeDaysAgo);
-        const isDisconnected = estado === 'ACTIVO' && hasActiveLastMonth && hasInactiveLast3Days;
+        const disconnectedEstabs = estabsStatus.filter(e => e.isAlerted).map(e => e.id);
+        const isDisconnected = estado === 'ACTIVO' && disconnectedEstabs.length > 0;
 
         return {
           ID_Emisor: c.IdEmisor,
           Nemonico: c.Nemonico,
           Identificacion: c.Identificacion,
           RazonSocial: c.RazonSocial,
-          NombrePais: c.NombrePais || 'Ecuador',
+          NombrePais: nombrePais,
           Pais_ID: c.IdPais,
           totalOk,
           totalError,
@@ -184,6 +201,7 @@ export default function ActividadEmisoresPage() {
           puntosCount: emisorActivities.length,
           estadoReporte: estado,
           isDisconnected,
+          disconnectedEstabs,
           details: emisorActivities
         };
       });
@@ -442,6 +460,15 @@ export default function ActividadEmisoresPage() {
              <Globe className="w-3 h-3" /> {c}
            </button>
          ))}
+
+         <div className="h-8 w-px bg-neutral-200 dark:bg-neutral-700 mx-2 hidden md:block"></div>
+
+         <button 
+           onClick={() => setAlertFilter(!alertFilter)}
+           className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${alertFilter ? 'bg-red-600 text-white border-red-600 shadow-lg shadow-red-600/20' : 'bg-white dark:bg-neutral-800 text-red-500 border-red-100 dark:border-red-500/20 hover:border-red-300'}`}
+         >
+           <AlertCircle className="w-3 h-3" /> Solo Alertas
+         </button>
       </div>
 
       {/* Grid Principal */}
@@ -597,7 +624,7 @@ export default function ActividadEmisoresPage() {
                                      <div className="flex items-center gap-5">
                                         <div className="flex flex-col">
                                            <span className="text-[10px] font-black text-[#71BF44] uppercase tracking-[0.4em] mb-1">Nivel Auditoría</span>
-                                           <span className="text-sm font-black bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 px-6 py-2.5 rounded-2xl uppercase shadow-xl tracking-widest">
+                                           <span className={`text-sm font-black px-6 py-2.5 rounded-2xl uppercase shadow-xl tracking-widest ${g.disconnectedEstabs.includes(estab) ? 'bg-red-600 text-white animate-pulse ring-4 ring-red-600/20' : 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'}`}>
                                              ESTABLECIMIENTO {estab}
                                            </span>
                                         </div>
