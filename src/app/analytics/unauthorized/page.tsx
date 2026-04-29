@@ -109,7 +109,7 @@ export default function UnauthorizedVouchersPage() {
   const [caseDescription, setCaseDescription] = useState('');
   const [caseTargetVouchers, setCaseTargetVouchers] = useState<Voucher[]>([]);
   const [caseArea, setCaseArea] = useState('Infraestructura');
-  const [caseDept, setCaseDept] = useState('816030000001906033'); // Default: Soporte Interno
+  const [caseDept, setCaseDept] = useState('816030000000006907'); // Default: Soporte
   const [isSubmittingCase, setIsSubmittingCase] = useState(false);
 
   // Layout states
@@ -425,33 +425,38 @@ export default function UnauthorizedVouchersPage() {
       return `- ${n}: ${count} evento(s)`;
     }).join('\n');
 
-    const errorMessages = Array.from(new Set(vouchers.map(v => v.co_detalle))).filter(Boolean).slice(0, 10).join('\n');
-    const statuses = Array.from(new Set(vouchers.map(v => v.DescripcionEstatus))).filter(Boolean).join(', ');
+    const errorMessages = Array.from(new Set(vouchers.map(v => v.co_detalle))).filter(Boolean);
+    const statuses = Array.from(new Set(vouchers.map(v => v.DescripcionEstatus))).filter(Boolean);
+
+    const mainStatus = statuses[0] || 'N/A';
+    const mainReason = errorMessages[0] ? (errorMessages[0].length > 50 ? errorMessages[0].substring(0, 47) + '...' : errorMessages[0]) : 'Sin detalle';
 
     const userName = session?.user?.name || 'Usuario Satcom';
     const activeFilters = Object.entries(filters).filter(([_, v]) => v).map(([k, v]) => `${k}: ${v}`).join(', ');
 
-    setCaseSubject(`Incidencia ${selectedAmbiente}: ${vouchers.length} error(es) detectado(s)`);
+    setCaseSubject(`Incidencia ${selectedAmbiente}: [${mainStatus}] - ${mainReason}`);
     setCaseDescription(`
-REPORTE DE INCIDENCIA OPERATIVA
---------------------------------
-Generado por: ${userName}
-Ambiente: ${selectedAmbiente}
-Filtros Activos: ${activeFilters || 'Ninguno'}
-Fecha Reporte: ${new Date().toLocaleString('es-EC')}
+# REPORTE DE INCIDENCIA OPERATIVA
+---
+**Generado por:** ${userName}
+**Ambiente:** ${selectedAmbiente}
+**Filtros Activos:** ${activeFilters || 'Ninguno'}
+**Fecha Reporte:** ${new Date().toLocaleString('es-EC')}
 
-RESUMEN DE ERRORES:
-- Estado(s): ${statuses}
-- Total Documentos: ${vouchers.length}
+## RESUMEN DE ERRORES
+- **Estado(s):** ${statuses.join(', ')}
+- **Total Documentos:** ${vouchers.length}
 
-DETALLE TÉCNICO (Muestra):
-${errorMessages}
+## DETALLE TÉCNICO (Muestra)
+${errorMessages.slice(0, 5).map(m => `> ${m}`).join('\n')}
 
-AFECTACIÓN POR EMISOR:
+## AFECTACIÓN POR EMISOR
 ${emitterSummary}
 
-DETALLE DE COMPROBANTES (IDs):
+## DETALLE DE COMPROBANTES (IDs)
+\`\`\`text
 ${vouchers.map(v => v.Column1 || (v as any).co_id_comprobante).join(', ')}
+\`\`\`
     `.trim());
     
     setCaseTargetVouchers(vouchers);
