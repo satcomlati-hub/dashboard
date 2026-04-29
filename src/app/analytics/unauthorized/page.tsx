@@ -498,8 +498,9 @@ ${vouchers.map(v => v.Column1 || (v as any).co_id_comprobante).join(', ')}
       let ticketNum = '';
       
       try {
-        // Estructura detectada: responseData[0].content[0].text.ticketNumber
-        ticketNum = responseData[0]?.content[0]?.text?.ticketNumber || '';
+        // Soporta estructura directa [0] o anidada items[0]
+        const dataNode = responseData.items ? responseData.items[0] : responseData[0];
+        ticketNum = dataNode?.content[0]?.text?.ticketNumber || '';
       } catch (e) {
         console.error('Error parsing ticket number', e);
       }

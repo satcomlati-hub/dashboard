@@ -33,10 +33,10 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
     const id = Math.random().toString(36).substring(2, 9);
     setNotifications((prev) => [...prev, { id, message, type, ticketNumber }]);
 
-    // Auto-remove after 6 seconds
+    // Auto-remove after 45 seconds (increased as requested by user)
     setTimeout(() => {
       setNotifications((prev) => prev.filter((n) => n.id !== id));
-    }, 6000);
+    }, 45000);
   }, []);
 
   const removeNotification = (id: string) => {
