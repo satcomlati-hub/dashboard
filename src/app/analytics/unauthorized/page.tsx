@@ -474,7 +474,7 @@ ${vouchers.map(v => v.Column1 || (v as any).co_id_comprobante).join(', ')}
         },
         body: JSON.stringify({
           departmentId: caseDept,
-          contactId: "816030000008339646",
+          contactId: "816030000000440001",
           subject: caseSubject,
           description: caseDescription,
           priority: casePriority.split('/')[0], // Use base priority (Crítica)
