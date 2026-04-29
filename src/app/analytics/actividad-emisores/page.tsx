@@ -158,7 +158,8 @@ export default function ActividadEmisoresPage() {
           57: 'Colombia'
         };
 
-        const nombrePais = c.NombrePais || COUNTRY_MAP[c.IdPais] || 'Ecuador';
+        const paisId = c.CodigoPais || c.IdPais;
+        const nombrePais = c.NombrePais || COUNTRY_MAP[paisId] || 'Ecuador';
 
         // Lógica de Alertas (Desconexiones)
         // Hoy es 29 de Abril 2026
@@ -192,7 +193,7 @@ export default function ActividadEmisoresPage() {
           Identificacion: c.Identificacion,
           RazonSocial: c.RazonSocial,
           NombrePais: nombrePais,
-          Pais_ID: c.IdPais,
+          Pais_ID: paisId,
           totalOk,
           totalError,
           ultimaAutorizacion: maxDate(emisorActivities, 'UltimoAutorizado'),
@@ -614,7 +615,13 @@ export default function ActividadEmisoresPage() {
                                if (!acc[d.Establecimiento]) acc[d.Establecimiento] = [];
                                acc[d.Establecimiento].push(d);
                                return acc;
-                             }, {} as Record<string, ActivityRecord[]>)).map(([estab, points]) => (
+                             }, {} as Record<string, ActivityRecord[]>))
+                             .sort(([estabA], [estabB]) => {
+                               const isA = g.disconnectedEstabs.includes(estabA) ? 1 : 0;
+                               const isB = g.disconnectedEstabs.includes(estabB) ? 1 : 0;
+                               return isB - isA;
+                             })
+                             .map(([estab, points]) => (
                                <div key={estab} className="relative pl-12 border-l-4 border-dashed border-[#71BF44]/20 space-y-6">
                                   <div className="absolute -left-[14px] top-0 w-6 h-6 bg-[#71BF44] text-white rounded-full flex items-center justify-center ring-8 ring-white dark:ring-[#111] shadow-lg shadow-[#71BF44]/20">
                                      <Building2 className="w-3 h-3" />
