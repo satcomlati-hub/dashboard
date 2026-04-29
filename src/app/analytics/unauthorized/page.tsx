@@ -37,6 +37,7 @@ import {
   LifeBuoy
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
+import { useNotification } from '@/components/NotificationProvider';
 import { formatDate } from '@/lib/formatters';
 
 interface Voucher {
@@ -101,6 +102,7 @@ export default function UnauthorizedVouchersPage() {
   const [groupCopied, setGroupCopied] = useState<string | null>(null);
 
   const { data: session } = useSession();
+  const { showNotification } = useNotification();
   
   // Case Creation States
   const [showCaseModal, setShowCaseModal] = useState(false);
@@ -389,6 +391,7 @@ export default function UnauthorizedVouchersPage() {
     const ids = filteredData.map(v => v.Column1 || (v as any).co_id_comprobante).join('\n');
     navigator.clipboard.writeText(ids);
     setCopied(true);
+    showNotification('IDs copiados al portapapeles', 'success');
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -408,9 +411,9 @@ export default function UnauthorizedVouchersPage() {
 
       if (!res.ok) throw new Error('Error al procesar la solicitud');
       
-      alert('Reproceso masivo iniciado correctamente');
+      showNotification('Reproceso masivo iniciado correctamente', 'success');
     } catch (err: any) {
-      alert(`Error: ${err.message}`);
+      showNotification(`Error: ${err.message}`, 'error');
     } finally {
       setLoading(false);
     }
@@ -501,10 +504,10 @@ ${vouchers.map(v => v.Column1 || (v as any).co_id_comprobante).join(', ')}
         console.error('Error parsing ticket number', e);
       }
 
-      alert(`Caso creado exitosamente en la mesa de ayuda${ticketNum ? ` (#${ticketNum})` : ''}`);
+      showNotification('Caso creado exitosamente en la mesa de ayuda', 'ticket', ticketNum);
       setShowCaseModal(false);
     } catch (err: any) {
-      alert(`Error al crear caso: ${err.message}`);
+      showNotification(`Error al crear caso: ${err.message}`, 'error');
     } finally {
       setIsSubmittingCase(false);
     }
@@ -1011,6 +1014,7 @@ ${vouchers.map(v => v.Column1 || (v as any).co_id_comprobante).join(', ')}
                                                 const ids = item.vouchers.map((v: any) => v.Column1 || v.co_id_comprobante).join('\n');
                                                 navigator.clipboard.writeText(ids);
                                                 setGroupCopied(item.path);
+                                                showNotification('IDs de grupo copiados', 'success');
                                                 setTimeout(() => setGroupCopied(null), 2000);
                                              }}
                                              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all border ${groupCopied === item.path ? 'bg-green-600 text-white border-green-500' : 'bg-white/5 text-neutral-400 border-white/10 hover:bg-[#71BF44] hover:text-white hover:border-[#71BF44] shadow-lg shadow-black/20'}`}
@@ -1040,7 +1044,7 @@ ${vouchers.map(v => v.Column1 || (v as any).co_id_comprobante).join(', ')}
                                     e.preventDefault();
                                     const url = `${AMBIENTE_DOMAINS[selectedAmbiente] || 'https://www5.mysatcomla.com'}/Facturacion/Comprobantes/DetalleReporte?idComprobante=${ID}`;
                                     navigator.clipboard.writeText(url);
-                                    alert('Enlace del comprobante copiado al portapapeles');
+                                    showNotification('Enlace del comprobante copiado', 'success');
                                   }}
                                   className="text-[10px] font-black text-[#71BF44] hover:underline mb-1 flex items-center gap-1 group/link cursor-pointer text-left"
                                  >

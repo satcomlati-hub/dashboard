@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import NavigationWrapper from '@/components/NavigationWrapper';
 import SessionProviderWrapper from '@/components/SessionProviderWrapper';
+import { NotificationProvider } from '@/components/NotificationProvider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -44,9 +45,11 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <SessionProviderWrapper>
-          <NavigationWrapper>
-            {children}
-          </NavigationWrapper>
+          <NotificationProvider>
+            <NavigationWrapper>
+              {children}
+            </NavigationWrapper>
+          </NotificationProvider>
         </SessionProviderWrapper>
       </body>
     </html>
