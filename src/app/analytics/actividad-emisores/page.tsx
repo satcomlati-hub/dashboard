@@ -315,6 +315,85 @@ export default function ActividadEmisoresPage() {
       </header>
 
       {/* KPI Cards: Emisores (Grande), Estabs (Pequeño), Puntos (Pequeño) */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-10">
+        <div 
+          onClick={() => handleKPIFilter('ACTIVO')}
+          className={`cursor-pointer bg-white dark:bg-[#111] border rounded-[32px] p-8 shadow-sm transition-all border-l-8 ${statusFilter === 'ACTIVO' ? 'border-[#71BF44] ring-4 ring-[#71BF44]/10' : 'border-neutral-100 dark:border-neutral-800 border-l-[#71BF44] hover:border-neutral-200 hover:-translate-y-1'}`}
+        >
+           <p className="text-[10px] font-black text-[#71BF44] uppercase tracking-widest mb-6">Emisores Activos</p>
+           <div className="flex items-baseline gap-2 mb-6">
+              <h3 className="text-6xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">{kpis.activo.emisores}</h3>
+              <span className="text-xs font-black text-neutral-400 uppercase tracking-widest">Empresas</span>
+           </div>
+           
+           <div className="grid grid-cols-2 gap-4 pt-6 border-t border-neutral-100 dark:border-neutral-800">
+              <div>
+                 <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                   <Layers className="w-3 h-3" /> Estabs.
+                 </p>
+                 <p className="text-lg font-black text-neutral-800 dark:text-neutral-200">{kpis.activo.estabs.toLocaleString()}</p>
+              </div>
+              <div>
+                 <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                   <MapPin className="w-3 h-3" /> Puntos
+                 </p>
+                 <p className="text-lg font-black text-neutral-800 dark:text-neutral-200">{kpis.activo.puntos.toLocaleString()}</p>
+              </div>
+           </div>
+        </div>
+
+        <div 
+          onClick={() => handleKPIFilter('AÑOS ANTERIOR')}
+          className={`cursor-pointer bg-white dark:bg-[#111] border rounded-[32px] p-8 shadow-sm transition-all border-l-8 ${statusFilter === 'AÑOS ANTERIOR' ? 'border-orange-400 ring-4 ring-orange-400/10' : 'border-neutral-100 dark:border-neutral-800 border-l-orange-400 hover:border-neutral-200 hover:-translate-y-1'}`}
+        >
+           <p className="text-[10px] font-black text-orange-400 uppercase tracking-widest mb-6">Años Anterior</p>
+           <div className="flex items-baseline gap-2 mb-6">
+              <h3 className="text-6xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">{kpis.ultimoAutorizado.emisores}</h3>
+              <span className="text-xs font-black text-neutral-400 uppercase tracking-widest">Empresas</span>
+           </div>
+           
+           <div className="grid grid-cols-2 gap-4 pt-6 border-t border-neutral-100 dark:border-neutral-800">
+              <div>
+                 <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                   <Layers className="w-3 h-3" /> Estabs.
+                 </p>
+                 <p className="text-lg font-black text-neutral-800 dark:text-neutral-200">{kpis.ultimoAutorizado.estabs.toLocaleString()}</p>
+              </div>
+              <div>
+                 <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                   <MapPin className="w-3 h-3" /> Puntos
+                 </p>
+                 <p className="text-lg font-black text-neutral-800 dark:text-neutral-200">{kpis.ultimoAutorizado.puntos.toLocaleString()}</p>
+              </div>
+           </div>
+        </div>
+
+        <div 
+          onClick={() => handleKPIFilter('SIN ACTIVIDAD')}
+          className={`cursor-pointer bg-white dark:bg-[#111] border rounded-[32px] p-8 shadow-sm transition-all border-l-8 ${statusFilter === 'SIN ACTIVIDAD' ? 'border-red-500 ring-4 ring-red-500/10' : 'border-neutral-100 dark:border-neutral-800 border-l-red-500 hover:border-neutral-200 hover:-translate-y-1'}`}
+        >
+           <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-6">Sin Actividad</p>
+           <div className="flex items-baseline gap-2 mb-6">
+              <h3 className="text-6xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">{kpis.sinActividad.emisores}</h3>
+              <span className="text-xs font-black text-neutral-400 uppercase tracking-widest">Empresas</span>
+           </div>
+           
+           <div className="grid grid-cols-2 gap-4 pt-6 border-t border-neutral-100 dark:border-neutral-800">
+              <div>
+                 <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                   <Layers className="w-3 h-3" /> Estabs.
+                 </p>
+                 <p className="text-lg font-black text-neutral-800 dark:text-neutral-200">{kpis.sinActividad.estabs.toLocaleString()}</p>
+              </div>
+              <div>
+                 <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                   <MapPin className="w-3 h-3" /> Puntos
+                 </p>
+                 <p className="text-lg font-black text-neutral-800 dark:text-neutral-200">{kpis.sinActividad.puntos.toLocaleString()}</p>
+              </div>
+           </div>
+        </div>
+
         <div 
           onClick={() => setAlertFilter(!alertFilter)}
           className={`cursor-pointer bg-white dark:bg-[#111] border rounded-[32px] p-8 shadow-sm transition-all border-l-8 ${alertFilter ? 'border-red-600 ring-4 ring-red-600/10' : 'border-neutral-100 dark:border-neutral-800 border-l-red-600 hover:border-neutral-200 hover:-translate-y-1'}`}
