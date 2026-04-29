@@ -33,8 +33,10 @@ import {
   Activity,
   FileText,
   AlertTriangle,
-  Download
+  Download,
+  LifeBuoy
 } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import { formatDate } from '@/lib/formatters';
 
 interface Voucher {
@@ -97,6 +99,16 @@ export default function UnauthorizedVouchersPage() {
   const [countdown, setCountdown] = useState(1800);
   const [copied, setCopied] = useState(false);
   const [groupCopied, setGroupCopied] = useState<string | null>(null);
+
+  const { data: session } = useSession();
+  
+  // Case Creation States
+  const [showCaseModal, setShowCaseModal] = useState(false);
+  const [casePriority, setCasePriority] = useState('Media');
+  const [caseSubject, setCaseSubject] = useState('');
+  const [caseDescription, setCaseDescription] = useState('');
+  const [caseTargetVouchers, setCaseTargetVouchers] = useState<Voucher[]>([]);
+  const [isSubmittingCase, setIsSubmittingCase] = useState(false);
 
   // Layout states
   const [currentPage, setCurrentPage] = useState(1);
@@ -399,6 +411,82 @@ export default function UnauthorizedVouchersPage() {
       alert(`Error: ${err.message}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateCase = (vouchers: Voucher[]) => {
+    if (!vouchers.length) return;
+    
+    const emitters = Array.from(new Set(vouchers.map(v => v.co_nemonico)));
+    const emitterSummary = emitters.map(n => {
+      const count = vouchers.filter(v => v.co_nemonico === n).length;
+      return `- ${n}: ${count} evento(s)`;
+    }).join('\n');
+
+    const errorMessages = Array.from(new Set(vouchers.map(v => v.co_detalle))).filter(Boolean).slice(0, 10).join('\n');
+    const statuses = Array.from(new Set(vouchers.map(v => v.DescripcionEstatus))).filter(Boolean).join(', ');
+
+    const userName = session?.user?.name || 'Usuario Satcom';
+    const activeFilters = Object.entries(filters).filter(([_, v]) => v).map(([k, v]) => `${k}: ${v}`).join(', ');
+
+    setCaseSubject(`Incidencia ${selectedAmbiente}: ${vouchers.length} error(es) detectado(s)`);
+    setCaseDescription(`
+REPORTE DE INCIDENCIA OPERATIVA
+--------------------------------
+Generado por: ${userName}
+Ambiente: ${selectedAmbiente}
+Filtros Activos: ${activeFilters || 'Ninguno'}
+Fecha Reporte: ${new Date().toLocaleString('es-EC')}
+
+RESUMEN DE ERRORES:
+- Estado(s): ${statuses}
+- Total Documentos: ${vouchers.length}
+
+DETALLE TÉCNICO (Muestra):
+${errorMessages}
+
+AFECTACIÓN POR EMISOR:
+${emitterSummary}
+    `.trim());
+    
+    setCaseTargetVouchers(vouchers);
+    setShowCaseModal(true);
+  };
+
+  const submitCase = async () => {
+    try {
+      setIsSubmittingCase(true);
+      const res = await fetch('https://satcomla.app.n8n.cloud/webhook/CasosDesk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Basic QWRtaW46TUFJTkNyZWFyY2Fzb3MyMDI2ISE='
+        },
+        body: JSON.stringify({
+          departmentId: "816030000001304039",
+          contactId: "816030000008339646",
+          subject: caseSubject,
+          description: caseDescription,
+          priority: casePriority,
+          classification: "Incidencia en producción",
+          cf: {
+            cf_existe_una_solucion_temporal_disponible_1: "No aplica",
+            cf_area: "Infraestructura",
+            cf_portal: selectedAmbiente || "Rocca"
+          },
+          channel: "Chat",
+          status: "Abierto"
+        })
+      });
+
+      if (!res.ok) throw new Error('Fallo al crear el caso en la mesa de ayuda');
+      
+      alert('Caso creado exitosamente en la mesa de ayuda');
+      setShowCaseModal(false);
+    } catch (err: any) {
+      alert(`Error al crear caso: ${err.message}`);
+    } finally {
+      setIsSubmittingCase(false);
     }
   };
 
@@ -748,16 +836,28 @@ export default function UnauthorizedVouchersPage() {
             </div>
          )}
          
-         {/* Export Button */}
-         {filteredData.length > 0 && anyFilterActive && (
-            <button
-              onClick={exportToCSV}
-              className="flex items-center gap-2 px-4 py-2 bg-neutral-900 border border-neutral-800 hover:border-[#71BF44] hover:bg-[#71BF44]/10 transition-all rounded-2xl shadow-xl ml-auto group"
-            >
-              <Download className="w-4 h-4 text-[#71BF44] group-hover:-translate-y-0.5 transition-transform" />
-              <span className="text-[10px] font-black text-[#71BF44] uppercase tracking-widest">Descargar CSV</span>
-            </button>
-         )}
+         {/* Export & Global Actions */}
+         <div className="flex items-center gap-3 ml-auto">
+            {filteredData.length > 0 && anyFilterActive && (
+              <button
+                onClick={() => handleCreateCase(filteredData)}
+                className="flex items-center gap-2 px-4 py-2 bg-neutral-900 border border-neutral-800 hover:border-amber-500 hover:bg-amber-500/10 transition-all rounded-2xl shadow-xl group"
+              >
+                <LifeBuoy className="w-4 h-4 text-amber-500 group-hover:rotate-12 transition-transform" />
+                <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Crear Caso Global</span>
+              </button>
+            )}
+
+            {filteredData.length > 0 && anyFilterActive && (
+                <button
+                  onClick={exportToCSV}
+                  className="flex items-center gap-2 px-4 py-2 bg-neutral-900 border border-neutral-800 hover:border-[#71BF44] hover:bg-[#71BF44]/10 transition-all rounded-2xl shadow-xl group"
+                >
+                  <Download className="w-4 h-4 text-[#71BF44] group-hover:-translate-y-0.5 transition-transform" />
+                  <span className="text-[10px] font-black text-[#71BF44] uppercase tracking-widest">Descargar CSV</span>
+                </button>
+            )}
+         </div>
       </div>
 
       {/* Main Grid */}
@@ -869,6 +969,19 @@ export default function UnauthorizedVouchersPage() {
                                           >
                                              <RefreshCw className="w-3 h-3" />
                                              <span>Reproceso Masivo</span>
+                                          </button>
+                                        )}
+                                        {item.vouchers.length > 0 && (
+                                          <button
+                                             onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleCreateCase(item.vouchers);
+                                             }}
+                                             className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all border bg-amber-500/10 text-amber-500 border-amber-500/20 hover:bg-amber-500 hover:text-white shadow-lg shadow-black/20"
+                                             title="Crear caso en mesa de ayuda para este grupo"
+                                          >
+                                             <LifeBuoy className="w-3 h-3" />
+                                             <span>Crear Caso</span>
                                           </button>
                                         )}
                                         {item.vouchers.length > 0 && (
@@ -990,6 +1103,88 @@ export default function UnauthorizedVouchersPage() {
             </table>
          </div>
       </div>
+
+      {/* Case Creation Modal */}
+      {showCaseModal && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+           <div className="bg-white dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+              <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between bg-neutral-50 dark:bg-neutral-900/50">
+                 <div className="flex items-center gap-4">
+                    <div className="p-3 bg-amber-500/10 rounded-2xl">
+                       <LifeBuoy className="w-6 h-6 text-amber-500" />
+                    </div>
+                    <div>
+                       <h3 className="text-lg font-black text-neutral-900 dark:text-white uppercase tracking-tight">Crear Caso Mesa de Ayuda</h3>
+                       <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Portal de Autogestión de Incidencias</p>
+                    </div>
+                 </div>
+                 <button onClick={() => setShowCaseModal(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
+                    <X className="w-5 h-5 text-neutral-400" />
+                 </button>
+              </div>
+
+              <div className="p-8 space-y-6">
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Asunto del Caso</label>
+                    <input 
+                      type="text" 
+                      value={caseSubject} 
+                      onChange={(e) => setCaseSubject(e.target.value)}
+                      className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-amber-500/20 outline-none transition-all"
+                    />
+                 </div>
+
+                 <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Prioridad</label>
+                       <div className="flex gap-2">
+                          {['Baja', 'Media', 'Alta', 'Crítica'].map(p => (
+                            <button 
+                              key={p}
+                              onClick={() => setCasePriority(p)}
+                              className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all border ${casePriority === p ? 'bg-amber-500 text-white border-amber-500 shadow-lg shadow-amber-500/20' : 'bg-neutral-50 dark:bg-neutral-900 text-neutral-400 border-neutral-100 dark:border-neutral-800 hover:border-amber-500/30'}`}
+                            >
+                               {p}
+                            </button>
+                          ))}
+                       </div>
+                    </div>
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Afectación</label>
+                       <div className="px-4 py-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl border border-neutral-100 dark:border-neutral-800">
+                          <span className="text-lg font-black text-neutral-900 dark:text-white tracking-tighter">{caseTargetVouchers.length}</span>
+                          <span className="text-[9px] font-bold text-neutral-400 uppercase ml-2">Documentos</span>
+                       </div>
+                    </div>
+                 </div>
+
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Descripción / Cuerpo del Mensaje</label>
+                    <textarea 
+                      rows={8}
+                      value={caseDescription}
+                      onChange={(e) => setCaseDescription(e.target.value)}
+                      className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-xs font-medium focus:ring-2 focus:ring-amber-500/20 outline-none transition-all resize-none"
+                    />
+                 </div>
+              </div>
+
+              <div className="p-8 bg-neutral-50 dark:bg-neutral-900/50 border-t border-neutral-100 dark:border-neutral-800 flex gap-4">
+                 <button onClick={() => setShowCaseModal(false)} className="flex-1 py-4 text-[10px] font-black uppercase tracking-widest text-neutral-400 hover:text-neutral-600 transition-colors">
+                    Cancelar
+                 </button>
+                 <button 
+                   onClick={submitCase}
+                   disabled={isSubmittingCase || !caseSubject || !caseDescription}
+                   className="flex-[2] bg-amber-500 text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-amber-500/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-3"
+                 >
+                    {isSubmittingCase ? <RefreshCw className="w-4 h-4 animate-spin" /> : <LifeBuoy className="w-4 h-4" />}
+                    {isSubmittingCase ? 'Enviando...' : 'Confirmar y Crear Caso'}
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
     </div>
   );
 }
