@@ -491,7 +491,17 @@ ${vouchers.map(v => v.Column1 || (v as any).co_id_comprobante).join(', ')}
 
       if (!res.ok) throw new Error('Fallo al crear el caso en la mesa de ayuda');
       
-      alert('Caso creado exitosamente en la mesa de ayuda');
+      const responseData = await res.json();
+      let ticketNum = '';
+      
+      try {
+        // Estructura detectada: responseData[0].content[0].text.ticketNumber
+        ticketNum = responseData[0]?.content[0]?.text?.ticketNumber || '';
+      } catch (e) {
+        console.error('Error parsing ticket number', e);
+      }
+
+      alert(`Caso creado exitosamente en la mesa de ayuda${ticketNum ? ` (#${ticketNum})` : ''}`);
       setShowCaseModal(false);
     } catch (err: any) {
       alert(`Error al crear caso: ${err.message}`);
