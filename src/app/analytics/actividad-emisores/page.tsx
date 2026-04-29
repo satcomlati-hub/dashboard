@@ -35,6 +35,7 @@ interface CatalogEmisor {
   RazonSocial: string;
   IdPais: number;
   NombrePais?: string;
+  CodigoPais?: number;
 }
 
 interface ActivityRecord {
