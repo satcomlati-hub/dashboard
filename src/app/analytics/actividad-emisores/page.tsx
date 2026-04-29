@@ -138,11 +138,11 @@ export default function ActividadEmisoresPage() {
           return vals[0] || '---';
         };
 
-        // Normalización de estados basada en SQL: ACTIVO, SIN ACTIVIDAD, ULTIMO AUTORIZADO
+        // Normalización de estados basada en SQL: ACTIVO, SIN ACTIVIDAD, AÑOS ANTERIOR
         const estados = emisorActivities.map(a => a.EstadoReporte?.toUpperCase());
         let estado = 'SIN ACTIVIDAD';
         if (estados.includes('ACTIVO')) estado = 'ACTIVO';
-        else if (estados.includes('ULTIMO AUTORIZADO')) estado = 'ULTIMO AUTORIZADO';
+        else if (estados.includes('AÑOS ANTERIOR') || estados.includes('ULTIMO AUTORIZADO')) estado = 'AÑOS ANTERIOR';
 
         const estabs = new Set(emisorActivities.map(a => a.Establecimiento));
 
@@ -228,7 +228,7 @@ export default function ActividadEmisoresPage() {
 
     return {
       activo: getStats('ACTIVO'),
-      ultimoAutorizado: getStats('ULTIMO AUTORIZADO'),
+      ultimoAutorizado: getStats('AÑOS ANTERIOR'),
       sinActividad: getStats('SIN ACTIVIDAD'),
       globalOk: emitterGroups.reduce((acc, g) => acc + g.totalOk, 0),
       globalError: emitterGroups.reduce((acc, g) => acc + g.totalError, 0)
@@ -311,10 +311,10 @@ export default function ActividadEmisoresPage() {
         </div>
 
         <div 
-          onClick={() => handleKPIFilter('ULTIMO AUTORIZADO')}
-          className={`cursor-pointer bg-white dark:bg-[#111] border rounded-[32px] p-8 shadow-sm transition-all border-l-8 ${statusFilter === 'ULTIMO AUTORIZADO' ? 'border-orange-400 ring-4 ring-orange-400/10' : 'border-neutral-100 dark:border-neutral-800 border-l-orange-400 hover:border-neutral-200 hover:-translate-y-1'}`}
+          onClick={() => handleKPIFilter('AÑOS ANTERIOR')}
+          className={`cursor-pointer bg-white dark:bg-[#111] border rounded-[32px] p-8 shadow-sm transition-all border-l-8 ${statusFilter === 'AÑOS ANTERIOR' ? 'border-orange-400 ring-4 ring-orange-400/10' : 'border-neutral-100 dark:border-neutral-800 border-l-orange-400 hover:border-neutral-200 hover:-translate-y-1'}`}
         >
-           <p className="text-[10px] font-black text-orange-400 uppercase tracking-widest mb-6">Último Autorizado</p>
+           <p className="text-[10px] font-black text-orange-400 uppercase tracking-widest mb-6">Años Anterior</p>
            <div className="flex items-baseline gap-2 mb-6">
               <h3 className="text-6xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">{kpis.ultimoAutorizado.emisores}</h3>
               <span className="text-xs font-black text-neutral-400 uppercase tracking-widest">Empresas</span>
@@ -437,7 +437,7 @@ export default function ActividadEmisoresPage() {
                     </td>
                     <td className="px-8 py-8">
                       <div className="flex items-center gap-5">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all group-hover:scale-110 group-hover:rotate-3 shadow-sm ${g.estadoReporte === 'ACTIVO' ? 'bg-[#71BF44]/10 text-[#71BF44]' : g.estadoReporte === 'ULTIMO AUTORIZADO' ? 'bg-orange-400/10 text-orange-400' : 'bg-red-500/10 text-red-500'}`}>
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all group-hover:scale-110 group-hover:rotate-3 shadow-sm ${g.estadoReporte === 'ACTIVO' ? 'bg-[#71BF44]/10 text-[#71BF44]' : g.estadoReporte === 'AÑOS ANTERIOR' ? 'bg-orange-400/10 text-orange-400' : 'bg-red-500/10 text-red-500'}`}>
                           <Globe className="w-6 h-6" />
                         </div>
                         <div>
@@ -447,7 +447,7 @@ export default function ActividadEmisoresPage() {
                           </div>
                           <div className="flex items-center gap-3">
                              <p className="text-[9px] font-black text-neutral-400 uppercase tracking-[0.25em]">{g.NombrePais}</p>
-                             <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${g.estadoReporte === 'ACTIVO' ? 'bg-[#71BF44]/10 text-[#71BF44]' : g.estadoReporte === 'ULTIMO AUTORIZADO' ? 'bg-orange-400/10 text-orange-400' : 'bg-red-500/10 text-red-500'}`}>
+                             <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${g.estadoReporte === 'ACTIVO' ? 'bg-[#71BF44]/10 text-[#71BF44]' : g.estadoReporte === 'AÑOS ANTERIOR' ? 'bg-orange-400/10 text-orange-400' : 'bg-red-500/10 text-red-500'}`}>
                                 {g.estadoReporte}
                              </span>
                           </div>
