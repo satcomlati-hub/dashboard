@@ -108,6 +108,7 @@ export default function UnauthorizedVouchersPage() {
   const [caseSubject, setCaseSubject] = useState('');
   const [caseDescription, setCaseDescription] = useState('');
   const [caseTargetVouchers, setCaseTargetVouchers] = useState<Voucher[]>([]);
+  const [caseArea, setCaseArea] = useState('Infraestructura');
   const [isSubmittingCase, setIsSubmittingCase] = useState(false);
 
   // Layout states
@@ -447,6 +448,9 @@ ${errorMessages}
 
 AFECTACIÓN POR EMISOR:
 ${emitterSummary}
+
+DETALLE DE COMPROBANTES (IDs):
+${vouchers.map(v => v.Column1 || (v as any).co_id_comprobante).join(', ')}
     `.trim());
     
     setCaseTargetVouchers(vouchers);
@@ -471,7 +475,7 @@ ${emitterSummary}
           classification: "Incidencia en producción",
           cf: {
             cf_existe_una_solucion_temporal_disponible_1: "No aplica",
-            cf_area: "Infraestructura",
+            cf_area: caseArea,
             cf_portal: selectedAmbiente || "Rocca"
           },
           channel: "Chat",
@@ -1136,6 +1140,17 @@ ${emitterSummary}
 
                  <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-2">
+                       <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Área Destino</label>
+                       <select 
+                         value={caseArea}
+                         onChange={(e) => setCaseArea(e.target.value)}
+                         className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-amber-500/20 outline-none transition-all appearance-none cursor-pointer"
+                       >
+                         <option value="Infraestructura">Infraestructura</option>
+                         <option value="Desarrollo">Desarrollo</option>
+                       </select>
+                    </div>
+                    <div className="space-y-2">
                        <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Prioridad</label>
                        <div className="flex gap-2">
                           {['Baja', 'Media', 'Alta', 'Crítica'].map(p => (
@@ -1149,12 +1164,13 @@ ${emitterSummary}
                           ))}
                        </div>
                     </div>
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Afectación</label>
-                       <div className="px-4 py-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl border border-neutral-100 dark:border-neutral-800">
-                          <span className="text-lg font-black text-neutral-900 dark:text-white tracking-tighter">{caseTargetVouchers.length}</span>
-                          <span className="text-[9px] font-bold text-neutral-400 uppercase ml-2">Documentos</span>
-                       </div>
+                 </div>
+
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Afectación</label>
+                    <div className="px-4 py-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl border border-neutral-100 dark:border-neutral-800">
+                       <span className="text-lg font-black text-neutral-900 dark:text-white tracking-tighter">{caseTargetVouchers.length}</span>
+                       <span className="text-[9px] font-bold text-neutral-400 uppercase ml-2">Documentos</span>
                     </div>
                  </div>
 
