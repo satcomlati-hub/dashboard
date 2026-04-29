@@ -428,6 +428,24 @@ export default function UnauthorizedVouchersPage() {
       return `- ${n}: ${count} evento(s)`;
     }).join('\n');
 
+    // Muestreo aleatorio: Máximo 10 por emisor, límite global de 200 IDs
+    let selectedIds: string[] = [];
+    for (const emitter of emitters) {
+      if (selectedIds.length >= 200) break;
+      const emitterVouchers = vouchers.filter(v => v.co_nemonico === emitter);
+      const shuffled = [...emitterVouchers].sort(() => 0.5 - Math.random());
+      const selected = shuffled.slice(0, 10).map(v => v.Column1 || (v as any).co_id_comprobante);
+      selectedIds = [...selectedIds, ...selected];
+    }
+    
+    if (selectedIds.length > 200) {
+      selectedIds = selectedIds.slice(0, 200);
+    }
+
+    const idsNote = vouchers.length > selectedIds.length 
+      ? `\n*Nota: Mostrando una muestra representativa de ${selectedIds.length} IDs (máximo 10 por emisor, límite de 200).*` 
+      : '';
+
     const errorMessages = Array.from(new Set(vouchers.map(v => v.co_detalle))).filter(Boolean);
     const statuses = Array.from(new Set(vouchers.map(v => v.DescripcionEstatus))).filter(Boolean);
 
@@ -456,9 +474,9 @@ ${errorMessages.slice(0, 5).map(m => `> ${m}`).join('\n')}
 ## AFECTACIÓN POR EMISOR
 ${emitterSummary}
 
-## DETALLE DE COMPROBANTES (IDs)
+## DETALLE DE COMPROBANTES (IDs)${idsNote}
 \`\`\`text
-${vouchers.map(v => v.Column1 || (v as any).co_id_comprobante).join(', ')}
+${selectedIds.join(', ')}
 \`\`\`
     `.trim());
     
@@ -495,11 +513,17 @@ ${vouchers.map(v => v.Column1 || (v as any).co_id_comprobante).join(', ')}
       if (!res.ok) throw new Error('Fallo al crear el caso en la mesa de ayuda');
       
       const responseData = await res.json();
+      
+      const dataNode = responseData.items ? responseData.items[0] : responseData[0];
+      
+      // Manejar errores devueltos explícitamente en el JSON de n8n
+      if (dataNode?.error) {
+        throw new Error(dataNode.error.message || 'Error desconocido desde la mesa de ayuda');
+      }
+
       let ticketNum = '';
       
       try {
-        // Soporta estructura directa [0] o anidada items[0]
-        const dataNode = responseData.items ? responseData.items[0] : responseData[0];
         ticketNum = dataNode?.content[0]?.text?.ticketNumber || '';
       } catch (e) {
         console.error('Error parsing ticket number', e);
