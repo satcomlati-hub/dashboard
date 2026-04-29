@@ -252,7 +252,7 @@ export default function ActividadEmisoresPage() {
           if (aEmpty) return 1;
           if (bEmpty) return -1;
         }
-
+ 
         if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
         if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
         return 0;
@@ -707,7 +707,8 @@ export default function ActividadEmisoresPage() {
                                      </table>
                                   </div>
                                </div>
-                             ))}
+                                );
+                             })}
                              
                              {g.details.length === 0 && (
                                <div className="py-24 text-center bg-white dark:bg-[#111] rounded-[40px] border-4 border-dashed border-neutral-100 dark:border-neutral-900">
