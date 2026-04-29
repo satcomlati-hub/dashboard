@@ -73,7 +73,8 @@ interface EmitterGroup {
 type SortKey = 'ID_Emisor' | 'RazonSocial' | 'ultimaAutorizacion' | 'ultimaError' | 'totalOk' | 'estabCount' | 'puntosCount';
 
 export default function ActividadEmisoresPage() {
-  const [emitterGroups, setEmitterGroups] = useState<EmitterGroup[]>([]);
+  const [rawCatalog, setRawCatalog] = useState<CatalogEmisor[]>([]);
+  const [rawActivity, setRawActivity] = useState<ActivityRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -84,6 +85,7 @@ export default function ActividadEmisoresPage() {
   const [selectedEmisorId, setSelectedEmisorId] = useState<number | null>(null);
   const [countryFilter, setCountryFilter] = useState<string | null>(null);
   const [alertFilter, setAlertFilter] = useState(false);
+  const [inactivityDays, setInactivityDays] = useState(3);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey, direction: 'asc' | 'desc' } | null>({ key: 'ultimaAutorizacion', direction: 'desc' });
 
   const toggleExpand = (id: number) => {
@@ -133,82 +135,8 @@ export default function ActividadEmisoresPage() {
         });
       }
 
-      const groups: EmitterGroup[] = catalog.map(c => {
-        const emisorActivities = activity.filter(a => Number(a.IdEmisor) === Number(c.IdEmisor));
-        const totalOk = emisorActivities.reduce((acc, curr) => acc + (Number(curr.TotalAutorizados) || 0), 0);
-        const totalError = emisorActivities.reduce((acc, curr) => acc + (Number(curr.TotalErrores) || 0), 0);
-        
-        const maxDate = (records: ActivityRecord[], field: keyof ActivityRecord) => {
-          const vals = records.map(r => String(r[field])).filter(d => d && d !== '---' && d !== 'NULL').sort((a, b) => b.localeCompare(a));
-          return vals[0] || '---';
-        };
-
-        // Normalización de estados basada en SQL: ACTIVO, SIN ACTIVIDAD, AÑOS ANTERIOR
-        const estados = emisorActivities.map(a => a.EstadoReporte?.toUpperCase());
-        let estado = 'SIN ACTIVIDAD';
-        if (estados.includes('ACTIVO')) estado = 'ACTIVO';
-        else if (estados.includes('AÑOS ANTERIOR') || estados.includes('ULTIMO AUTORIZADO')) estado = 'AÑOS ANTERIOR';
-
-        const estabs = new Set(emisorActivities.map(a => a.Establecimiento));
-        
-        // Mapeo manual de países si el nombre no viene del SP
-        const COUNTRY_MAP: Record<number, string> = {
-          593: 'Ecuador',
-          506: 'Costa Rica',
-          507: 'Panamá',
-          57: 'Colombia'
-        };
-
-        const paisId = c.CodigoPais || c.IdPais;
-        const nombrePais = c.NombrePais || COUNTRY_MAP[paisId] || 'Ecuador';
-
-        // Lógica de Alertas (Desconexiones)
-        // Hoy es 29 de Abril 2026
-        const today = new Date('2026-04-29');
-        const threeDaysAgo = new Date(today);
-        threeDaysAgo.setDate(today.getDate() - 3);
-        const thirtyDaysAgo = new Date(today);
-        thirtyDaysAgo.setDate(today.getDate() - 30);
-
-        const parseDate = (d: string) => (d && d !== '---' && d !== 'NULL') ? new Date(d) : null;
-
-        const estabsStatus = Array.from(estabs).map(e => {
-           // Excluir punto PPPPP de la lógica de alertas
-           const eActivities = emisorActivities.filter(a => a.Establecimiento === e && a.PuntoEmision !== 'PPPPP');
-           
-           if (eActivities.length === 0) return { id: e, lastOk: null, isAlerted: false };
-
-           const lastOk = parseDate(maxDate(eActivities, 'UltimoAutorizado'));
-           const hasActiveLastMonth = lastOk && lastOk >= thirtyDaysAgo;
-           const hasInactiveLast3Days = !lastOk || lastOk < threeDaysAgo;
-           
-           return { id: e, lastOk, isAlerted: hasActiveLastMonth && hasInactiveLast3Days };
-        });
-
-        const disconnectedEstabs = estabsStatus.filter(e => e.isAlerted).map(e => e.id);
-        const isDisconnected = estado === 'ACTIVO' && disconnectedEstabs.length > 0;
-
-        return {
-          ID_Emisor: c.IdEmisor,
-          Nemonico: c.Nemonico,
-          Identificacion: c.Identificacion,
-          RazonSocial: c.RazonSocial,
-          NombrePais: nombrePais,
-          Pais_ID: paisId,
-          totalOk,
-          totalError,
-          ultimaAutorizacion: maxDate(emisorActivities, 'UltimoAutorizado'),
-          ultimaError: maxDate(emisorActivities, 'UltimoNoAutorizado'),
-          estabCount: estabs.size,
-          puntosCount: emisorActivities.length,
-          estadoReporte: estado,
-          isDisconnected,
-          disconnectedEstabs,
-          details: emisorActivities
-        };
-      });
-      
-      setEmitterGroups(groups);
+      setRawCatalog(catalog);
+      setRawActivity(activity);
       setError(null);
     } catch (err: any) {
       setError(err.message || 'Error desconocido');
@@ -221,6 +149,85 @@ export default function ActividadEmisoresPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const emitterGroups = useMemo(() => {
+    if (rawCatalog.length === 0) return [];
+
+    return rawCatalog.map(c => {
+      const emisorActivities = rawActivity.filter(a => Number(a.IdEmisor) === Number(c.IdEmisor));
+      const totalOk = emisorActivities.reduce((acc, curr) => acc + (Number(curr.TotalAutorizados) || 0), 0);
+      const totalError = emisorActivities.reduce((acc, curr) => acc + (Number(curr.TotalErrores) || 0), 0);
+      
+      const maxDate = (records: ActivityRecord[], field: keyof ActivityRecord) => {
+        const vals = records.map(r => String(r[field])).filter(d => d && d !== '---' && d !== 'NULL').sort((a, b) => b.localeCompare(a));
+        return vals[0] || '---';
+      };
+
+      // Normalización de estados basada en SQL: ACTIVO, SIN ACTIVIDAD, AÑOS ANTERIOR
+      const estados = emisorActivities.map(a => a.EstadoReporte?.toUpperCase());
+      let estado = 'SIN ACTIVIDAD';
+      if (estados.includes('ACTIVO')) estado = 'ACTIVO';
+      else if (estados.includes('AÑOS ANTERIOR') || estados.includes('ULTIMO AUTORIZADO')) estado = 'AÑOS ANTERIOR';
+
+      const estabs = new Set(emisorActivities.map(a => a.Establecimiento));
+      
+      // Mapeo manual de países si el nombre no viene del SP
+      const COUNTRY_MAP: Record<number, string> = {
+        593: 'Ecuador',
+        506: 'Costa Rica',
+        507: 'Panamá',
+        57: 'Colombia'
+      };
+
+      const paisId = c.CodigoPais || c.IdPais;
+      const nombrePais = c.NombrePais || COUNTRY_MAP[paisId] || 'Ecuador';
+
+      // Lógica de Alertas (Desconexiones)
+      // Hoy es 29 de Abril 2026
+      const today = new Date('2026-04-29');
+      const inactivityThreshold = new Date(today);
+      inactivityThreshold.setDate(today.getDate() - inactivityDays);
+      const thirtyDaysAgo = new Date(today);
+      thirtyDaysAgo.setDate(today.getDate() - 30);
+
+      const parseDate = (d: string) => (d && d !== '---' && d !== 'NULL') ? new Date(d) : null;
+
+      const estabsStatus = Array.from(estabs).map(e => {
+         // Excluir punto PPPPP de la lógica de alertas
+         const eActivities = emisorActivities.filter(a => a.Establecimiento === e && a.PuntoEmision !== 'PPPPP');
+         
+         if (eActivities.length === 0) return { id: e, lastOk: null, isAlerted: false };
+
+         const lastOk = parseDate(maxDate(eActivities, 'UltimoAutorizado'));
+         const hasActiveLastMonth = lastOk && lastOk >= thirtyDaysAgo;
+         const hasInactiveThreshold = !lastOk || lastOk < inactivityThreshold;
+         
+         return { id: e, lastOk, isAlerted: hasActiveLastMonth && hasInactiveThreshold };
+      });
+
+      const disconnectedEstabs = estabsStatus.filter(e => e.isAlerted).map(e => e.id);
+      const isDisconnected = estado === 'ACTIVO' && disconnectedEstabs.length > 0;
+
+      return {
+        ID_Emisor: c.IdEmisor,
+        Nemonico: c.Nemonico,
+        Identificacion: c.Identificacion,
+        RazonSocial: c.RazonSocial,
+        NombrePais: nombrePais,
+        Pais_ID: paisId,
+        totalOk,
+        totalError,
+        ultimaAutorizacion: maxDate(emisorActivities, 'UltimoAutorizado'),
+        ultimaError: maxDate(emisorActivities, 'UltimoNoAutorizado'),
+        estabCount: estabs.size,
+        puntosCount: emisorActivities.length,
+        estadoReporte: estado,
+        isDisconnected,
+        disconnectedEstabs,
+        details: emisorActivities
+      };
+    });
+  }, [rawCatalog, rawActivity, inactivityDays]);
 
   const sortedAndFilteredGroups = useMemo(() => {
     let result = emitterGroups.filter(g => {
@@ -426,7 +433,7 @@ export default function ActividadEmisoresPage() {
               <span className="text-xs font-black text-neutral-400 uppercase tracking-widest">Alertas</span>
            </div>
            <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest leading-relaxed">
-             Emisores activos con puntos sin trx en +3 días
+             Emisores activos con puntos sin trx en +{inactivityDays} días
            </p>
         </div>
 
@@ -445,7 +452,7 @@ export default function ActividadEmisoresPage() {
         </div>
       </div>
 
-      {/* Filtro de País */}
+      {/* Filtro de País y Configuración */}
       <div className="flex flex-wrap items-center gap-3 mb-10 overflow-x-auto pb-2 no-scrollbar">
          <button 
            onClick={() => setCountryFilter(null)}
@@ -471,6 +478,22 @@ export default function ActividadEmisoresPage() {
          >
            <AlertCircle className="w-3 h-3" /> Solo Alertas
          </button>
+
+         <div className="h-8 w-px bg-neutral-200 dark:bg-neutral-700 mx-2 hidden md:block"></div>
+
+         <div className="flex items-center gap-3 bg-white dark:bg-neutral-800 px-6 py-2 rounded-2xl border border-neutral-100 dark:border-neutral-700 shadow-sm">
+            <Clock className="w-3 h-3 text-[#71BF44]" />
+            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Umbral Inactividad:</span>
+            <input 
+              type="number" 
+              min="1" 
+              max="30"
+              value={inactivityDays}
+              onChange={(e) => setInactivityDays(Math.max(1, parseInt(e.target.value) || 1))}
+              className="w-12 bg-neutral-50 dark:bg-neutral-900 border-none text-[12px] font-black text-[#71BF44] text-center focus:ring-0 outline-none rounded-lg"
+            />
+            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Días</span>
+         </div>
       </div>
 
       {/* Grid Principal */}
