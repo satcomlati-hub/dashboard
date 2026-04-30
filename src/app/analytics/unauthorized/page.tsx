@@ -116,7 +116,8 @@ export default function UnauthorizedVouchersPage() {
   const [isSubmittingCase, setIsSubmittingCase] = useState(false);
 
   // Estados para creación de Regla de Monitoreo
-  const [createRuleAlso, setCreateRuleAlso] = useState(false);
+  const [modalTab, setModalTab] = useState<'caso'|'regla'>('caso');
+  const [isSubmittingRule, setIsSubmittingRule] = useState(false);
   const [ruleName, setRuleName] = useState('');
   const [ruleFrequency, setRuleFrequency] = useState('DIARIO');
   const [ruleMinEvents, setRuleMinEvents] = useState(10);
@@ -464,7 +465,7 @@ export default function UnauthorizedVouchersPage() {
     setRuleMainStatus(mainStatus);
     setRuleMainReason(errorMessages[0] || '*');
     setRuleName(`Alerta: ${mainStatus}`);
-    setCreateRuleAlso(false);
+    setModalTab('caso');
 
     const userName = session?.user?.name || 'Usuario Satcom';
     const activeFilters = Object.entries(filters).filter(([_, v]) => v).map(([k, v]) => `${k}: ${v}`).join(', ');
@@ -544,35 +545,37 @@ ${selectedIds.join(', ')}
       }
 
       showNotification('Caso creado exitosamente en la mesa de ayuda', 'ticket', ticketNum);
-      
-      // Crear Regla de Monitoreo si fue solicitada
-      if (createRuleAlso) {
-        try {
-          const { error } = await supabase.from('reglas_alertas').insert([{
-            nombre: ruleName,
-            ambiente: selectedAmbiente || 'Todos',
-            expresion_estado: ruleMainStatus,
-            expresion_motivo: ruleMainReason,
-            minimo_eventos: ruleMinEvents,
-            modo: 'POR_EMISOR',
-            frecuencia: ruleFrequency,
-            prioridad_ticket: casePriority.split('/')[0],
-            departamento_id: caseDept,
-            esta_activa: true
-          }]);
-          
-          if (error) throw error;
-          showNotification('Regla automática guardada en Configuración', 'success');
-        } catch (ruleErr: any) {
-          showNotification(`Caso creado, pero falló regla: ${ruleErr.message}`, 'error');
-        }
-      }
-
       setShowCaseModal(false);
     } catch (err: any) {
       showNotification(`Error al crear caso: ${err.message}`, 'error');
     } finally {
       setIsSubmittingCase(false);
+    }
+  };
+
+  const submitRule = async () => {
+    try {
+      setIsSubmittingRule(true);
+      const { error } = await supabase.from('reglas_alertas').insert([{
+        nombre: ruleName,
+        ambiente: selectedAmbiente || 'Todos',
+        expresion_estado: ruleMainStatus,
+        expresion_motivo: ruleMainReason,
+        minimo_eventos: ruleMinEvents,
+        modo: 'POR_EMISOR',
+        frecuencia: ruleFrequency,
+        prioridad_ticket: casePriority.split('/')[0],
+        departamento_id: caseDept,
+        esta_activa: true
+      }]);
+      
+      if (error) throw error;
+      showNotification('Regla automática guardada exitosamente', 'success');
+      setShowCaseModal(false);
+    } catch (err: any) {
+      showNotification(`Error creando regla: ${err.message}`, 'error');
+    } finally {
+      setIsSubmittingRule(false);
     }
   };
 
@@ -1210,140 +1213,178 @@ ${selectedIds.join(', ')}
                  </button>
               </div>
 
-              <div className="p-8 space-y-6">
-                 <div className="space-y-2">
-                    <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Asunto del Caso</label>
-                    <input 
-                      type="text" 
-                      value={caseSubject} 
-                      onChange={(e) => setCaseSubject(e.target.value)}
-                      className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-amber-500/20 outline-none transition-all"
-                    />
-                 </div>
-
-                 <div className="grid grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Departamento</label>
-                       <select 
-                         value={caseDept}
-                         onChange={(e) => setCaseDept(e.target.value)}
-                         className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-amber-500/20 outline-none transition-all appearance-none cursor-pointer"
-                       >
-                         <option value="816030000000006907">Soporte</option>
-                         <option value="816030000001906033">Soporte Interno</option>
-                         <option value="816030000001304039">Tecnología</option>
-                       </select>
-                    </div>
-                    {caseDept === '816030000001304039' && (
-                      <div className="space-y-2 animate-in slide-in-from-left-2 duration-300">
-                         <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Área Destino</label>
-                         <select 
-                           value={caseArea}
-                           onChange={(e) => setCaseArea(e.target.value)}
-                           className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-amber-500/20 outline-none transition-all appearance-none cursor-pointer"
-                         >
-                           <option value="Infraestructura">Infraestructura</option>
-                           <option value="Desarrollo">Desarrollo</option>
-                         </select>
-                      </div>
-                    )}
-                 </div>
-
-                 <div className="space-y-2">
-                    <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Prioridad</label>
-                    <div className="flex gap-2">
-                       {['Baja', 'Media', 'Alta', 'Crítica/Urgente'].map(p => (
-                         <button 
-                           key={p}
-                           onClick={() => setCasePriority(p)}
-                           className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all border ${casePriority === p ? 'bg-amber-500 text-white border-amber-500 shadow-lg shadow-amber-500/20' : 'bg-neutral-50 dark:bg-neutral-900 text-neutral-400 border-neutral-100 dark:border-neutral-800 hover:border-amber-500/30'}`}
-                         >
-                            {p}
-                         </button>
-                       ))}
-                    </div>
-                 </div>
-
-                 <div className="space-y-2">
-                    <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Afectación</label>
-                    <div className="px-4 py-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl border border-neutral-100 dark:border-neutral-800">
-                       <span className="text-lg font-black text-neutral-900 dark:text-white tracking-tighter">{caseTargetVouchers.length}</span>
-                       <span className="text-[9px] font-bold text-neutral-400 uppercase ml-2">Documentos</span>
-                    </div>
-                 </div>
-
-                 <div className="space-y-2">
-                    <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Descripción / Cuerpo del Mensaje</label>
-                    <textarea 
-                      rows={8}
-                      value={caseDescription}
-                      onChange={(e) => setCaseDescription(e.target.value)}
-                      className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-xs font-medium focus:ring-2 focus:ring-amber-500/20 outline-none transition-all resize-none"
-                    />
-                 </div>
-
-                 <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800">
-                    <label className="flex items-center gap-3 cursor-pointer group w-fit">
-                       <input 
-                         type="checkbox" 
-                         checked={createRuleAlso} 
-                         onChange={e => setCreateRuleAlso(e.target.checked)} 
-                         className="w-4 h-4 text-amber-500 bg-neutral-100 border-neutral-300 rounded focus:ring-amber-500 dark:bg-neutral-800 dark:border-neutral-700 transition-colors" 
-                       />
-                       <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300 group-hover:text-amber-500 transition-colors">
-                          Generar también como Regla de Monitoreo Automática
-                       </span>
-                    </label>
-                    
-                    {createRuleAlso && (
-                       <div className="mt-4 grid grid-cols-2 gap-4 p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl animate-in fade-in slide-in-from-top-2">
-                          <div className="col-span-2 space-y-1.5">
-                             <label className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Nombre de la Regla</label>
-                             <input 
-                               type="text" 
-                               value={ruleName} 
-                               onChange={e => setRuleName(e.target.value)} 
-                               className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-amber-500/50" 
-                             />
-                          </div>
-                          <div className="space-y-1.5">
-                             <label className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Eventos Mínimos</label>
-                             <input 
-                               type="number" 
-                               value={ruleMinEvents} 
-                               onChange={e => setRuleMinEvents(Number(e.target.value))} 
-                               className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-amber-500/50" 
-                             />
-                          </div>
-                          <div className="space-y-1.5">
-                             <label className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Frecuencia</label>
-                             <select 
-                               value={ruleFrequency} 
-                               onChange={e => setRuleFrequency(e.target.value)} 
-                               className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-amber-500/50 cursor-pointer"
-                             >
-                                <option value="TIEMPO_REAL">Tiempo Real</option>
-                                <option value="HORARIO">Cada Hora</option>
-                                <option value="DIARIO">Diario</option>
-                             </select>
-                          </div>
-                       </div>
-                    )}
-                 </div>
+              <div className="flex border-b border-neutral-100 dark:border-neutral-800">
+                 <button 
+                   onClick={() => setModalTab('caso')} 
+                   className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-colors border-b-2 ${modalTab === 'caso' ? 'border-amber-500 text-amber-500 bg-amber-500/5' : 'border-transparent text-neutral-400 hover:text-neutral-600 hover:bg-neutral-50 dark:hover:bg-neutral-900/50'}`}
+                 >
+                    Crear Caso (Mesa de Ayuda)
+                 </button>
+                 <button 
+                   onClick={() => setModalTab('regla')} 
+                   className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-colors border-b-2 ${modalTab === 'regla' ? 'border-[#71BF44] text-[#71BF44] bg-[#71BF44]/5' : 'border-transparent text-neutral-400 hover:text-neutral-600 hover:bg-neutral-50 dark:hover:bg-neutral-900/50'}`}
+                 >
+                    Crear Regla (Monitoreo Auto)
+                 </button>
               </div>
+
+              {modalTab === 'caso' ? (
+                 <div className="p-8 space-y-6">
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Asunto del Caso</label>
+                       <input 
+                         type="text" 
+                         value={caseSubject} 
+                         onChange={(e) => setCaseSubject(e.target.value)}
+                         className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-amber-500/20 outline-none transition-all"
+                       />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-6">
+                       <div className="space-y-2">
+                          <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Departamento</label>
+                          <select 
+                            value={caseDept}
+                            onChange={(e) => setCaseDept(e.target.value)}
+                            className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-amber-500/20 outline-none transition-all appearance-none cursor-pointer"
+                          >
+                            <option value="816030000000006907">Soporte</option>
+                            <option value="816030000001906033">Soporte Interno</option>
+                            <option value="816030000001304039">Tecnología</option>
+                          </select>
+                       </div>
+                       {caseDept === '816030000001304039' && (
+                         <div className="space-y-2 animate-in slide-in-from-left-2 duration-300">
+                            <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Área Destino</label>
+                            <select 
+                              value={caseArea}
+                              onChange={(e) => setCaseArea(e.target.value)}
+                              className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-amber-500/20 outline-none transition-all appearance-none cursor-pointer"
+                            >
+                              <option value="Infraestructura">Infraestructura</option>
+                              <option value="Desarrollo">Desarrollo</option>
+                            </select>
+                         </div>
+                       )}
+                    </div>
+
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Prioridad</label>
+                       <div className="flex gap-2">
+                          {['Baja', 'Media', 'Alta', 'Crítica/Urgente'].map(p => (
+                            <button 
+                              key={p}
+                              onClick={() => setCasePriority(p)}
+                              className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all border ${casePriority === p ? 'bg-amber-500 text-white border-amber-500 shadow-lg shadow-amber-500/20' : 'bg-neutral-50 dark:bg-neutral-900 text-neutral-400 border-neutral-100 dark:border-neutral-800 hover:border-amber-500/30'}`}
+                            >
+                               {p}
+                            </button>
+                          ))}
+                       </div>
+                    </div>
+
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Afectación</label>
+                       <div className="px-4 py-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl border border-neutral-100 dark:border-neutral-800">
+                          <span className="text-lg font-black text-neutral-900 dark:text-white tracking-tighter">{caseTargetVouchers.length}</span>
+                          <span className="text-[9px] font-bold text-neutral-400 uppercase ml-2">Documentos</span>
+                       </div>
+                    </div>
+
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Descripción / Cuerpo del Mensaje</label>
+                       <textarea 
+                         rows={8}
+                         value={caseDescription}
+                         onChange={(e) => setCaseDescription(e.target.value)}
+                         className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-xs font-medium focus:ring-2 focus:ring-amber-500/20 outline-none transition-all resize-none"
+                       />
+                    </div>
+                 </div>
+              ) : (
+                 <div className="p-8 space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                    <div className="p-4 bg-[#71BF44]/10 border border-[#71BF44]/20 rounded-xl mb-4">
+                       <h4 className="text-sm font-bold text-[#71BF44] flex items-center gap-2 mb-1"><Activity className="w-4 h-4" /> Configuración de Alerta</h4>
+                       <p className="text-xs text-neutral-500 dark:text-neutral-400">Esta regla monitoreará los eventos de la plataforma y creará un caso automáticamente en ZohoDesk usando estos parámetros cuando se cumplan las condiciones.</p>
+                    </div>
+
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Nombre de la Regla</label>
+                       <input 
+                         type="text" 
+                         value={ruleName} 
+                         onChange={e => setRuleName(e.target.value)} 
+                         className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-[#71BF44]/20 outline-none transition-all" 
+                       />
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-6">
+                       <div className="space-y-2">
+                          <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Expresión de Estado</label>
+                          <input 
+                            type="text" 
+                            value={ruleMainStatus} 
+                            onChange={e => setRuleMainStatus(e.target.value)} 
+                            className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-xs font-mono focus:ring-2 focus:ring-[#71BF44]/20 outline-none transition-all" 
+                          />
+                       </div>
+                       <div className="space-y-2">
+                          <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Expresión de Motivo</label>
+                          <input 
+                            type="text" 
+                            value={ruleMainReason} 
+                            onChange={e => setRuleMainReason(e.target.value)} 
+                            className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-xs font-mono focus:ring-2 focus:ring-[#71BF44]/20 outline-none transition-all" 
+                          />
+                       </div>
+                       <div className="space-y-2">
+                          <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Eventos Mínimos</label>
+                          <input 
+                            type="number" 
+                            value={ruleMinEvents} 
+                            onChange={e => setRuleMinEvents(Number(e.target.value))} 
+                            className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-[#71BF44]/20 outline-none transition-all" 
+                          />
+                       </div>
+                       <div className="space-y-2">
+                          <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Frecuencia de Evaluación</label>
+                          <select 
+                            value={ruleFrequency} 
+                            onChange={e => setRuleFrequency(e.target.value)} 
+                            className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-[#71BF44]/20 outline-none transition-all cursor-pointer"
+                          >
+                             <option value="TIEMPO_REAL">En Tiempo Real</option>
+                             <option value="HORARIO">Cada Hora</option>
+                             <option value="DIARIO">Una vez al Día</option>
+                          </select>
+                       </div>
+                    </div>
+                 </div>
+              )}
 
               <div className="p-8 bg-neutral-50 dark:bg-neutral-900/50 border-t border-neutral-100 dark:border-neutral-800 flex gap-4">
                  <button onClick={() => setShowCaseModal(false)} className="flex-1 py-4 text-[10px] font-black uppercase tracking-widest text-neutral-400 hover:text-neutral-600 transition-colors">
                     Cancelar
                  </button>
-                 <button 
-                   onClick={submitCase}
-                   disabled={isSubmittingCase || !caseSubject || !caseDescription || (createRuleAlso && !ruleName)}
-                   className="flex-[2] bg-amber-500 text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-amber-500/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-3"
-                 >
-                    {isSubmittingCase ? <RefreshCw className="w-4 h-4 animate-spin" /> : <LifeBuoy className="w-4 h-4" />}
-                    {isSubmittingCase ? 'Procesando...' : (createRuleAlso ? 'Crear Caso y Regla' : 'Confirmar y Crear Caso')}
-                 </button>
+                 {modalTab === 'caso' ? (
+                   <button 
+                     onClick={submitCase}
+                     disabled={isSubmittingCase || !caseSubject || !caseDescription}
+                     className="flex-[2] bg-amber-500 text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-amber-500/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-3"
+                   >
+                      {isSubmittingCase ? <RefreshCw className="w-4 h-4 animate-spin" /> : <LifeBuoy className="w-4 h-4" />}
+                      {isSubmittingCase ? 'Procesando...' : 'Confirmar y Crear Caso'}
+                   </button>
+                 ) : (
+                   <button 
+                     onClick={submitRule}
+                     disabled={isSubmittingRule || !ruleName}
+                     className="flex-[2] bg-[#71BF44] text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-[#71BF44]/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-3"
+                   >
+                      {isSubmittingRule ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}
+                      {isSubmittingRule ? 'Guardando...' : 'Guardar Regla de Monitoreo'}
+                   </button>
+                 )}
               </div>
            </div>
         </div>
