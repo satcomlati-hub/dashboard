@@ -559,26 +559,35 @@ ${selectedIds.join(', ')}
   const submitRule = async () => {
     try {
       setIsSubmittingRule(true);
-      const { error } = await supabase.from('reglas_alertas').insert([{
-        nombre: ruleName,
-        ambiente: selectedAmbiente || 'Todos',
-        expresion_estado: ruleMainStatus,
-        expresion_motivo: ruleMainReason,
-        minimo_eventos: ruleMinEvents,
-        modo: ruleCountMode,
-        frecuencia: ruleFrequency,
-        prioridad_ticket: casePriority.split('/')[0],
-        departamento_id: caseDept,
-        esta_activa: true,
-        configuracion: {
-          tipo_conteo: ruleCountType,
-          modo_conteo: ruleCountMode,
-          frecuencia_evaluacion: ruleFrequency,
-          notificar: ruleNotifyType
-        }
-      }]);
+      const res = await fetch('/api/db/monitoreo-rules', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          nombre: ruleName,
+          ambiente: selectedAmbiente || 'Todos',
+          expresion_estado: ruleMainStatus,
+          expresion_motivo: ruleMainReason,
+          minimo_eventos: ruleMinEvents,
+          modo: ruleCountMode,
+          frecuencia: ruleFrequency,
+          prioridad_ticket: casePriority.split('/')[0],
+          departamento_id: caseDept,
+          esta_activa: true,
+          configuracion: {
+            tipo_conteo: ruleCountType,
+            modo_conteo: ruleCountMode,
+            frecuencia_evaluacion: ruleFrequency,
+            notificar: ruleNotifyType
+          }
+        }),
+      });
       
-      if (error) throw error;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error del servidor');
+      
+      // Removido if(error) porque el error se lanza arriba si !res.ok
       showNotification('Regla automática guardada exitosamente', 'success');
       setShowCaseModal(false);
     } catch (err: any) {

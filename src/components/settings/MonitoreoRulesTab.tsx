@@ -32,16 +32,12 @@ export default function MonitoreoRulesTab() {
   const fetchRules = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('reglas_alertas')
-        .select('*')
-        .order('creado_en', { ascending: false });
-
-      if (error && error.code !== 'PGRST116') throw error;
-      setRules(data || []);
+      const res = await fetch('/api/db/monitoreo-rules');
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to fetch rules');
+      setRules(json.data || []);
     } catch (err: any) {
       console.error('Error fetching rules:', err);
-      // Fallback silencioso si no existe el esquema aún
     } finally {
       setLoading(false);
     }
@@ -67,12 +63,22 @@ export default function MonitoreoRulesTab() {
       };
 
       if (editingRule.id) {
-        const { error } = await supabase.from('reglas_alertas').update(payload).eq('id', editingRule.id);
-        if (error) throw error;
+        const res = await fetch('/api/db/monitoreo-rules', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editingRule.id, ...payload })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
         showNotification('Regla actualizada correctamente', 'success');
       } else {
-        const { error } = await supabase.from('reglas_alertas').insert([payload]);
-        if (error) throw error;
+        const res = await fetch('/api/db/monitoreo-rules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
         showNotification('Regla creada correctamente', 'success');
       }
       
@@ -85,8 +91,14 @@ export default function MonitoreoRulesTab() {
 
   const toggleStatus = async (id: string, currentStatus: boolean) => {
     try {
-      const { error } = await supabase.from('reglas_alertas').update({ esta_activa: !currentStatus }).eq('id', id);
-      if (error) throw error;
+      const res = await fetch('/api/db/monitoreo-rules', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, esta_activa: !currentStatus })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      
       setRules(rules.map(r => r.id === id ? { ...r, esta_activa: !currentStatus } : r));
       showNotification(`Regla ${!currentStatus ? 'activada' : 'desactivada'}`, 'success');
     } catch (err: any) {
@@ -97,8 +109,14 @@ export default function MonitoreoRulesTab() {
   const deleteRule = async (id: string) => {
     if (!confirm('¿Eliminar esta regla permanentemente?')) return;
     try {
-      const { error } = await supabase.from('reglas_alertas').delete().eq('id', id);
-      if (error) throw error;
+      const res = await fetch('/api/db/monitoreo-rules', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      
       setRules(rules.filter(r => r.id !== id));
       showNotification('Regla eliminada', 'success');
     } catch (err: any) {
