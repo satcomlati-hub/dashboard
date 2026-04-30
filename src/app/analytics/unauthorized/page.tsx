@@ -125,6 +125,7 @@ export default function UnauthorizedVouchersPage() {
   const [ruleMainReason, setRuleMainReason] = useState('*');
   const [ruleCountMode, setRuleCountMode] = useState('POR_EMISOR');
   const [ruleCountType, setRuleCountType] = useState('NUMERO');
+  const [ruleNotifyType, setRuleNotifyType] = useState('TODOS');
 
   // Layout states
   const [currentPage, setCurrentPage] = useState(1);
@@ -572,7 +573,8 @@ ${selectedIds.join(', ')}
         configuracion: {
           tipo_conteo: ruleCountType,
           modo_conteo: ruleCountMode,
-          frecuencia_evaluacion: ruleFrequency
+          frecuencia_evaluacion: ruleFrequency,
+          notificar: ruleNotifyType
         }
       }]);
       
@@ -1346,25 +1348,37 @@ ${selectedIds.join(', ')}
                        </div>
                        <div className="space-y-2">
                           <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Modo de Conteo</label>
-                          <select 
-                            value={ruleCountMode} 
-                            onChange={e => setRuleCountMode(e.target.value)} 
-                            className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-[#71BF44]/20 outline-none transition-all cursor-pointer"
-                          >
-                             <option value="POR_EMISOR">Por Emisor</option>
-                             <option value="GLOBAL">En General (Global)</option>
-                          </select>
+                          <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1 rounded-2xl h-12">
+                             {[
+                               { id: 'GLOBAL', label: 'Global' },
+                               { id: 'POR_EMISOR', label: 'Por Emisor' }
+                             ].map(opt => (
+                                <button
+                                   key={opt.id}
+                                   onClick={() => setRuleCountMode(opt.id)}
+                                   className={`flex-1 py-1 px-2 text-[9px] sm:text-[10px] font-black uppercase tracking-tighter rounded-xl transition-all ${ruleCountMode === opt.id ? 'bg-white dark:bg-black text-[#71BF44] shadow-sm ring-1 ring-[#71BF44]/20' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
+                                >
+                                   {opt.label}
+                                </button>
+                             ))}
+                          </div>
                        </div>
                        <div className="space-y-2">
                           <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Tipo de Conteo</label>
-                          <select 
-                            value={ruleCountType} 
-                            onChange={e => setRuleCountType(e.target.value)} 
-                            className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-[#71BF44]/20 outline-none transition-all cursor-pointer"
-                          >
-                             <option value="NUMERO">Número de Eventos</option>
-                             <option value="PORCENTAJE">Porcentaje (%)</option>
-                          </select>
+                          <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1 rounded-2xl h-12">
+                             {[
+                               { id: 'NUMERO', label: 'Número' },
+                               { id: 'PORCENTAJE', label: 'Porcentaje (%)' }
+                             ].map(opt => (
+                                <button
+                                   key={opt.id}
+                                   onClick={() => setRuleCountType(opt.id)}
+                                   className={`flex-1 py-1 px-2 text-[9px] sm:text-[10px] font-black uppercase tracking-tighter rounded-xl transition-all ${ruleCountType === opt.id ? 'bg-white dark:bg-black text-[#71BF44] shadow-sm ring-1 ring-[#71BF44]/20' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
+                                >
+                                   {opt.label}
+                                </button>
+                             ))}
+                          </div>
                        </div>
                        <div className="space-y-2">
                           <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Límite ({ruleCountType === 'PORCENTAJE' ? '%' : 'Q'})</label>
@@ -1372,21 +1386,44 @@ ${selectedIds.join(', ')}
                             type="number" 
                             value={ruleMinEvents} 
                             onChange={e => setRuleMinEvents(Number(e.target.value))} 
-                            className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-[#71BF44]/20 outline-none transition-all" 
+                            className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 h-12 text-sm font-bold focus:ring-2 focus:ring-[#71BF44]/20 outline-none transition-all" 
                           />
                        </div>
                        <div className="space-y-2">
-                          <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Frecuencia de Evaluación</label>
-                          <select 
-                            value={ruleFrequency} 
-                            onChange={e => setRuleFrequency(e.target.value)} 
-                            className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-[#71BF44]/20 outline-none transition-all cursor-pointer"
-                          >
-                             <option value="HORA">Por Hora</option>
-                             <option value="DIA">Por Día</option>
-                             <option value="SEMANA">Por Semana</option>
-                             <option value="MES">Por Mes</option>
-                          </select>
+                          <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Frecuencia</label>
+                          <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1 rounded-2xl h-12">
+                             {[
+                               { id: 'HORA', label: 'Hora' },
+                               { id: 'DIA', label: 'Día' },
+                               { id: 'SEMANA', label: 'Sem' },
+                               { id: 'MES', label: 'Mes' }
+                             ].map(opt => (
+                                <button
+                                   key={opt.id}
+                                   onClick={() => setRuleFrequency(opt.id)}
+                                   className={`flex-1 py-1 px-1 text-[9px] sm:text-[10px] font-black uppercase tracking-tighter rounded-xl transition-all ${ruleFrequency === opt.id ? 'bg-white dark:bg-black text-[#71BF44] shadow-sm ring-1 ring-[#71BF44]/20' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
+                                >
+                                   {opt.label}
+                                </button>
+                             ))}
+                          </div>
+                       </div>
+                       <div className="space-y-2 col-span-2">
+                          <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Alcance de Notificación</label>
+                          <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1 rounded-2xl h-12">
+                             {[
+                               { id: 'TODOS', label: 'Notificar Todos los Eventos Involucrados' },
+                               { id: 'SOLO_SUPERAN_LIMITE', label: 'Notificar Solo los que Superan el Límite' }
+                             ].map(opt => (
+                                <button
+                                   key={opt.id}
+                                   onClick={() => setRuleNotifyType(opt.id)}
+                                   className={`flex-1 py-1 px-4 text-[10px] font-black uppercase tracking-tighter rounded-xl transition-all ${ruleNotifyType === opt.id ? 'bg-white dark:bg-black text-amber-500 shadow-sm ring-1 ring-amber-500/20' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
+                                >
+                                   {opt.label}
+                                </button>
+                             ))}
+                          </div>
                        </div>
                     </div>
                  </div>
