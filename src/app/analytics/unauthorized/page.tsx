@@ -119,10 +119,12 @@ export default function UnauthorizedVouchersPage() {
   const [modalTab, setModalTab] = useState<'caso'|'regla'>('caso');
   const [isSubmittingRule, setIsSubmittingRule] = useState(false);
   const [ruleName, setRuleName] = useState('');
-  const [ruleFrequency, setRuleFrequency] = useState('DIARIO');
+  const [ruleFrequency, setRuleFrequency] = useState('HORA');
   const [ruleMinEvents, setRuleMinEvents] = useState(10);
   const [ruleMainStatus, setRuleMainStatus] = useState('*');
   const [ruleMainReason, setRuleMainReason] = useState('*');
+  const [ruleCountMode, setRuleCountMode] = useState('POR_EMISOR');
+  const [ruleCountType, setRuleCountType] = useState('NUMERO');
 
   // Layout states
   const [currentPage, setCurrentPage] = useState(1);
@@ -562,11 +564,16 @@ ${selectedIds.join(', ')}
         expresion_estado: ruleMainStatus,
         expresion_motivo: ruleMainReason,
         minimo_eventos: ruleMinEvents,
-        modo: 'POR_EMISOR',
+        modo: ruleCountMode,
         frecuencia: ruleFrequency,
         prioridad_ticket: casePriority.split('/')[0],
         departamento_id: caseDept,
-        esta_activa: true
+        esta_activa: true,
+        configuracion: {
+          tipo_conteo: ruleCountType,
+          modo_conteo: ruleCountMode,
+          frecuencia_evaluacion: ruleFrequency
+        }
       }]);
       
       if (error) throw error;
@@ -1338,7 +1345,29 @@ ${selectedIds.join(', ')}
                           />
                        </div>
                        <div className="space-y-2">
-                          <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Eventos Mínimos</label>
+                          <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Modo de Conteo</label>
+                          <select 
+                            value={ruleCountMode} 
+                            onChange={e => setRuleCountMode(e.target.value)} 
+                            className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-[#71BF44]/20 outline-none transition-all cursor-pointer"
+                          >
+                             <option value="POR_EMISOR">Por Emisor</option>
+                             <option value="GLOBAL">En General (Global)</option>
+                          </select>
+                       </div>
+                       <div className="space-y-2">
+                          <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Tipo de Conteo</label>
+                          <select 
+                            value={ruleCountType} 
+                            onChange={e => setRuleCountType(e.target.value)} 
+                            className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-[#71BF44]/20 outline-none transition-all cursor-pointer"
+                          >
+                             <option value="NUMERO">Número de Eventos</option>
+                             <option value="PORCENTAJE">Porcentaje (%)</option>
+                          </select>
+                       </div>
+                       <div className="space-y-2">
+                          <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Límite ({ruleCountType === 'PORCENTAJE' ? '%' : 'Q'})</label>
                           <input 
                             type="number" 
                             value={ruleMinEvents} 
@@ -1353,9 +1382,10 @@ ${selectedIds.join(', ')}
                             onChange={e => setRuleFrequency(e.target.value)} 
                             className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-[#71BF44]/20 outline-none transition-all cursor-pointer"
                           >
-                             <option value="TIEMPO_REAL">En Tiempo Real</option>
-                             <option value="HORARIO">Cada Hora</option>
-                             <option value="DIARIO">Una vez al Día</option>
+                             <option value="HORA">Por Hora</option>
+                             <option value="DIA">Por Día</option>
+                             <option value="SEMANA">Por Semana</option>
+                             <option value="MES">Por Mes</option>
                           </select>
                        </div>
                     </div>
