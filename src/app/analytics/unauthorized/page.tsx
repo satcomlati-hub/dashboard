@@ -135,7 +135,7 @@ export default function UnauthorizedVouchersPage() {
   const [modalTab, setModalTab] = useState<'caso'|'regla'>('caso');
   const [isSubmittingRule, setIsSubmittingRule] = useState(false);
   const [ruleName, setRuleName] = useState('');
-  const [ruleFrequency, setRuleFrequency] = useState('HORA');
+  const [ruleFrequency, setRuleFrequency] = useState('DIARIO');
   const [ruleMinEvents, setRuleMinEvents] = useState(10);
   const [ruleMainStatus, setRuleMainStatus] = useState('*');
   const [ruleMainReason, setRuleMainReason] = useState('*');
@@ -1464,10 +1464,10 @@ ${selectedIds.join(', ')}
                           <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Frecuencia</label>
                           <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1 rounded-2xl h-12">
                              {[
-                               { id: 'HORA', label: 'Hora' },
-                               { id: 'DIA', label: 'Día' },
-                               { id: 'SEMANA', label: 'Sem' },
-                               { id: 'MES', label: 'Mes' }
+                               { id: 'HORARIO', label: 'Hora' },
+                               { id: 'DIARIO', label: 'Día' },
+                               { id: 'SEMANAL', label: 'Sem' },
+                               { id: 'MENSUAL', label: 'Mes' }
                              ].map(opt => (
                                 <button
                                    key={opt.id}
