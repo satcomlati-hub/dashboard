@@ -805,6 +805,45 @@ ${selectedIds.join(', ')}
           </button>
         </div>
       </header>
+      
+      {/* Global Environment Selector (Step 1) */}
+      <div className="flex items-center gap-4 mb-8 bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 p-4 rounded-3xl shadow-sm">
+          <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-6 py-2.5 rounded-2xl shadow-xl">
+            <Globe className="w-4 h-4 text-[#71BF44]" />
+            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">Ambiente:</span>
+            <div className="flex gap-2">
+               {['V5', 'Panama', 'Colombia'].map(amb => (
+                 <button
+                  key={amb}
+                  onClick={() => { 
+                    setSelectedAmbiente(amb); 
+                    setSelectedCountryCode(null);
+                    setAvailableCountries([]);
+                    setCurrentPage(1); 
+                    setData([]); 
+                    setFilters({
+                      co_num_comprobante: '',
+                      co_detalle: '',
+                      co_nemonico: '',
+                      co_pais: '',
+                      ambiente: '',
+                      DescripcionEstatus: '',
+                      DescripcionTipoDocumento: '',
+                      co_establecimiento: '',
+                      co_punto_emision: '',
+                    });
+                  }}
+                  className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all ${selectedAmbiente === amb ? 'bg-[#71BF44] text-white' : 'text-neutral-500 hover:text-white hover:bg-neutral-800'}`}
+                 >
+                   {AMBIENTE_LABELS[amb] || amb}
+                 </button>
+               ))}
+            </div>
+          </div>
+          <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest ml-4 italic opacity-50">
+            {!selectedAmbiente ? '← Inicie seleccionando un ambiente de trabajo' : 'Ambiente activo'}
+          </p>
+      </div>
 
       {!selectedAmbiente ? (
         <div className="flex flex-col items-center justify-center py-40 border-2 border-dashed border-neutral-100 dark:border-neutral-800/30 rounded-[40px] animate-in fade-in zoom-in duration-700">
@@ -856,39 +895,6 @@ ${selectedIds.join(', ')}
 
       {/* Filters Area */}
       <div className="flex flex-wrap items-center gap-6 mb-6">
-         {/* Environment Selector (Now First) */}
-          <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-6 py-2.5 rounded-2xl shadow-xl">
-            <Globe className="w-4 h-4 text-[#71BF44]" />
-            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">Ambiente:</span>
-            <div className="flex gap-2">
-               {['V5', 'Panama', 'Colombia'].map(amb => (
-                 <button
-                  key={amb}
-                  onClick={() => { 
-                    setSelectedAmbiente(amb); 
-                    setSelectedCountryCode(null);
-                    setAvailableCountries([]);
-                    setCurrentPage(1); 
-                    setData([]); 
-                    setFilters({
-                      co_num_comprobante: '',
-                      co_detalle: '',
-                      co_nemonico: '',
-                      co_pais: '',
-                      ambiente: '',
-                      DescripcionEstatus: '',
-                      DescripcionTipoDocumento: '',
-                      co_establecimiento: '',
-                      co_punto_emision: '',
-                    });
-                  }}
-                  className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all ${selectedAmbiente === amb ? 'bg-[#71BF44] text-white' : 'text-neutral-500 hover:text-white hover:bg-neutral-800'}`}
-                 >
-                   {AMBIENTE_LABELS[amb] || amb}
-                 </button>
-               ))}
-            </div>
-          </div>
 
           {/* Country Selector (Second Step) */}
           <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-6 py-2.5 rounded-2xl shadow-xl">
