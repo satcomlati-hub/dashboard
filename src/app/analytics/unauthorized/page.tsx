@@ -176,7 +176,11 @@ export default function UnauthorizedVouchersPage() {
       }
       
       // Filtrar elementos nulos y asegurar que sean únicos
-      const cleanCountries = countries.filter(c => c && (c.co_pais !== undefined && c.co_pais !== null));
+      const cleanCountries = countries.map(c => ({
+        co_pais: c.co_pais || c.Pais, // Soporte para ambos nombres de campo
+        count: c.count || c.total || 0
+      })).filter(c => c && (c.co_pais !== undefined && c.co_pais !== null));
+      
       setAvailableCountries(cleanCountries);
       setError(null);
     } catch (err: any) {
@@ -923,6 +927,34 @@ ${selectedIds.join(', ')}
                  </button>
                ))}
             </div>
+          </div>
+
+          {/* Country Selector (Second Step) */}
+          <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-6 py-2.5 rounded-2xl shadow-xl">
+            <MapPin className="w-4 h-4 text-[#71BF44]" />
+            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">País:</span>
+            <select
+              value={selectedCountryCode || ''}
+              onChange={(e) => {
+                const val = e.target.value ? Number(e.target.value) : null;
+                setSelectedCountryCode(val);
+                const countryName = val ? (PAIS_MAP[val] || String(val)) : '';
+                setFilters(f => ({ ...f, co_pais: countryName }));
+                setCurrentPage(1);
+              }}
+              className="bg-transparent text-[9px] font-black uppercase text-[#71BF44] outline-none cursor-pointer hover:text-white transition-colors h-6"
+            >
+              <option value="" className="bg-[#111] text-neutral-500">Seleccione País...</option>
+              {availableCountries.map((c, idx) => {
+                const code = c.co_pais;
+                const name = PAIS_MAP[Number(code)] || String(code);
+                return (
+                  <option key={`${code}-${idx}`} value={code} className="bg-[#111] text-white">
+                    {name} {Number(c.count) > 0 ? `(${c.count})` : ''}
+                  </option>
+                );
+              })}
+            </select>
           </div>
 
           {/* Group Selector "Agrupar" (Now Second) */}
