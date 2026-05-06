@@ -185,7 +185,7 @@ export default function MonitoreoRulesTab({ initialTab = 'rules' }: { initialTab
               </h3>
               <p className="text-xs text-neutral-500">Configura qué procesos ejecutar y qué conjunto de reglas aplicar.</p>
             </div>
-            <button onClick={() => { setEditingConfig({ ambientes: ['V5'], esta_activo: true, reglas_ids: [] }); setShowConfigModal(true); }} className="bg-[#71BF44] hover:bg-[#5da036] text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Monitoreo</button>
+            <button onClick={() => { setEditingConfig({ ambientes: ['V5'], frecuencia: '1h', esta_activo: true, reglas_ids: [] }); setShowConfigModal(true); }} className="bg-[#71BF44] hover:bg-[#5da036] text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Monitoreo</button>
           </div>
 
           <div className="overflow-x-auto border border-neutral-200 dark:border-neutral-800 rounded-2xl">
