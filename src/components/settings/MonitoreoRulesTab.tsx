@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Activity, Plus, Search, Trash2, Edit2, Play, Pause, Save, X } from 'lucide-react';
+import { Activity, Plus, Search, Trash2, Edit2, Play, Pause, Save, X, Settings, ListChecks, Database, Clock } from 'lucide-react';
 import { useNotification } from '@/components/NotificationProvider';
 
 interface ReglaMonitoreo {
@@ -18,322 +18,313 @@ interface ReglaMonitoreo {
   esta_activa: boolean;
 }
 
-export default function MonitoreoRulesTab() {
+interface MonitoreoConfig {
+  id: string;
+  nombre: string;
+  ambiente: string;
+  proceso_sp: string;
+  frecuencia: string;
+  reglas_ids: string[];
+  esta_activo: boolean;
+  ultima_ejecucion?: string;
+}
+
+export default function MonitoreoRulesTab({ initialTab = 'rules' }: { initialTab?: 'rules' | 'config' }) {
+  const [activeTab, setActiveTab] = useState<'rules' | 'config'>(initialTab);
   const [rules, setRules] = useState<ReglaMonitoreo[]>([]);
+  const [configs, setConfigs] = useState<MonitoreoConfig[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+  const [showRuleModal, setShowRuleModal] = useState(false);
+  const [showConfigModal, setShowConfigModal] = useState(false);
   const { showNotification } = useNotification();
   const [editingRule, setEditingRule] = useState<Partial<ReglaMonitoreo>>({});
+  const [editingConfig, setEditingConfig] = useState<Partial<MonitoreoConfig>>({});
 
   useEffect(() => {
-    fetchRules();
+    setActiveTab(initialTab);
+  }, [initialTab]);
+
+  useEffect(() => {
+    fetchData();
   }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+    await Promise.all([fetchRules(), fetchConfigs()]);
+    setLoading(false);
+  };
 
   const fetchRules = async () => {
     try {
-      setLoading(true);
       const res = await fetch('/api/db/monitoreo-rules');
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed to fetch rules');
-      setRules(json.data || []);
-    } catch (err: any) {
+      if (res.ok) setRules(json.data || []);
+    } catch (err) {
       console.error('Error fetching rules:', err);
-    } finally {
-      setLoading(false);
     }
   };
 
-  const handleSave = async () => {
+  const fetchConfigs = async () => {
     try {
-      // expresion_estado puede ser vacía si la regla se basa únicamente en el motivo
+      const res = await fetch('/api/db/monitoreo-config');
+      const json = await res.json();
+      if (res.ok) setConfigs(json.data || []);
+    } catch (err) {
+      console.error('Error fetching configs:', err);
+    }
+  };
+
+  const handleSaveRule = async () => {
+    try {
       if (!editingRule.nombre || !editingRule.expresion_motivo) {
         showNotification('El Nombre y la Expresión de Motivo son obligatorios', 'error');
         return;
       }
-
-      const payload = {
-        nombre: editingRule.nombre,
-        ambiente: editingRule.ambiente || 'Todos',
-        expresion_estado: editingRule.expresion_estado,
-        expresion_motivo: editingRule.expresion_motivo,
-        minimo_eventos: editingRule.minimo_eventos || 1,
-        modo: editingRule.modo || 'POR_EMISOR',
-        frecuencia: editingRule.frecuencia || 'DIARIO',
-        prioridad_ticket: editingRule.prioridad_ticket || 'Media',
-        esta_activa: editingRule.esta_activa !== false
-      };
-
-      if (editingRule.id) {
-        const res = await fetch('/api/db/monitoreo-rules', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: editingRule.id, ...payload })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-        showNotification('Regla actualizada correctamente', 'success');
-      } else {
-        const res = await fetch('/api/db/monitoreo-rules', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-        showNotification('Regla creada correctamente', 'success');
+      const method = editingRule.id ? 'PUT' : 'POST';
+      const res = await fetch('/api/db/monitoreo-rules', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingRule)
+      });
+      if (res.ok) {
+        showNotification(`Regla ${editingRule.id ? 'actualizada' : 'creada'} correctamente`, 'success');
+        setShowRuleModal(false);
+        fetchRules();
       }
-      
-      setShowModal(false);
-      fetchRules();
     } catch (err: any) {
       showNotification(`Error: ${err.message}`, 'error');
     }
   };
 
-  const toggleStatus = async (id: string, currentStatus: boolean) => {
+  const handleSaveConfig = async () => {
     try {
-      const res = await fetch('/api/db/monitoreo-rules', {
-        method: 'PUT',
+      if (!editingConfig.nombre || !editingConfig.proceso_sp) {
+        showNotification('El Nombre y el Proceso (SP) son obligatorios', 'error');
+        return;
+      }
+      const method = editingConfig.id ? 'PUT' : 'POST';
+      const res = await fetch('/api/db/monitoreo-config', {
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, esta_activa: !currentStatus })
+        body: JSON.stringify(editingConfig)
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      
-      setRules(rules.map(r => r.id === id ? { ...r, esta_activa: !currentStatus } : r));
-      showNotification(`Regla ${!currentStatus ? 'activada' : 'desactivada'}`, 'success');
+      if (res.ok) {
+        showNotification(`Configuración ${editingConfig.id ? 'actualizada' : 'creada'} correctamente`, 'success');
+        setShowConfigModal(false);
+        fetchConfigs();
+      }
     } catch (err: any) {
       showNotification(`Error: ${err.message}`, 'error');
     }
   };
 
   const deleteRule = async (id: string) => {
-    if (!confirm('¿Eliminar esta regla permanentemente?')) return;
-    try {
-      const res = await fetch('/api/db/monitoreo-rules', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      
-      setRules(rules.filter(r => r.id !== id));
-      showNotification('Regla eliminada', 'success');
-    } catch (err: any) {
-      showNotification(`Error: ${err.message}`, 'error');
-    }
+    if (!confirm('¿Eliminar esta regla?')) return;
+    const res = await fetch('/api/db/monitoreo-rules', { method: 'DELETE', body: JSON.stringify({ id }) });
+    if (res.ok) { fetchRules(); showNotification('Regla eliminada', 'success'); }
   };
 
-  const openNewModal = () => {
-    setEditingRule({
-      ambiente: 'Todos',
-      modo: 'POR_EMISOR',
-      frecuencia: 'DIARIO',
-      prioridad_ticket: 'Media',
-      minimo_eventos: 5,
-      esta_activa: true
-    });
-    setShowModal(true);
+  const deleteConfig = async (id: string) => {
+    if (!confirm('¿Eliminar esta configuración?')) return;
+    const res = await fetch('/api/db/monitoreo-config', { method: 'DELETE', body: JSON.stringify({ id }) });
+    if (res.ok) { fetchConfigs(); showNotification('Configuración eliminada', 'success'); }
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h3 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center gap-2">
-            <Activity className="w-5 h-5 text-[#71BF44]" /> Motor de Alertas
-          </h3>
-          <p className="text-xs text-neutral-500">Configura reglas automáticas para la generación de casos en ZohoDesk basadas en incidencias.</p>
-        </div>
-        <button
-          onClick={openNewModal}
-          className="bg-[#71BF44] hover:bg-[#5da036] text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all"
-        >
-          <Plus className="w-4 h-4" /> Nueva Regla
-        </button>
-      </div>
 
-      <div className="overflow-x-auto border border-neutral-200 dark:border-neutral-800 rounded-2xl">
-        <table className="w-full text-left text-sm whitespace-nowrap">
-          <thead className="bg-neutral-50 dark:bg-[#1a1a1a] text-neutral-500 dark:text-neutral-400">
-            <tr>
-              <th className="px-6 py-4 font-bold">Estado</th>
-              <th className="px-6 py-4 font-bold">Nombre / Frecuencia</th>
-              <th className="px-6 py-4 font-bold">Expresiones (Estado / Motivo)</th>
-              <th className="px-6 py-4 font-bold">Límites</th>
-              <th className="px-6 py-4 font-bold text-right">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-            {rules.map((rule) => (
-              <tr key={rule.id} className="hover:bg-neutral-50 dark:hover:bg-white/[0.02]">
-                <td className="px-6 py-4">
-                  <button 
-                    onClick={() => toggleStatus(rule.id, rule.esta_activa)}
-                    className={`p-2 rounded-lg transition-colors ${rule.esta_activa ? 'bg-green-500/10 text-green-500' : 'bg-neutral-500/10 text-neutral-500'}`}
-                    title={rule.esta_activa ? 'Desactivar Regla' : 'Activar Regla'}
-                  >
-                    {rule.esta_activa ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
-                  </button>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="font-bold text-neutral-900 dark:text-white">{rule.nombre}</div>
-                  <div className="text-xs text-neutral-500 uppercase tracking-widest mt-1">
-                    {rule.frecuencia} • {rule.ambiente}
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="flex flex-col gap-1">
-                    <code className="text-[10px] bg-neutral-100 dark:bg-[#111] px-2 py-1 rounded border border-neutral-200 dark:border-neutral-800">
-                      {rule.expresion_estado}
-                    </code>
-                    <code className="text-[10px] bg-neutral-100 dark:bg-[#111] px-2 py-1 rounded border border-neutral-200 dark:border-neutral-800 truncate max-w-xs">
-                      {rule.expresion_motivo}
-                    </code>
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold px-2 py-1 bg-[#71BF44]/10 text-[#71BF44] rounded">
-                      &gt;= {rule.minimo_eventos}
-                    </span>
-                    <span className="text-xs text-neutral-500">{rule.modo}</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <button 
-                      onClick={() => { setEditingRule(rule); setShowModal(true); }}
-                      className="p-2 hover:bg-blue-500/10 text-blue-500 rounded-lg transition-colors"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={() => deleteRule(rule.id)}
-                      className="p-2 hover:bg-red-500/10 text-red-500 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {rules.length === 0 && !loading && (
-              <tr>
-                <td colSpan={5} className="px-6 py-8 text-center text-neutral-500">No hay reglas configuradas.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {activeTab === 'rules' ? (
+        <section className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center gap-2">
+                <Activity className="w-5 h-5 text-[#71BF44]" /> Motor de Reglas
+              </h3>
+              <p className="text-xs text-neutral-500">Define los criterios de búsqueda (Regex) para detectar incidencias.</p>
+            </div>
+            <button onClick={() => { setEditingRule({ ambiente: 'Todos', esta_activa: true, minimo_eventos: 1 }); setShowRuleModal(true); }} className="bg-[#71BF44] hover:bg-[#5da036] text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" /> Nueva Regla</button>
+          </div>
 
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 w-full max-w-3xl rounded-[24px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="overflow-x-auto border border-neutral-200 dark:border-neutral-800 rounded-2xl">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-neutral-50 dark:bg-[#1a1a1a] text-neutral-500 dark:text-neutral-400">
+                <tr>
+                  <th className="px-6 py-4 font-bold">Estado</th>
+                  <th className="px-6 py-4 font-bold">Nombre / Ambiente</th>
+                  <th className="px-6 py-4 font-bold">Expresiones</th>
+                  <th className="px-6 py-4 font-bold">Límites</th>
+                  <th className="px-6 py-4 font-bold text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                {rules.map((rule) => (
+                  <tr key={rule.id} className="hover:bg-neutral-50 dark:hover:bg-white/[0.02]">
+                    <td className="px-6 py-4">{rule.esta_activa ? <Play className="w-4 h-4 text-green-500" /> : <Pause className="w-4 h-4 text-neutral-400" />}</td>
+                    <td className="px-6 py-4">
+                      <div className="font-bold">{rule.nombre}</div>
+                      <div className="text-[10px] text-neutral-500 uppercase">{rule.ambiente}</div>
+                    </td>
+                    <td className="px-6 py-4 max-w-xs truncate font-mono text-[10px] text-neutral-400">{rule.expresion_motivo}</td>
+                    <td className="px-6 py-4"><span className="px-2 py-1 bg-green-500/10 text-green-500 rounded text-xs font-bold">>= {rule.minimo_eventos}</span></td>
+                    <td className="px-6 py-4 text-right">
+                      <button onClick={() => { setEditingRule(rule); setShowRuleModal(true); }} className="p-2 text-blue-500"><Edit2 className="w-4 h-4" /></button>
+                      <button onClick={() => deleteRule(rule.id)} className="p-2 text-red-500"><Trash2 className="w-4 h-4" /></button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : (
+        <section className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center gap-2">
+                <Database className="w-5 h-5 text-[#71BF44]" /> Ejecuciones de Monitoreo
+              </h3>
+              <p className="text-xs text-neutral-500">Configura qué procesos ejecutar y qué conjunto de reglas aplicar.</p>
+            </div>
+            <button onClick={() => { setEditingConfig({ ambiente: 'V5', esta_activo: true, reglas_ids: [] }); setShowConfigModal(true); }} className="bg-[#71BF44] hover:bg-[#5da036] text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Monitoreo</button>
+          </div>
+
+          <div className="overflow-x-auto border border-neutral-200 dark:border-neutral-800 rounded-2xl">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-neutral-50 dark:bg-[#1a1a1a] text-neutral-500 dark:text-neutral-400">
+                <tr>
+                  <th className="px-6 py-4 font-bold">Estado</th>
+                  <th className="px-6 py-4 font-bold">Nombre / Proceso</th>
+                  <th className="px-6 py-4 font-bold">Frecuencia</th>
+                  <th className="px-6 py-4 font-bold">Reglas Activas</th>
+                  <th className="px-6 py-4 font-bold text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                {configs.map((config) => (
+                  <tr key={config.id} className="hover:bg-neutral-50 dark:hover:bg-white/[0.02]">
+                    <td className="px-6 py-4">{config.esta_activo ? <Play className="w-4 h-4 text-green-500" /> : <Pause className="w-4 h-4 text-neutral-400" />}</td>
+                    <td className="px-6 py-4">
+                      <div className="font-bold">{config.nombre}</div>
+                      <div className="text-[10px] text-neutral-500 uppercase">{config.ambiente} • {config.proceso_sp}</div>
+                    </td>
+                    <td className="px-6 py-4 flex items-center gap-2 text-neutral-500"><Clock className="w-3 h-3" /> {config.frecuencia}</td>
+                    <td className="px-6 py-4"><span className="px-2 py-1 bg-[#71BF44]/10 text-[#71BF44] rounded text-xs font-bold">{config.reglas_ids?.length || 0} reglas</span></td>
+                    <td className="px-6 py-4 text-right">
+                      <button onClick={() => { setEditingConfig(config); setShowConfigModal(true); }} className="p-2 text-blue-500"><Edit2 className="w-4 h-4" /></button>
+                      <button onClick={() => deleteConfig(config.id)} className="p-2 text-red-500"><Trash2 className="w-4 h-4" /></button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* Modal Reglas */}
+      {showRuleModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 flex justify-between items-center">
               <h3 className="font-bold text-lg">{editingRule.id ? 'Editar Regla' : 'Nueva Regla'}</h3>
-              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl"><X className="w-4 h-4" /></button>
+              <button onClick={() => setShowRuleModal(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl"><X className="w-4 h-4" /></button>
             </div>
-            
-            <div className="p-6 grid grid-cols-2 gap-6 max-h-[70vh] overflow-y-auto">
-              <div className="col-span-2">
-                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Nombre de la Regla</label>
-                <input 
-                  type="text" 
-                  value={editingRule.nombre || ''}
-                  onChange={e => setEditingRule({...editingRule, nombre: e.target.value})}
-                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#71BF44]/20 focus:border-[#71BF44] transition-all hover:border-neutral-300 dark:hover:border-neutral-700"
-                  placeholder="Ej: Caída masiva SRI"
-                />
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Nombre</label>
+                <input type="text" value={editingRule.nombre || ''} onChange={e => setEditingRule({...editingRule, nombre: e.target.value})} className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-[#71BF44]/20 focus:border-[#71BF44] outline-none" />
               </div>
-
-              <div className="col-span-1">
-                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Expresión de Estado</label>
-                <input 
-                  type="text" 
-                  value={editingRule.expresion_estado || ''}
-                  onChange={e => setEditingRule({...editingRule, expresion_estado: e.target.value})}
-                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#71BF44]/20 focus:border-[#71BF44] transition-all hover:border-neutral-300 dark:hover:border-neutral-700"
-                  placeholder="Opcional (Regex o texto)"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Ambiente</label>
+                  <select value={editingRule.ambiente || 'Todos'} onChange={e => setEditingRule({...editingRule, ambiente: e.target.value})} className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold">
+                    <option value="Todos">Todos</option>
+                    <option value="V5">V5</option>
+                    <option value="Colombia">Colombia</option>
+                    <option value="Panama">Panama</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Eventos Mínimos</label>
+                  <input type="number" value={editingRule.minimo_eventos || 1} onChange={e => setEditingRule({...editingRule, minimo_eventos: Number(e.target.value)})} className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold" />
+                </div>
               </div>
-
-              <div className="col-span-1">
-                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Expresión de Motivo</label>
-                <input 
-                  type="text" 
-                  value={editingRule.expresion_motivo || ''}
-                  onChange={e => setEditingRule({...editingRule, expresion_motivo: e.target.value})}
-                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#71BF44]/20 focus:border-[#71BF44] transition-all hover:border-neutral-300 dark:hover:border-neutral-700"
-                  placeholder="Obligatorio (Regex o texto)"
-                />
-              </div>
-
-              <div className="col-span-1">
-                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Modo de Agrupación</label>
-                <select 
-                  value={editingRule.modo || 'POR_EMISOR'}
-                  onChange={e => setEditingRule({...editingRule, modo: e.target.value})}
-                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#71BF44]/20 focus:border-[#71BF44] transition-all cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2024%2024%22%20stroke%3D%22%239CA3AF%22%3E%3Cpath%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%222%22%20d%3D%22M19%209l-7%207-7-7%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.25rem_1.25rem] bg-[position:right_1rem_center] bg-no-repeat pr-10 hover:border-neutral-300 dark:hover:border-neutral-700"
-                >
-                  <option value="POR_EMISOR">Por Emisor Individual</option>
-                  <option value="GLOBAL">Cualquier Emisor (Global)</option>
-                </select>
-              </div>
-
-              <div className="col-span-1">
-                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Eventos Mínimos</label>
-                <input 
-                  type="number" 
-                  value={editingRule.minimo_eventos || 1}
-                  onChange={e => setEditingRule({...editingRule, minimo_eventos: Number(e.target.value)})}
-                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#71BF44]/20 focus:border-[#71BF44] transition-all hover:border-neutral-300 dark:hover:border-neutral-700"
-                />
-              </div>
-
-              <div className="col-span-1">
-                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Frecuencia Evaluación</label>
-                <select 
-                  value={editingRule.frecuencia || 'DIARIO'}
-                  onChange={e => setEditingRule({...editingRule, frecuencia: e.target.value})}
-                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#71BF44]/20 focus:border-[#71BF44] transition-all cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2024%2024%22%20stroke%3D%22%239CA3AF%22%3E%3Cpath%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%222%22%20d%3D%22M19%209l-7%207-7-7%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.25rem_1.25rem] bg-[position:right_1rem_center] bg-no-repeat pr-10 hover:border-neutral-300 dark:hover:border-neutral-700"
-                >
-                  <option value="TIEMPO_REAL">Tiempo Real (Webhook)</option>
-                  <option value="HORARIO">Cada Hora</option>
-                  <option value="DIARIO">Diario</option>
-                  <option value="SEMANAL">Semanal</option>
-                  <option value="MENSUAL">Mensual</option>
-                </select>
-              </div>
-
-              <div className="col-span-1">
-                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Ambiente Objetivo</label>
-                <select 
-                  value={editingRule.ambiente || 'Todos'}
-                  onChange={e => setEditingRule({...editingRule, ambiente: e.target.value})}
-                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#71BF44]/20 focus:border-[#71BF44] transition-all cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2024%2024%22%20stroke%3D%22%239CA3AF%22%3E%3Cpath%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%222%22%20d%3D%22M19%209l-7%207-7-7%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.25rem_1.25rem] bg-[position:right_1rem_center] bg-no-repeat pr-10 hover:border-neutral-300 dark:hover:border-neutral-700"
-                >
-                  <option value="Todos">Cualquiera (Todos)</option>
-                  <option value="V5">V5</option>
-                  <option value="Colombia">Colombia-AWS</option>
-                </select>
+              <div>
+                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Expresión de Motivo (Regex)</label>
+                <input type="text" value={editingRule.expresion_motivo || ''} onChange={e => setEditingRule({...editingRule, expresion_motivo: e.target.value})} className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-mono" placeholder="Ej: .*Establecimiento.*" />
               </div>
             </div>
-
             <div className="px-6 py-4 border-t border-neutral-200 dark:border-neutral-800 flex justify-end gap-3 bg-neutral-50 dark:bg-[#0c0c0c]">
-              <button 
-                onClick={() => setShowModal(false)}
-                className="px-6 py-2 rounded-xl text-sm font-bold text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button 
-                onClick={handleSave}
-                className="px-6 py-2 rounded-xl text-sm font-bold bg-[#71BF44] hover:bg-[#5da036] text-white transition-colors flex items-center gap-2"
-              >
-                <Save className="w-4 h-4" /> Guardar Regla
-              </button>
+              <button onClick={handleSaveRule} className="px-6 py-2 rounded-xl text-sm font-bold bg-[#71BF44] hover:bg-[#5da036] text-white transition-colors flex items-center gap-2"><Save className="w-4 h-4" /> Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Monitoreo Config */}
+      {showConfigModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 flex justify-between items-center">
+              <h3 className="font-bold text-lg">{editingConfig.id ? 'Editar Monitoreo' : 'Nuevo Monitoreo'}</h3>
+              <button onClick={() => setShowConfigModal(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Nombre del Monitoreo</label>
+                <input type="text" value={editingConfig.nombre || ''} onChange={e => setEditingConfig({...editingConfig, nombre: e.target.value})} className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-[#71BF44]/20 focus:border-[#71BF44] outline-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Ambiente</label>
+                  <select value={editingConfig.ambiente || 'V5'} onChange={e => setEditingConfig({...editingConfig, ambiente: e.target.value})} className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold">
+                    <option value="V5">V5</option>
+                    <option value="Colombia">Colombia</option>
+                    <option value="Panama">Panama</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Frecuencia</label>
+                  <select value={editingConfig.frecuencia || '1h'} onChange={e => setEditingConfig({...editingConfig, frecuencia: e.target.value})} className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold">
+                    <option value="5min">Cada 5 minutos</option>
+                    <option value="15min">Cada 15 minutos</option>
+                    <option value="1h">Cada Hora</option>
+                    <option value="12h">Cada 12 horas</option>
+                    <option value="DIARIO">Diario</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Proceso (SP Name)</label>
+                <input type="text" value={editingConfig.proceso_sp || ''} onChange={e => setEditingConfig({...editingConfig, proceso_sp: e.target.value})} className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-mono" placeholder="Ej: consulta_tablero_no_autorizados_2026_EC" />
+              </div>
+              
+              <div>
+                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Seleccionar Reglas a Monitorear</label>
+                <div className="mt-2 border border-neutral-200 dark:border-neutral-800 rounded-xl max-h-48 overflow-y-auto p-2 space-y-1">
+                  {rules.filter(r => r.ambiente === 'Todos' || r.ambiente === editingConfig.ambiente).map(rule => (
+                    <label key={rule.id} className="flex items-center gap-3 p-2 hover:bg-neutral-50 dark:hover:bg-white/5 rounded-lg cursor-pointer transition-colors">
+                      <input 
+                        type="checkbox" 
+                        checked={editingConfig.reglas_ids?.includes(rule.id)} 
+                        onChange={e => {
+                          const current = editingConfig.reglas_ids || [];
+                          if (e.target.checked) setEditingConfig({...editingConfig, reglas_ids: [...current, rule.id]});
+                          else setEditingConfig({...editingConfig, reglas_ids: current.filter(id => id !== rule.id)});
+                        }}
+                        className="w-4 h-4 rounded border-neutral-300 text-[#71BF44] focus:ring-[#71BF44]"
+                      />
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold">{rule.nombre}</span>
+                        <span className="text-[10px] text-neutral-500 font-mono">{rule.expresion_motivo}</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-neutral-200 dark:border-neutral-800 flex justify-end gap-3 bg-neutral-50 dark:bg-[#0c0c0c]">
+              <button onClick={handleSaveConfig} className="px-6 py-2 rounded-xl text-sm font-bold bg-[#71BF44] hover:bg-[#5da036] text-white transition-colors flex items-center gap-2"><Save className="w-4 h-4" /> Guardar Configuración</button>
             </div>
           </div>
         </div>
