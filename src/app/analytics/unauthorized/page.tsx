@@ -105,6 +105,24 @@ export default function UnauthorizedVouchersPage() {
   const { data: session } = useSession();
   const { showNotification } = useNotification();
   
+  const handleSync = async () => {
+    try {
+      setRefreshing(true);
+      showNotification('Iniciando sincronización forzada...', 'info');
+      // Llamada al SP de forzado (sin parámetros de país ya que es global en el backend)
+      const res = await fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=V5&Proceso=consulta_tablero_no_autorizados_2026_forzar`);
+      if (!res.ok) throw new Error('Error en la respuesta del servidor');
+      
+      showNotification('Sincronización enviada con éxito. Los datos se actualizarán en breve.', 'success');
+      // Refrescamos la vista actual después de un pequeño delay
+      setTimeout(() => fetchData(true), 2000);
+    } catch (err: any) {
+      showNotification(`Error al sincronizar: ${err.message}`, 'error');
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   // Case Creation States
   const [showCaseModal, setShowCaseModal] = useState(false);
   const [casePriority, setCasePriority] = useState('Media');
@@ -778,7 +796,7 @@ ${selectedIds.join(', ')}
           </div>
 
           <button 
-            onClick={() => fetchData(true)}
+            onClick={handleSync}
             disabled={refreshing}
             className="bg-neutral-900 border border-neutral-800 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all hover:bg-black hover:border-[#71BF44] flex items-center gap-3 shadow-2xl active:scale-95"
           >
@@ -787,69 +805,14 @@ ${selectedIds.join(', ')}
           </button>
         </div>
       </header>
-      {selectedAmbiente && (
+
+      {!selectedAmbiente ? (
+        <div className="flex flex-col items-center justify-center py-40 border-2 border-dashed border-neutral-100 dark:border-neutral-800/30 rounded-[40px] animate-in fade-in zoom-in duration-700">
+           <Globe className="w-16 h-16 text-neutral-200 dark:text-neutral-800 animate-pulse mb-6" />
+           <h2 className="text-xl font-black text-neutral-400 dark:text-neutral-600 uppercase tracking-[0.3em] text-center">Seleccione un Ambiente<br/><span className="text-xs tracking-widest opacity-50">para comenzar el monitoreo</span></h2>
+        </div>
+      ) : (
         <>
-          <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 mb-8">
-            <div className="xl:col-span-3">
-               <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2 font-black text-[10px] text-neutral-400 uppercase tracking-widest">
-                     <Globe className="w-4 h-4 text-[#71BF44]" /> Resumen por Localidad
-                  </div>
-                  <div className="flex items-center gap-1.5 px-3 py-1 bg-[#131313] rounded-lg border border-neutral-800">
-                     <span className="text-[9px] font-black text-neutral-500 uppercase tracking-tighter">Última Act:</span>
-                     <span className="text-[10px] font-mono font-bold text-[#71BF44]">{lastUpdate}</span>
-                  </div>
-               </div>
-               <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
-                  {(availableCountries || []).map((item, idx) => {
-                    if (!item) return null;
-                    const code = item.co_pais;
-                    const count = Number(item.count) || 0;
-                    const countryName = code !== null && code !== undefined ? (PAIS_MAP[Number(code)] || String(code)) : 'Desconocido';
-                    const isActive = selectedCountryCode === code;
-                    
-                    const totalCount = availableCountries.reduce((a, b) => a + (Number(b?.count) || 0), 0) || 1;
-
-                    return (
-                      <button 
-                       key={`${code}-${idx}`} 
-                       onClick={() => { 
-                         setSelectedCountryCode(isActive ? null : code); 
-                         setFilters(f => ({ ...f, co_pais: isActive ? '' : countryName }));
-                         setCurrentPage(1); 
-                       }}
-                       className={`bg-white dark:bg-[#111] border rounded-2xl p-4 shadow-sm relative overflow-hidden group transition-all text-left ${isActive ? 'border-[#71BF44] ring-2 ring-[#71BF44]/20' : 'border-neutral-200 dark:border-neutral-800 hover:border-[#71BF44]/50'}`}
-                      >
-                        <div className={`absolute top-0 right-0 w-16 h-16 rounded-bl-[40px] -mr-4 -mt-4 transition-all group-hover:scale-110 ${isActive ? 'bg-[#71BF44]/20' : 'bg-[#71BF44]/5'}`}></div>
-                        <span className="text-[9px] font-black text-neutral-400 uppercase block mb-1 truncate">{countryName}</span>
-                        <div className={`text-2xl font-black mb-1 ${isActive ? 'text-[#71BF44]' : 'text-neutral-900 dark:text-white'}`}>{count.toLocaleString()}</div>
-                        <div className="w-full h-1 bg-neutral-100 dark:bg-neutral-800 rounded-full mt-2 overflow-hidden">
-                           <div className="h-full bg-[#71BF44]" style={{ width: `${Math.min(100, (count / totalCount) * 100)}%` }}></div>
-                        </div>
-                      </button>
-                    );
-                  })}
-               </div>
-            </div>
-
-            <div className="bg-[#111] border border-neutral-800 rounded-[24px] p-6 flex flex-col justify-center border-t-2 border-t-[#71BF44]">
-               <div className="flex items-center gap-2 mb-4">
-                  <Activity className="w-5 h-5 text-[#71BF44]" />
-                  <h3 className="text-sm font-black text-white uppercase tracking-widest">Consolidado</h3>
-               </div>
-               <div className="space-y-4">
-                  <div className="flex items-end justify-between">
-                     <span className="text-[10px] font-bold text-neutral-500 uppercase">Total Entidad</span>
-                     <span className="text-2xl font-black text-white">{data.length.toLocaleString()}</span>
-                  </div>
-                  <div className="flex items-end justify-between">
-                     <span className="text-[10px] font-bold text-neutral-500 uppercase">En Vista</span>
-                     <span className="text-xl font-black text-[#71BF44]">{filteredData.length.toLocaleString()}</span>
-                  </div>
-               </div>
-            </div>
-          </div>
-
           {/* Timeline Chart */}
           <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[24px] p-6 mb-8 shadow-sm">
              <div className="flex items-center gap-2 mb-8">
@@ -890,8 +853,6 @@ ${selectedIds.join(', ')}
                 ))}
              </div>
           </div>
-        </>
-      )}
 
       {/* Filters Area */}
       <div className="flex flex-wrap items-center gap-6 mb-6">
@@ -1559,6 +1520,8 @@ ${selectedIds.join(', ')}
               </div>
            </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );
