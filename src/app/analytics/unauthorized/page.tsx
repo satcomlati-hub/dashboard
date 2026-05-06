@@ -164,18 +164,20 @@ export default function UnauthorizedVouchersPage() {
       let countries: any[] = [];
       if (Array.isArray(json)) {
         json.forEach(item => {
-          if (item.data) {
+          if (item && item.data) {
             try {
               const parsed = JSON.parse(item.data);
               if (Array.isArray(parsed)) countries = [...countries, ...parsed];
-            } catch(e) { console.error(e); }
-          } else {
+            } catch(e) { console.error('Error al parsear países:', e); }
+          } else if (item && item.co_pais) {
             countries.push(item);
           }
         });
       }
       
-      setAvailableCountries(countries);
+      // Filtrar elementos nulos y asegurar que sean únicos
+      const cleanCountries = countries.filter(c => c && (c.co_pais !== undefined && c.co_pais !== null));
+      setAvailableCountries(cleanCountries);
       setError(null);
     } catch (err: any) {
       showNotification(`Error: ${err.message}`, 'error');
@@ -221,6 +223,7 @@ export default function UnauthorizedVouchersPage() {
       
       const uniqueMap = new Map();
       flattened.forEach(v => {
+        if (!v) return;
         const id = v.Column1 || (v as any).co_id_comprobante;
         if (id && !uniqueMap.has(id)) uniqueMap.set(id, v);
       });
@@ -794,14 +797,18 @@ ${selectedIds.join(', ')}
                   </div>
                </div>
                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
-                  {availableCountries.map((item) => {
+                  {(availableCountries || []).map((item, idx) => {
+                    if (!item) return null;
                     const code = item.co_pais;
-                    const count = item.count;
-                    const countryName = PAIS_MAP[Number(code)] || code.toString();
+                    const count = Number(item.count) || 0;
+                    const countryName = code !== null && code !== undefined ? (PAIS_MAP[Number(code)] || String(code)) : 'Desconocido';
                     const isActive = selectedCountryCode === code;
+                    
+                    const totalCount = availableCountries.reduce((a, b) => a + (Number(b?.count) || 0), 0) || 1;
+
                     return (
                       <button 
-                       key={code} 
+                       key={`${code}-${idx}`} 
                        onClick={() => { 
                          setSelectedCountryCode(isActive ? null : code); 
                          setFilters(f => ({ ...f, co_pais: isActive ? '' : countryName }));
@@ -813,7 +820,7 @@ ${selectedIds.join(', ')}
                         <span className="text-[9px] font-black text-neutral-400 uppercase block mb-1 truncate">{countryName}</span>
                         <div className={`text-2xl font-black mb-1 ${isActive ? 'text-[#71BF44]' : 'text-neutral-900 dark:text-white'}`}>{count.toLocaleString()}</div>
                         <div className="w-full h-1 bg-neutral-100 dark:bg-neutral-800 rounded-full mt-2 overflow-hidden">
-                           <div className="h-full bg-[#71BF44]" style={{ width: `${Math.min(100, (count / (availableCountries.reduce((a, b) => a + b.count, 0) || 1)) * 100)}%` }}></div>
+                           <div className="h-full bg-[#71BF44]" style={{ width: `${Math.min(100, (count / totalCount) * 100)}%` }}></div>
                         </div>
                       </button>
                     );
