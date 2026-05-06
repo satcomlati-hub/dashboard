@@ -64,13 +64,11 @@ interface Voucher {
 
 const AMBIENTE_DOMAINS: Record<string, string> = {
   'V5': 'https://www5.mysatcomla.com',
-  'Panama': 'https://app.mysatcomla.com',
   'Colombia': 'https://colombia.mysatcomla.com',
 };
 
 const AMBIENTE_LABELS: Record<string, string> = {
   'V5': 'V5',
-  'Panama': 'Panm.',
   'Colombia': 'Colombia-AWS',
 };
 
@@ -812,7 +810,7 @@ ${selectedIds.join(', ')}
             <Globe className="w-4 h-4 text-[#71BF44]" />
             <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">Ambiente:</span>
             <div className="flex gap-2">
-               {['V5', 'Panama', 'Colombia'].map(amb => (
+               {['V5', 'Colombia'].map(amb => (
                  <button
                   key={amb}
                   onClick={() => { 
