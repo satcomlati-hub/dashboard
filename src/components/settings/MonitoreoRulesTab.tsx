@@ -45,8 +45,9 @@ export default function MonitoreoRulesTab() {
 
   const handleSave = async () => {
     try {
-      if (!editingRule.nombre || !editingRule.expresion_estado || !editingRule.expresion_motivo) {
-        showNotification('Complete los campos obligatorios', 'error');
+      // expresion_estado puede ser vacía si la regla se basa únicamente en el motivo
+      if (!editingRule.nombre || !editingRule.expresion_motivo) {
+        showNotification('El Nombre y la Expresión de Motivo son obligatorios', 'error');
         return;
       }
 
@@ -237,44 +238,44 @@ export default function MonitoreoRulesTab() {
             
             <div className="p-6 grid grid-cols-2 gap-6 max-h-[70vh] overflow-y-auto">
               <div className="col-span-2">
-                <label className="block text-xs font-bold text-neutral-500 uppercase tracking-widest mb-2">Nombre de la Regla</label>
+                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Nombre de la Regla</label>
                 <input 
                   type="text" 
                   value={editingRule.nombre || ''}
                   onChange={e => setEditingRule({...editingRule, nombre: e.target.value})}
-                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#71BF44] transition-colors"
+                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#71BF44]/20 focus:border-[#71BF44] transition-all hover:border-neutral-300 dark:hover:border-neutral-700"
                   placeholder="Ej: Caída masiva SRI"
                 />
               </div>
 
               <div className="col-span-1">
-                <label className="block text-xs font-bold text-neutral-500 uppercase tracking-widest mb-2">Expresión de Estado</label>
+                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Expresión de Estado</label>
                 <input 
                   type="text" 
                   value={editingRule.expresion_estado || ''}
                   onChange={e => setEditingRule({...editingRule, expresion_estado: e.target.value})}
-                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#71BF44] transition-colors font-mono"
-                  placeholder="Regex o texto (ej: PendienteValidacion)"
+                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#71BF44]/20 focus:border-[#71BF44] transition-all hover:border-neutral-300 dark:hover:border-neutral-700"
+                  placeholder="Opcional (Regex o texto)"
                 />
               </div>
 
               <div className="col-span-1">
-                <label className="block text-xs font-bold text-neutral-500 uppercase tracking-widest mb-2">Expresión de Motivo</label>
+                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Expresión de Motivo</label>
                 <input 
                   type="text" 
                   value={editingRule.expresion_motivo || ''}
                   onChange={e => setEditingRule({...editingRule, expresion_motivo: e.target.value})}
-                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#71BF44] transition-colors font-mono"
-                  placeholder="Regex o texto (ej: timeout)"
+                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#71BF44]/20 focus:border-[#71BF44] transition-all hover:border-neutral-300 dark:hover:border-neutral-700"
+                  placeholder="Obligatorio (Regex o texto)"
                 />
               </div>
 
               <div className="col-span-1">
-                <label className="block text-xs font-bold text-neutral-500 uppercase tracking-widest mb-2">Modo de Agrupación</label>
+                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Modo de Agrupación</label>
                 <select 
                   value={editingRule.modo || 'POR_EMISOR'}
                   onChange={e => setEditingRule({...editingRule, modo: e.target.value})}
-                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#71BF44]"
+                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#71BF44]/20 focus:border-[#71BF44] transition-all cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2024%2024%22%20stroke%3D%22%239CA3AF%22%3E%3Cpath%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%222%22%20d%3D%22M19%209l-7%207-7-7%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.25rem_1.25rem] bg-[position:right_1rem_center] bg-no-repeat pr-10 hover:border-neutral-300 dark:hover:border-neutral-700"
                 >
                   <option value="POR_EMISOR">Por Emisor Individual</option>
                   <option value="GLOBAL">Cualquier Emisor (Global)</option>
@@ -282,21 +283,21 @@ export default function MonitoreoRulesTab() {
               </div>
 
               <div className="col-span-1">
-                <label className="block text-xs font-bold text-neutral-500 uppercase tracking-widest mb-2">Eventos Mínimos</label>
+                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Eventos Mínimos</label>
                 <input 
                   type="number" 
                   value={editingRule.minimo_eventos || 1}
                   onChange={e => setEditingRule({...editingRule, minimo_eventos: Number(e.target.value)})}
-                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#71BF44]"
+                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#71BF44]/20 focus:border-[#71BF44] transition-all hover:border-neutral-300 dark:hover:border-neutral-700"
                 />
               </div>
 
               <div className="col-span-1">
-                <label className="block text-xs font-bold text-neutral-500 uppercase tracking-widest mb-2">Frecuencia Evaluación</label>
+                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Frecuencia Evaluación</label>
                 <select 
                   value={editingRule.frecuencia || 'DIARIO'}
                   onChange={e => setEditingRule({...editingRule, frecuencia: e.target.value})}
-                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#71BF44]"
+                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#71BF44]/20 focus:border-[#71BF44] transition-all cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2024%2024%22%20stroke%3D%22%239CA3AF%22%3E%3Cpath%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%222%22%20d%3D%22M19%209l-7%207-7-7%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.25rem_1.25rem] bg-[position:right_1rem_center] bg-no-repeat pr-10 hover:border-neutral-300 dark:hover:border-neutral-700"
                 >
                   <option value="TIEMPO_REAL">Tiempo Real (Webhook)</option>
                   <option value="HORARIO">Cada Hora</option>
@@ -307,16 +308,15 @@ export default function MonitoreoRulesTab() {
               </div>
 
               <div className="col-span-1">
-                <label className="block text-xs font-bold text-neutral-500 uppercase tracking-widest mb-2">Ambiente Objetivo</label>
+                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Ambiente Objetivo</label>
                 <select 
                   value={editingRule.ambiente || 'Todos'}
                   onChange={e => setEditingRule({...editingRule, ambiente: e.target.value})}
-                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#71BF44]"
+                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#71BF44]/20 focus:border-[#71BF44] transition-all cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2024%2024%22%20stroke%3D%22%239CA3AF%22%3E%3Cpath%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%222%22%20d%3D%22M19%209l-7%207-7-7%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.25rem_1.25rem] bg-[position:right_1rem_center] bg-no-repeat pr-10 hover:border-neutral-300 dark:hover:border-neutral-700"
                 >
                   <option value="Todos">Cualquiera (Todos)</option>
                   <option value="V5">V5</option>
-                  <option value="Panama">Panamá</option>
-                  <option value="Colombia">Colombia AWS</option>
+                  <option value="Colombia">Colombia-AWS</option>
                 </select>
               </div>
             </div>
