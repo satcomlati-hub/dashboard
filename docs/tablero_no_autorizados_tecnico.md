@@ -1,6 +1,9 @@
 # Documentación Técnica: Tablero de Comprobantes No Autorizados 2026
 
 ## 1. Arquitectura de Consulta
+> [!IMPORTANT]
+> El procedimiento monolítico `consulta_tablero_no_autorizados_2026` ha sido **eliminado** y reemplazado por la arquitectura segmentada descrita a continuación para evitar bloqueos y mejorar la trazabilidad.
+
 El dashboard de "Comprobantes No Autorizados" utiliza una arquitectura segmentada en dos fases para optimizar el rendimiento y permitir la especialización por país/ambiente.
 
 ### Fase 1: Descubrimiento de Localidades
