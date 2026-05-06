@@ -1,5 +1,5 @@
-Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+USE [sat_comprobante]
+GO
 IF OBJECT_ID('[dbo].[spct_reproceso_resumen_by_pais_hosting]') IS NOT NULL
 BEGIN
     DECLARE @NombreBK NVARCHAR(255) = 'spct_reproceso_resumen_by_pais_hosting_BK_' + REPLACE(CONVERT(VARCHAR, GETDATE(), 106), ' ', '_');
@@ -39,19 +39,29 @@ AS
               
 -- sp_recompile spct_reproceso_resumen_by_pais                
 Begin    
-  
-  
- if exists(SELECT *  FROM com_control_ejecucion  where FechaInicio > dateadd(MINUTE,-10, getdate())                 
- and Procedimiento = @sp )                
- begin                
-	print 'Ya se encuentra en ejecucion '+ @sp                  
-	SELECT *  FROM com_control_ejecucion  where FechaInicio > dateadd(MINUTE,-10, getdate())                 
-	and Procedimiento = @sp 
-	return 0                
- end                
- --Inserta control                
- INSERT INTO sat_comprobante.dbo.com_control_ejecucion (Procedimiento, FechaInicio, Usuario)                
- VALUES (@sp, GETDATE(), SYSTEM_USER);                
+    -- 1. Intentar obtener el bloqueo de aplicación (AppLock)
+    -- @LockTimeout = 0: No espera; si está ocupado, falla de inmediato.
+    DECLARE @res_lock INT;
+    EXEC @res_lock = sp_getapplock @Resource = @sp, 
+                                   @LockMode = 'Exclusive', 
+                                   @LockOwner = 'Session', 
+                                   @LockTimeout = 0;
+
+    IF @res_lock < 0
+    BEGIN
+        PRINT '>>> ALERTA: El procedimiento ' + @sp + ' ya tiene una instancia activa (AppLock).';
+        -- Mantenemos la consulta a la tabla para visibilidad en el dashboard
+        SELECT * FROM sat_comprobante.dbo.com_control_ejecucion WHERE Procedimiento = @sp;
+        RETURN 0;
+    END
+
+    -- 2. Registro en tabla de control (para visibilidad histórica/dashboard)
+    -- Si el registro no existe, lo insertamos.
+    IF NOT EXISTS(SELECT 1 FROM sat_comprobante.dbo.com_control_ejecucion WHERE Procedimiento = @sp)
+    BEGIN
+        INSERT INTO sat_comprobante.dbo.com_control_ejecucion (Procedimiento, FechaInicio, Usuario)
+        VALUES (@sp, GETDATE(), SYSTEM_USER);
+    END
    
   
   
@@ -161,20 +171,20 @@ END
 
      -- Elimina control antes de relanzar el error
      DELETE FROM sat_comprobante.dbo.com_control_ejecucion WHERE Procedimiento = @sp;
+     
+     -- Liberar AppLock
+     EXEC sp_releaseapplock @Resource = @sp, @LockOwner = 'Session';
 
      RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
   END CATCH                
   
  --WAITFOR DELAY '00:03:00';                    
- --Elimina control                
- print 'Elimina el control de ejecucion '+ @sp               
- DELETE FROM sat_comprobante.dbo.com_control_ejecucion WHERE Procedimiento = @sp;   
- select * from  sat_comprobante.dbo.com_control_ejecucion  
- return 0                
-end   
+  --Elimina control                
+  PRINT 'Elimina el control de ejecucion '+ @sp               
+  DELETE FROM sat_comprobante.dbo.com_control_ejecucion WHERE Procedimiento = @sp;   
+  
+  -- Liberar AppLock
+  EXEC sp_releaseapplock @Resource = @sp, @LockOwner = 'Session';
 
-
-
-
-
-Completion time: 2026-05-04T10:24:50.0799209-05:00
+  RETURN 0                
+end

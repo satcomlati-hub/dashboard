@@ -1,5 +1,6 @@
-Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+USE [sat_comprobante]
+GO
+
 IF OBJECT_ID('[dbo].[spct_reproceso_resumen_by_pais]') IS NOT NULL
 BEGIN
     DECLARE @NombreBK NVARCHAR(255) = 'spct_reproceso_resumen_by_pais_BK_' + REPLACE(CONVERT(VARCHAR, GETDATE(), 106), ' ', '_');
@@ -15,84 +16,86 @@ BEGIN
     END
 END
 GO
-CREATE   PROCEDURE [dbo].[spct_reproceso_resumen_by_pais]                     
-    @pais int = null   
-    ,@borrar bit = 0 
-    ,@fechaFin date = null  
-    ,@fechaInicio date = null  
+
+CREATE PROCEDURE [dbo].[spct_reproceso_resumen_by_pais]                     
+    @pais INT = NULL,
+    @borrar BIT = 0,
+    @fechaFin DATE = NULL,
+    @fechaInicio DATE = NULL  
 AS               
 BEGIN
-	BEGIN TRY
-	DECLARE @inicio_proceso DATETIME = GETDATE(),
-	        @NombreSP VARCHAR(200) = 'spct_reproceso_resumen_by_pais',
-            @params NVARCHAR(MAX);
+    SET NOCOUNT ON;
+    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
-    SET @params = CONCAT('@pais: ', ISNULL(CAST(@pais AS VARCHAR), 'NULL'), 
-                         ', @borrar: ', ISNULL(CAST(@borrar AS VARCHAR), 'NULL'), 
-                         ', @fechaFin: ', ISNULL(CAST(@fechaFin AS VARCHAR), 'NULL'), 
-                         ', @fechaInicio: ', ISNULL(CAST(@fechaInicio AS VARCHAR), 'NULL'));
+    DECLARE @inicio_proceso DATETIME = GETDATE(),
+            @NombreSP VARCHAR(200) = 'spct_reproceso_resumen_by_pais',
+            @params NVARCHAR(MAX),
+            @error_msg NVARCHAR(MAX),
+            @nombreBDD NVARCHAR(128) = DB_NAME();
 
-    -- Declaramos la variable para capturar el nombre de la BDD
-    DECLARE @nombreBDD NVARCHAR(128) = DB_NAME();
+    -- LOG EJECUTIVO: Formato replicable para depuración
+    SET @params = 'EXEC [dbo].[' + @NombreSP + '] ' +
+                  '@pais = ' + ISNULL(CAST(@pais AS VARCHAR), 'NULL') + ', ' +
+                  '@borrar = ' + ISNULL(CAST(@borrar AS VARCHAR), 'NULL') + ', ' +
+                  '@fechaFin = ' + ISNULL('''' + CAST(@fechaFin AS VARCHAR) + '''', 'NULL') + ', ' +
+                  '@fechaInicio = ' + ISNULL('''' + CAST(@fechaInicio AS VARCHAR) + '''', 'NULL');
 
-	--select @@SERVERNAME
-    -- Validación: Verifica servidor Y nombre de la base de datos
-    IF ((@@SERVERNAME = 'SRVBDDMSPROD\MSPROD2022' or @@SERVERNAME = 'EC2AMAZ-IVL1JSC' )AND @nombreBDD = 'sat_comprobante')
-    BEGIN
-        PRINT 'Ejecución cancelada: Hosting trabaja con JOB en el entorno de producción: ' + @nombreBDD;
-        
-        -- Log de cancelación como éxito informativo
-        DECLARE @fin_cancel DATETIME = GETDATE();
-        EXEC [dbo].[spco_crear_log_consulta] 
-            @i_lc_nombre_sp = @NombreSP,
-            @i_lc_origen = 'BDD',
-            @i_lc_inicio = @inicio_proceso,
-            @i_lc_fin = @fin_cancel,
-            @i_lc_error = 'Ejecución cancelada por restricciones de entorno (Hosting/JOB)';
-            
-        RETURN 0;
-    END
-    ELSE
-    BEGIN
-        -- Si no es el entorno restringido, ejecuta el procedimiento remoto
+    BEGIN TRY
+        -- Validación de Entorno Restringido (Hosting / JOB Producción)
+        IF ((@@SERVERNAME = 'SRVBDDMSPROD\MSPROD2022' OR @@SERVERNAME = 'EC2AMAZ-IVL1JSC') AND @nombreBDD = 'sat_comprobante')
+        BEGIN
+            PRINT '>>> Ejecución cancelada: Hosting trabaja con JOB en entorno PROD: ' + @nombreBDD;
+            SET @error_msg = 'Ejecución cancelada por restricciones de entorno (Hosting/JOB)';
+            GOTO REGISTRAR_LOG;
+        END
+
+        -- Ejecución del proceso remoto con formato de legibilidad (1 parámetro por línea)
         EXEC sat_comprobante.dbo.spct_reproceso_resumen_by_pais_hosting 
-            @pais, @borrar, @fechaFin, @fechaInicio;
+            @pais = @pais, 
+            @borrar = @borrar, 
+            @fechaFin = @fechaFin, 
+            @fechaInicio = @fechaInicio;
 
-        -- Log de éxito final
-        DECLARE @fin_log DATETIME = GETDATE();
+        SET @error_msg = 'rows:Ejecutado';
+
+        REGISTRAR_LOG:
+        DECLARE @fin_proceso DATETIME = GETDATE();
         EXEC [dbo].[spco_crear_log_consulta] 
             @i_lc_nombre_sp = @NombreSP,
-            @i_lc_origen = 'BDD',
-            @i_lc_inicio = @inicio_proceso,
-            @i_lc_fin = @fin_log;
-    END
-    END
-	END TRY
-	BEGIN CATCH
-		DECLARE @ErrorMessage NVARCHAR(MAX) = ERROR_MESSAGE();
-		
-		-- Log de error en auditoría
-		DECLARE @fin_error DATETIME = GETDATE();
-		EXEC [dbo].[spco_crear_log_consulta] 
-			@i_lc_nombre_sp = @NombreSP,
-			@i_lc_origen = 'BDD',
-			@i_lc_inicio = @inicio_proceso,
-			@i_lc_fin = @fin_error,
-			@i_lc_error = @ErrorMessage;
+            @i_lc_origen    = 'BDD',
+            @i_lc_emisor    = NULL,
+            @i_lc_parametros = @params,
+            @i_lc_inicio    = @inicio_proceso,
+            @i_lc_fin       = @fin_proceso,
+            @i_lc_error     = @error_msg;
 
-		-- Enviar alerta a Postgres
-		EXEC [master].[dbo].[spct_insertar_alerta_postgres]
-			@severity = 'Error',
-			@process = @NombreSP,
-			@country = @pais,
-			@issuing = '-',
-			@message = @ErrorMessage,
-			@extra_info = '{"Error": "Error en reproceso resumen pais"}';
+    END TRY
+    BEGIN CATCH
+        DECLARE @ErrorMessage NVARCHAR(MAX) = ERROR_MESSAGE(),
+                @fin_error DATETIME = GETDATE();
+        
+        SET @error_msg = 'rows:Error - ' + @ErrorMessage;
 
-		THROW;
-	END CATCH
+        -- Log de error en auditoría
+        EXEC [dbo].[spco_crear_log_consulta] 
+            @i_lc_nombre_sp = @NombreSP,
+            @i_lc_origen    = 'BDD',
+            @i_lc_parametros = @params,
+            @i_lc_inicio    = @inicio_proceso,
+            @i_lc_fin       = @fin_error,
+            @i_lc_error     = @error_msg;
+
+        -- Alerta a Postgres
+        EXEC [master].[dbo].[spct_insertar_alerta_postgres]
+            @severity = 'Error',
+            @process  = @NombreSP,
+            @country  = @pais,
+            @message  = @ErrorMessage;
+
+        PRINT 'ERROR EN ' + @NombreSP + ': ' + @ErrorMessage;
+        THROW;
+    END CATCH
+
+    PRINT '--- FIN PROCESO: ' + @NombreSP + ' [Tiempo: ' + CAST(DATEDIFF(SECOND, @inicio_proceso, GETDATE()) AS VARCHAR) + 's] ---';
 END
-
-
-
-Completion time: 2026-05-04T10:12:50.2074171-05:00
+GO

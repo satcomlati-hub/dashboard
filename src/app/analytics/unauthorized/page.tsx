@@ -133,6 +133,8 @@ export default function UnauthorizedVouchersPage() {
   const [sortField, setSortField] = useState<SortField>('co_hora_in');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [selectedAmbiente, setSelectedAmbiente] = useState<string>('');
+  const [availableCountries, setAvailableCountries] = useState<{co_pais: number, count: number}[]>([]);
+  const [selectedCountryCode, setSelectedCountryCode] = useState<number | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [groupBy, setGroupBy] = useState<string[]>([]);
 
@@ -151,17 +153,55 @@ export default function UnauthorizedVouchersPage() {
     co_punto_emision: '',
   });
 
-  const fetchData = useCallback(async (isRefresh = false, ambienteOverride?: string) => {
-    const ambiente = ambienteOverride || selectedAmbiente;
+  const fetchCountries = useCallback(async (ambiente: string) => {
     if (!ambiente) return;
+    try {
+      setLoading(true);
+      const res = await fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=${ambiente}&SP=consulta_tablero_paises_ambiente_2026`);
+      if (!res.ok) throw new Error('Error al obtener lista de países');
+      const json = await res.json();
+      
+      let countries: any[] = [];
+      if (Array.isArray(json)) {
+        json.forEach(item => {
+          if (item.data) {
+            try {
+              const parsed = JSON.parse(item.data);
+              if (Array.isArray(parsed)) countries = [...countries, ...parsed];
+            } catch(e) { console.error(e); }
+          } else {
+            countries.push(item);
+          }
+        });
+      }
+      
+      setAvailableCountries(countries);
+      setError(null);
+    } catch (err: any) {
+      showNotification(`Error: ${err.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [showNotification]);
+
+  const fetchData = useCallback(async (isRefresh = false, countryCodeOverride?: number) => {
+    const countryCode = countryCodeOverride || selectedCountryCode;
+    if (!selectedAmbiente || !countryCode) return;
+
+    // Lógica de selección de SP según requerimiento
+    let spName = 'consulta_tablero_no_autorizados_2026_OTROS';
+    if (countryCode === 593) spName = 'consulta_tablero_no_autorizados_2026_EC';
+    else if (countryCode === 57) spName = 'consulta_tablero_no_autorizados_2026_COL';
+    else if (countryCode === 507) spName = 'consulta_tablero_no_autorizados_2026_PA';
+    else if (countryCode === 506) spName = 'consulta_tablero_no_autorizados_2026_CR';
 
     try {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       
-      const res = await fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=${ambiente}`);
+      const res = await fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=${selectedAmbiente}&SP=${spName}&Pais=${countryCode}`);
 
-      if (!res.ok) throw new Error('Error al obtener datos');
+      if (!res.ok) throw new Error('Error al obtener datos de comprobantes');
       
       const json: any = await res.json();
       let flattened: Voucher[] = [];
@@ -172,10 +212,8 @@ export default function UnauthorizedVouchersPage() {
             try {
               const parsed = JSON.parse(item.data);
               if (Array.isArray(parsed)) flattened = [...flattened, ...parsed];
-            } catch (e) {
-              console.error('Error parsing nested JSON', e);
-            }
-          } else if (item.ambiente || item.Column1) {
+            } catch (e) { console.error('Error parsing nested JSON', e); }
+          } else if (item.ambiente || item.Column1 || item.co_id_comprobante) {
             flattened.push(item);
           }
         });
@@ -197,13 +235,21 @@ export default function UnauthorizedVouchersPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedAmbiente]);
+  }, [selectedAmbiente, selectedCountryCode]);
 
   useEffect(() => {
     if (selectedAmbiente) {
+      fetchCountries(selectedAmbiente);
+      setSelectedCountryCode(null);
+      setData([]);
+    }
+  }, [selectedAmbiente, fetchCountries]);
+
+  useEffect(() => {
+    if (selectedCountryCode) {
       fetchData();
     }
-  }, [selectedAmbiente, fetchData]);
+  }, [selectedCountryCode, fetchData]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -257,7 +303,8 @@ export default function UnauthorizedVouchersPage() {
 
   const maxDateCount = useMemo(() => Math.max(...stats.sortedDates.map(d => d[1]), 1), [stats.sortedDates]);
 
-  // Selección automática del primer país al cargar datos
+  // Selección automática eliminada para dar paso a selección manual por país
+  /*
   useEffect(() => {
     if (data.length > 0 && selectedAmbiente && !anyFilterActive) {
       const countries = Object.keys(stats.byPais);
@@ -268,6 +315,7 @@ export default function UnauthorizedVouchersPage() {
       }
     }
   }, [data, selectedAmbiente, anyFilterActive, stats.byPais]);
+  */
 
   const lastUpdate = useMemo(() => {
     if (data.length === 0) return '---';
@@ -746,20 +794,26 @@ ${selectedIds.join(', ')}
                   </div>
                </div>
                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
-                  {Object.entries(stats.byPais).map(([code, count]) => {
-                    const countryName = PAIS_MAP[Number(code)] || code;
-                    const isActive = filters.co_pais === countryName;
+                  {availableCountries.map((item) => {
+                    const code = item.co_pais;
+                    const count = item.count;
+                    const countryName = PAIS_MAP[Number(code)] || code.toString();
+                    const isActive = selectedCountryCode === code;
                     return (
                       <button 
                        key={code} 
-                       onClick={() => { setFilters(f => ({ ...f, co_pais: isActive ? '' : countryName })); setCurrentPage(1); }}
-                       className={`bg-white dark:bg-[#111] border rounded-2xl p-4 shadow-sm relative overflow-hidden group transition-all text-left ${isActive ? 'border-[#71BF44] ring-2 ring-[#71BF44]/20' : 'border-neutral-200 dark:border-neutral-800 border-neutral-200 dark:border-neutral-800 hover:border-[#71BF44]/50'}`}
+                       onClick={() => { 
+                         setSelectedCountryCode(isActive ? null : code); 
+                         setFilters(f => ({ ...f, co_pais: isActive ? '' : countryName }));
+                         setCurrentPage(1); 
+                       }}
+                       className={`bg-white dark:bg-[#111] border rounded-2xl p-4 shadow-sm relative overflow-hidden group transition-all text-left ${isActive ? 'border-[#71BF44] ring-2 ring-[#71BF44]/20' : 'border-neutral-200 dark:border-neutral-800 hover:border-[#71BF44]/50'}`}
                       >
                         <div className={`absolute top-0 right-0 w-16 h-16 rounded-bl-[40px] -mr-4 -mt-4 transition-all group-hover:scale-110 ${isActive ? 'bg-[#71BF44]/20' : 'bg-[#71BF44]/5'}`}></div>
                         <span className="text-[9px] font-black text-neutral-400 uppercase block mb-1 truncate">{countryName}</span>
-                        <div className={`text-2xl font-black mb-1 ${isActive ? 'text-[#71BF44]' : 'text-neutral-900 dark:text-white'}`}>{count}</div>
+                        <div className={`text-2xl font-black mb-1 ${isActive ? 'text-[#71BF44]' : 'text-neutral-900 dark:text-white'}`}>{count.toLocaleString()}</div>
                         <div className="w-full h-1 bg-neutral-100 dark:bg-neutral-800 rounded-full mt-2 overflow-hidden">
-                           <div className="h-full bg-[#71BF44]" style={{ width: `${(count / data.length) * 100}%` }}></div>
+                           <div className="h-full bg-[#71BF44]" style={{ width: `${Math.min(100, (count / (availableCountries.reduce((a, b) => a + b.count, 0) || 1)) * 100)}%` }}></div>
                         </div>
                       </button>
                     );
@@ -840,6 +894,8 @@ ${selectedIds.join(', ')}
                   key={amb}
                   onClick={() => { 
                     setSelectedAmbiente(amb); 
+                    setSelectedCountryCode(null);
+                    setAvailableCountries([]);
                     setCurrentPage(1); 
                     setData([]); 
                     setFilters({
