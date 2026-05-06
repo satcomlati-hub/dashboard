@@ -20,18 +20,19 @@ export async function POST(req: NextRequest) {
     const payload = await req.json();
     const result = await pool.query(
       `INSERT INTO sat_monitoreo.monitoreo_config (
-        nombre, ambiente, proceso_sp, frecuencia, 
+        nombre, ambientes, proceso_sp, frecuencia, 
         reglas_ids, esta_activo
       ) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
       [
         payload.nombre,
-        payload.ambiente,
+        payload.ambientes || [],
         payload.proceso_sp,
         payload.frecuencia,
         payload.reglas_ids || [],
         payload.esta_activo !== false
       ]
     );
+
     return NextResponse.json({ data: result.rows[0] });
   } catch (error: any) {
     console.error('Error creating monitoreo config:', error);

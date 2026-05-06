@@ -21,7 +21,7 @@ interface ReglaMonitoreo {
 interface MonitoreoConfig {
   id: string;
   nombre: string;
-  ambiente: string;
+  ambientes: string[];
   proceso_sp: string;
   frecuencia: string;
   reglas_ids: string[];
@@ -185,7 +185,7 @@ export default function MonitoreoRulesTab({ initialTab = 'rules' }: { initialTab
               </h3>
               <p className="text-xs text-neutral-500">Configura qué procesos ejecutar y qué conjunto de reglas aplicar.</p>
             </div>
-            <button onClick={() => { setEditingConfig({ ambiente: 'V5', esta_activo: true, reglas_ids: [] }); setShowConfigModal(true); }} className="bg-[#71BF44] hover:bg-[#5da036] text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Monitoreo</button>
+            <button onClick={() => { setEditingConfig({ ambientes: ['V5'], esta_activo: true, reglas_ids: [] }); setShowConfigModal(true); }} className="bg-[#71BF44] hover:bg-[#5da036] text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Monitoreo</button>
           </div>
 
           <div className="overflow-x-auto border border-neutral-200 dark:border-neutral-800 rounded-2xl">
@@ -205,7 +205,9 @@ export default function MonitoreoRulesTab({ initialTab = 'rules' }: { initialTab
                     <td className="px-6 py-4">{config.esta_activo ? <Play className="w-4 h-4 text-green-500" /> : <Pause className="w-4 h-4 text-neutral-400" />}</td>
                     <td className="px-6 py-4">
                       <div className="font-bold">{config.nombre}</div>
-                      <div className="text-[10px] text-neutral-500 uppercase">{config.ambiente} • {config.proceso_sp}</div>
+                      <div className="text-[10px] text-neutral-500 uppercase">
+                        {config.ambientes?.join(', ') || 'N/A'} • {config.proceso_sp}
+                      </div>
                     </td>
                     <td className="px-6 py-4 flex items-center gap-2 text-neutral-500"><Clock className="w-3 h-3" /> {config.frecuencia}</td>
                     <td className="px-6 py-4"><span className="px-2 py-1 bg-[#71BF44]/10 text-[#71BF44] rounded text-xs font-bold">{config.reglas_ids?.length || 0} reglas</span></td>
@@ -241,7 +243,6 @@ export default function MonitoreoRulesTab({ initialTab = 'rules' }: { initialTab
                     <option value="Todos">Todos</option>
                     <option value="V5">V5</option>
                     <option value="Colombia">Colombia</option>
-                    <option value="Panama">Panama</option>
                   </select>
                 </div>
                 <div>
@@ -276,12 +277,24 @@ export default function MonitoreoRulesTab({ initialTab = 'rules' }: { initialTab
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Ambiente</label>
-                  <select value={editingConfig.ambiente || 'V5'} onChange={e => setEditingConfig({...editingConfig, ambiente: e.target.value})} className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold">
-                    <option value="V5">V5</option>
-                    <option value="Colombia">Colombia</option>
-                    <option value="Panama">Panama</option>
-                  </select>
+                  <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Ambientes</label>
+                  <div className="flex gap-2">
+                    {['V5', 'Colombia'].map(amb => (
+                      <label key={amb} className="flex items-center gap-2 bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-3 py-2 cursor-pointer transition-colors hover:border-[#71BF44]">
+                        <input 
+                          type="checkbox"
+                          checked={editingConfig.ambientes?.includes(amb)}
+                          onChange={e => {
+                            const current = editingConfig.ambientes || [];
+                            if (e.target.checked) setEditingConfig({...editingConfig, ambientes: [...current, amb]});
+                            else setEditingConfig({...editingConfig, ambientes: current.filter(a => a !== amb)});
+                          }}
+                          className="w-4 h-4 rounded border-neutral-300 text-[#71BF44] focus:ring-[#71BF44]"
+                        />
+                        <span className="text-xs font-bold">{amb}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Frecuencia</label>
@@ -302,7 +315,7 @@ export default function MonitoreoRulesTab({ initialTab = 'rules' }: { initialTab
               <div>
                 <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Seleccionar Reglas a Monitorear</label>
                 <div className="mt-2 border border-neutral-200 dark:border-neutral-800 rounded-xl max-h-48 overflow-y-auto p-2 space-y-1">
-                  {rules.filter(r => r.ambiente === 'Todos' || r.ambiente === editingConfig.ambiente).map(rule => (
+                  {rules.filter(r => r.ambiente === 'Todos' || editingConfig.ambientes?.includes(r.ambiente)).map(rule => (
                     <label key={rule.id} className="flex items-center gap-3 p-2 hover:bg-neutral-50 dark:hover:bg-white/5 rounded-lg cursor-pointer transition-colors">
                       <input 
                         type="checkbox" 
