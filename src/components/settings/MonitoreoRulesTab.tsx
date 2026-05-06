@@ -165,7 +165,7 @@ export default function MonitoreoRulesTab({ initialTab = 'rules' }: { initialTab
                       <div className="text-[10px] text-neutral-500 uppercase">{rule.ambiente}</div>
                     </td>
                     <td className="px-6 py-4 max-w-xs truncate font-mono text-[10px] text-neutral-400">{rule.expresion_motivo}</td>
-                    <td className="px-6 py-4"><span className="px-2 py-1 bg-green-500/10 text-green-500 rounded text-xs font-bold">>= {rule.minimo_eventos}</span></td>
+                    <td className="px-6 py-4"><span className="px-2 py-1 bg-green-500/10 text-green-500 rounded text-xs font-bold">{'>='} {rule.minimo_eventos}</span></td>
                     <td className="px-6 py-4 text-right">
                       <button onClick={() => { setEditingRule(rule); setShowRuleModal(true); }} className="p-2 text-blue-500"><Edit2 className="w-4 h-4" /></button>
                       <button onClick={() => deleteRule(rule.id)} className="p-2 text-red-500"><Trash2 className="w-4 h-4" /></button>
