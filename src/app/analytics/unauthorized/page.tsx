@@ -1291,6 +1291,8 @@ ${selectedIds.join(', ')}
                  </button>
               </div>
 
+              <div className="max-h-[60vh] overflow-y-auto custom-scrollbar">
+
               <div className="flex border-b border-neutral-100 dark:border-neutral-800">
                  <button 
                    onClick={() => setModalTab('caso')} 
@@ -1494,9 +1496,10 @@ ${selectedIds.join(', ')}
                              ))}
                           </div>
                        </div>
-                    </div>
-                 </div>
+                     </div>
+                  </div>
               )}
+              </div>
 
               <div className="p-8 bg-neutral-50 dark:bg-neutral-900/50 border-t border-neutral-100 dark:border-neutral-800 flex gap-4">
                  <button onClick={() => setShowCaseModal(false)} className="flex-1 py-4 text-[10px] font-black uppercase tracking-widest text-neutral-400 hover:text-neutral-600 transition-colors">
