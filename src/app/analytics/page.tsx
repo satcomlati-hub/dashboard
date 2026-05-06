@@ -72,7 +72,7 @@ export default async function AnalyticsPage() {
         source: 'https://sara.mysatcomla.com/webhook/GetData',
         flowName: 'Monitoreo Procesos Consulta SP',
         flowId: 'VOfL2rAriW1s0TeQ',
-        method: 'SPs: consulta_tablero_paises_ambiente_2026 / consulta_tablero_no_autorizados_2026_[PAIS]'
+        method: 'Procesos: consulta_tablero_paises_ambiente_2026 / consulta_tablero_no_autorizados_2026_[PAIS]'
       }
     },
     {

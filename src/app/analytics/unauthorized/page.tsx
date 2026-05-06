@@ -157,7 +157,7 @@ export default function UnauthorizedVouchersPage() {
     if (!ambiente) return;
     try {
       setLoading(true);
-      const res = await fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=${ambiente}&SP=consulta_tablero_paises_ambiente_2026`);
+      const res = await fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=${ambiente}&Proceso=consulta_tablero_paises_ambiente_2026`);
       if (!res.ok) throw new Error('Error al obtener lista de países');
       const json = await res.json();
       
@@ -201,7 +201,7 @@ export default function UnauthorizedVouchersPage() {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       
-      const res = await fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=${selectedAmbiente}&SP=${spName}&Pais=${countryCode}`);
+      const res = await fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=${selectedAmbiente}&Proceso=${spName}&Pais=${countryCode}`);
 
       if (!res.ok) throw new Error('Error al obtener datos de comprobantes');
       
