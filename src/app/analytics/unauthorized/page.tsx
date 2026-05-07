@@ -546,27 +546,36 @@ export default function UnauthorizedVouchersPage() {
 
     setCaseSubject(`Incidencia ${selectedAmbiente}: [${mainStatus}] - ${mainReason}`);
     setCaseDescription(`
-# REPORTE DE INCIDENCIA OPERATIVA
----
-**Generado por:** ${userName}
-**Ambiente:** ${selectedAmbiente}
-**Filtros Activos:** ${activeFilters || 'Ninguno'}
-**Fecha Reporte:** ${new Date().toLocaleString('es-EC')}
+<div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; line-height: 1.6; max-width: 800px; border: 1px solid #e1e4e8; padding: 20px; border-radius: 10px; background-color: #ffffff;">
+  <h2 style="color: #d9534f; font-size: 20px; margin-top: 0; border-bottom: 2px solid #d9534f; padding-bottom: 10px;">
+    🚨 REPORTE DE INCIDENCIA OPERATIVA
+  </h2>
+  
+  <div style="margin: 15px 0; background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 5px solid #0052cc;">
+    <p style="margin: 5px 0;"><strong>Generado por:</strong> <span style="color: #0052cc;">${userName}</span></p>
+    <p style="margin: 5px 0;"><strong>Ambiente:</strong> <span style="color: #0052cc;">${selectedAmbiente}</span></p>
+    <p style="margin: 5px 0;"><strong>Afectación:</strong> <span style="background-color: #ffeb3b; padding: 2px 6px; border-radius: 4px; font-weight: bold;">${vouchers.length} documentos</span></p>
+  </div>
 
-## RESUMEN DE ERRORES
-- **Estado(s):** ${statuses.join(', ')}
-- **Total Documentos:** ${vouchers.length}
+  <h3 style="color: #444; font-size: 16px; margin-top: 20px;">📝 DETALLE</h3>
+  <div style="background: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #e1e4e8; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+    <table style="width: 100%; border-collapse: collapse;">
+      <tr><td style="padding: 4px 0; color: #666; width: 110px;"><b>Filtros:</b></td><td style="padding: 4px 0;">${activeFilters || 'Ninguno'}</td></tr>
+      <tr><td style="padding: 4px 0; color: #666;"><b>Estados:</b></td><td style="padding: 4px 0;">${statuses.join(', ')}</td></tr>
+      <tr><td style="padding: 4px 0; color: #666;"><b>Resumen:</b></td><td style="padding: 4px 0;">${errorMessages.slice(0, 3).map(m => m.length > 60 ? m.substring(0, 57) + '...' : m).join(' / ')}</td></tr>
+    </table>
+  </div>
 
-## DETALLE TÉCNICO (Muestra)
-${errorMessages.slice(0, 5).map(m => `> ${m}`).join('\n')}
+  <h3 style="color: #444; font-size: 16px; margin-top: 20px;">🔍 MUESTREO DE IDs (TOP ${selectedIds.length})</h3>
+  <div style="background: #272822; color: #f8f8f2; padding: 15px; border-radius: 6px; font-family: 'Courier New', Courier, monospace; font-size: 13px; overflow-x: auto;">
+    ${selectedIds.join('<br>')}
+  </div>
 
-## AFECTACIÓN POR EMISOR
-${emitterSummary}
-
-## DETALLE DE COMPROBANTES (IDs)${idsNote}
-\`\`\`text
-${selectedIds.join(', ')}
-\`\`\`
+  <hr style="border: 0; border-top: 1px solid #eee; margin: 25px 0 10px 0;">
+  <p style="font-style: italic; color: #888; font-size: 11px; text-align: right;">
+    Generado por SARA Monitoring - ${new Date().toLocaleString('es-EC')}
+  </p>
+</div>
     `.trim());
     
     setCaseTargetVouchers(vouchers);
