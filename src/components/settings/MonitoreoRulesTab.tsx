@@ -15,7 +15,14 @@ interface ReglaMonitoreo {
   modo: string;
   frecuencia: string;
   prioridad_ticket: string;
+  departamento_id: string;
   esta_activa: boolean;
+  configuracion?: {
+    tipo_conteo: string;
+    modo_conteo: string;
+    frecuencia_evaluacion: string;
+    notificar: string;
+  };
 }
 
 interface MonitoreoConfig {
@@ -142,7 +149,26 @@ export default function MonitoreoRulesTab({ initialTab = 'rules' }: { initialTab
               </h3>
               <p className="text-xs text-neutral-500">Define los criterios de búsqueda (Regex) para detectar incidencias.</p>
             </div>
-            <button onClick={() => { setEditingRule({ ambiente: 'Todos', esta_activa: true, minimo_eventos: 1 }); setShowRuleModal(true); }} className="bg-[#71BF44] hover:bg-[#5da036] text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" /> Nueva Regla</button>
+            <button onClick={() => { 
+              setEditingRule({ 
+                ambiente: 'Todos', 
+                esta_activa: true, 
+                minimo_eventos: 1,
+                modo: 'POR_EMISOR',
+                frecuencia: 'DIARIO',
+                prioridad_ticket: 'Media',
+                departamento_id: '816030000000006907',
+                expresion_estado: '*',
+                expresion_motivo: '',
+                configuracion: {
+                  tipo_conteo: 'NUMERO',
+                  modo_conteo: 'POR_EMISOR',
+                  frecuencia_evaluacion: 'DIARIO',
+                  notificar: 'TODOS'
+                }
+              }); 
+              setShowRuleModal(true); 
+            }} className="bg-[#71BF44] hover:bg-[#5da036] text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" /> Nueva Regla</button>
           </div>
 
           <div className="overflow-x-auto border border-neutral-200 dark:border-neutral-800 rounded-2xl">
@@ -231,12 +257,12 @@ export default function MonitoreoRulesTab({ initialTab = 'rules' }: { initialTab
               <h3 className="font-bold text-lg">{editingRule.id ? 'Editar Regla' : 'Nueva Regla'}</h3>
               <button onClick={() => setShowRuleModal(false)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl"><X className="w-4 h-4" /></button>
             </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Nombre</label>
-                <input type="text" value={editingRule.nombre || ''} onChange={e => setEditingRule({...editingRule, nombre: e.target.value})} className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-[#71BF44]/20 focus:border-[#71BF44] outline-none" />
-              </div>
+            <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
               <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Nombre de la Regla</label>
+                  <input type="text" value={editingRule.nombre || ''} onChange={e => setEditingRule({...editingRule, nombre: e.target.value})} className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-[#71BF44]/20 focus:border-[#71BF44] outline-none" />
+                </div>
                 <div>
                   <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Ambiente</label>
                   <select value={editingRule.ambiente || 'Todos'} onChange={e => setEditingRule({...editingRule, ambiente: e.target.value})} className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold">
@@ -246,13 +272,128 @@ export default function MonitoreoRulesTab({ initialTab = 'rules' }: { initialTab
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Eventos Mínimos</label>
-                  <input type="number" value={editingRule.minimo_eventos || 1} onChange={e => setEditingRule({...editingRule, minimo_eventos: Number(e.target.value)})} className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold" />
+                  <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Estado Activa</label>
+                  <select value={editingRule.esta_activa ? 'true' : 'false'} onChange={e => setEditingRule({...editingRule, esta_activa: e.target.value === 'true'})} className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-bold">
+                    <option value="true">Activa</option>
+                    <option value="false">Inactiva (Pausada)</option>
+                  </select>
                 </div>
               </div>
-              <div>
-                <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Expresión de Motivo (Regex)</label>
-                <input type="text" value={editingRule.expresion_motivo || ''} onChange={e => setEditingRule({...editingRule, expresion_motivo: e.target.value})} className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-mono" placeholder="Ej: .*Establecimiento.*" />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Expresión Estado (Regex)</label>
+                  <input type="text" value={editingRule.expresion_estado || ''} onChange={e => setEditingRule({...editingRule, expresion_estado: e.target.value})} className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-mono" placeholder="*" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Expresión Motivo (Regex)</label>
+                  <input type="text" value={editingRule.expresion_motivo || ''} onChange={e => setEditingRule({...editingRule, expresion_motivo: e.target.value})} className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-3 text-sm font-mono" placeholder="Ej: .*Error.*" />
+                </div>
+              </div>
+
+              <div className="p-4 bg-[#71BF44]/5 border border-[#71BF44]/20 rounded-2xl space-y-4">
+                <h4 className="text-[10px] font-black text-[#71BF44] uppercase tracking-widest flex items-center gap-2">
+                  <Settings className="w-3.5 h-3.5" /> Configuración de Disparo
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[8px] font-black text-neutral-500 uppercase tracking-widest mb-1">Modo de Conteo</label>
+                    <select 
+                      value={editingRule.modo || 'POR_EMISOR'} 
+                      onChange={e => setEditingRule({
+                        ...editingRule, 
+                        modo: e.target.value,
+                        configuracion: { ...(editingRule.configuracion as any), modo_conteo: e.target.value }
+                      })} 
+                      className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-lg px-3 py-2 text-[10px] font-bold"
+                    >
+                      <option value="GLOBAL">Global</option>
+                      <option value="POR_EMISOR">Por Emisor</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[8px] font-black text-neutral-500 uppercase tracking-widest mb-1">Tipo de Conteo</label>
+                    <select 
+                      value={editingRule.configuracion?.tipo_conteo || 'NUMERO'} 
+                      onChange={e => setEditingRule({
+                        ...editingRule, 
+                        configuracion: { ...(editingRule.configuracion as any), tipo_conteo: e.target.value }
+                      })} 
+                      className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-lg px-3 py-2 text-[10px] font-bold"
+                    >
+                      <option value="NUMERO">Número de Eventos</option>
+                      <option value="PORCENTAJE">Porcentaje (%)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[8px] font-black text-neutral-500 uppercase tracking-widest mb-1">Límite (Q o %)</label>
+                    <input type="number" value={editingRule.minimo_eventos || 1} onChange={e => setEditingRule({...editingRule, minimo_eventos: Number(e.target.value)})} className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-lg px-3 py-2 text-[10px] font-bold" />
+                  </div>
+                  <div>
+                    <label className="block text-[8px] font-black text-neutral-500 uppercase tracking-widest mb-1">Frecuencia</label>
+                    <select 
+                      value={editingRule.frecuencia || 'DIARIO'} 
+                      onChange={e => setEditingRule({
+                        ...editingRule, 
+                        frecuencia: e.target.value,
+                        configuracion: { ...(editingRule.configuracion as any), frecuencia_evaluacion: e.target.value }
+                      })} 
+                      className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-lg px-3 py-2 text-[10px] font-bold"
+                    >
+                      <option value="HORARIO">Por Hora</option>
+                      <option value="DIARIO">Diario</option>
+                      <option value="SEMANAL">Semanal</option>
+                      <option value="MENSUAL">Mensual</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-[8px] font-black text-neutral-500 uppercase tracking-widest mb-1">Alcance de Notificación</label>
+                    <select 
+                      value={editingRule.configuracion?.notificar || 'TODOS'} 
+                      onChange={e => setEditingRule({
+                        ...editingRule, 
+                        configuracion: { ...(editingRule.configuracion as any), notificar: e.target.value }
+                      })} 
+                      className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-lg px-3 py-2 text-[10px] font-bold"
+                    >
+                      <option value="TODOS">Notificar todos los eventos afectados</option>
+                      <option value="SOLO_SUPERAN_LIMITE">Solo eventos que superan el límite</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl space-y-4">
+                <h4 className="text-[10px] font-black text-amber-500 uppercase tracking-widest flex items-center gap-2">
+                  <Activity className="w-3.5 h-3.5" /> Configuración de Mesa de Ayuda
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[8px] font-black text-neutral-500 uppercase tracking-widest mb-1">Departamento</label>
+                    <select 
+                      value={editingRule.departamento_id || '816030000000006907'} 
+                      onChange={e => setEditingRule({...editingRule, departamento_id: e.target.value})} 
+                      className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-lg px-3 py-2 text-[10px] font-bold"
+                    >
+                      <option value="816030000000006907">Soporte</option>
+                      <option value="816030000001906033">Soporte Interno</option>
+                      <option value="816030000001304039">Tecnología</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[8px] font-black text-neutral-500 uppercase tracking-widest mb-1">Prioridad del Ticket</label>
+                    <select 
+                      value={editingRule.prioridad_ticket || 'Media'} 
+                      onChange={e => setEditingRule({...editingRule, prioridad_ticket: e.target.value})} 
+                      className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-lg px-3 py-2 text-[10px] font-bold"
+                    >
+                      <option value="Baja">Baja</option>
+                      <option value="Media">Media</option>
+                      <option value="Alta">Alta</option>
+                      <option value="Crítica/Urgente">Crítica/Urgente</option>
+                    </select>
+                  </div>
+                </div>
               </div>
             </div>
             <div className="px-6 py-4 border-t border-neutral-200 dark:border-neutral-800 flex justify-end gap-3 bg-neutral-50 dark:bg-[#0c0c0c]">
