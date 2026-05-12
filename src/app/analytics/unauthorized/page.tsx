@@ -23,6 +23,7 @@ import {
   Copy,
   ChevronRight,
   ChevronDown,
+  ChevronUp,
   ChevronsLeft,
   ChevronsRight,
   Layers,
@@ -1150,16 +1151,18 @@ export default function UnauthorizedVouchersPage() {
                         const isExp = expandedGroups.has(item.path);
                         return (
                           <tr key={`h-${item.path}`} className="bg-neutral-800 dark:bg-black/90 z-20 transition-all hover:bg-neutral-700 border-l-4 border-l-[#71BF44]">
-                             <td colSpan={5} className="px-6 py-4 cursor-pointer" style={{ paddingLeft: `${item.depth * 2 + 1.5}rem` }} onClick={() => toggleGroup(item.path)}>
-                                <div className="flex items-center justify-between">
+                             <td colSpan={5} className="px-4 sm:px-6 py-4 cursor-pointer" style={{ paddingLeft: `${item.depth * 1.5 + 1}rem` }} onClick={() => toggleGroup(item.path)}>
+                                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                                    <div className="flex items-center gap-3">
-                                      <div className={`p-1.5 rounded-lg ${isExp ? 'bg-[#71BF44] text-white' : 'bg-neutral-700 text-neutral-400'}`}>
+                                      <div className={`p-1.5 rounded-lg shrink-0 ${isExp ? 'bg-[#71BF44] text-white' : 'bg-neutral-700 text-neutral-400'}`}>
                                          {isExp ? <ChevronDown className="w-3 h-3"/> : <ChevronRight className="w-3 h-3"/>}
                                       </div>
-                                      <span className="text-xs font-black text-white uppercase tracking-[0.1em]">{item.label}</span>
-                                      <span className="text-xs font-bold text-[#71BF44]">({item.count})</span>
+                                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+                                        <span className="text-xs font-black text-white uppercase tracking-[0.1em] break-words line-clamp-2 sm:line-clamp-none">{item.label}</span>
+                                        <span className="text-[10px] sm:text-xs font-bold text-[#71BF44] whitespace-nowrap">({item.count} eventos)</span>
+                                      </div>
                                    </div>
-                                    <div className="flex items-center gap-4 mr-4">
+                                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 lg:mr-4">
                                         {item.vouchers.length > 0 && (
                                           <button
                                              onClick={(e) => {
@@ -1204,8 +1207,11 @@ export default function UnauthorizedVouchersPage() {
                                              <span>{groupCopied === item.path ? 'Copiado!' : 'Exportar IDs'}</span>
                                           </button>
                                         )}
-                                        <span className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">{isExp ? 'OCULTAR' : 'VER'}</span>
-                                     </div>
+                                         <div className="flex items-center gap-2 ml-auto lg:ml-0">
+                                           <span className="text-[8px] font-black text-neutral-500 uppercase tracking-widest">{isExp ? 'OCULTAR' : 'VER'}</span>
+                                           {isExp ? <ChevronUp className="w-3 h-3 text-neutral-500"/> : <ChevronDown className="w-3 h-3 text-neutral-500"/>}
+                                         </div>
+                                      </div>
                                  </div>
                              </td>
                           </tr>
