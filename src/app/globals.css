@@ -94,3 +94,12 @@ body {
 .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #71BF4444;
 }
+
+/* No Scrollbar Utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}

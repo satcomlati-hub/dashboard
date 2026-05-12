@@ -268,6 +268,27 @@ export default function UnauthorizedVouchersPage() {
     }
   }, [selectedAmbiente, fetchCountries]);
 
+  // Selección automática del país según prioridad: EC (593), COL (57), CR (506), PA (507)
+  useEffect(() => {
+    if (availableCountries.length > 0 && selectedCountryCode === null) {
+      const priority = [593, 57, 506, 507];
+      const codesInAvailable = availableCountries.map(c => Number(c.co_pais));
+      
+      const found = priority.find(p => codesInAvailable.includes(p));
+      if (found) {
+        setSelectedCountryCode(found);
+        const name = PAIS_MAP[found] || String(found);
+        setFilters(f => ({ ...f, co_pais: name }));
+      } else if (codesInAvailable.length > 0) {
+        // Fallback al primer país disponible si ninguno de la prioridad existe
+        const firstCode = codesInAvailable[0];
+        setSelectedCountryCode(firstCode);
+        const name = PAIS_MAP[firstCode] || String(firstCode);
+        setFilters(f => ({ ...f, co_pais: name }));
+      }
+    }
+  }, [availableCountries, selectedCountryCode]);
+
   useEffect(() => {
     if (selectedCountryCode) {
       fetchData();
@@ -788,8 +809,8 @@ export default function UnauthorizedVouchersPage() {
               <FileWarning className="w-8 h-8 text-[#71BF44]" />
             </div>
             <div>
-              <h1 className="text-4xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none mb-2">
-                Comprobantes No Autorizados <span className="text-[#71BF44] opacity-50 text-sm ml-2 font-black">(Refinado)</span>
+              <h1 className="text-2xl sm:text-4xl font-black text-neutral-900 dark:text-white tracking-tighter leading-tight mb-2">
+                Comprobantes No Autorizados <span className="text-[#71BF44] opacity-50 text-xs sm:text-sm ml-2 font-black">(Refinado)</span>
               </h1>
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
@@ -805,7 +826,7 @@ export default function UnauthorizedVouchersPage() {
           <button 
             onClick={handleSync}
             disabled={refreshing}
-            className="bg-neutral-900 border border-neutral-800 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all hover:bg-black hover:border-[#71BF44] flex items-center gap-3 shadow-2xl active:scale-95"
+            className="w-full md:w-auto bg-neutral-900 border border-neutral-800 text-white px-8 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all hover:bg-black hover:border-[#71BF44] flex items-center justify-center gap-3 shadow-2xl active:scale-95"
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
             Sincronizar Datos
@@ -814,11 +835,11 @@ export default function UnauthorizedVouchersPage() {
       </header>
       
       {/* Global Environment Selector (Step 1) */}
-      <div className="flex items-center gap-4 mb-8 bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 p-4 rounded-3xl shadow-sm">
-          <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-6 py-2.5 rounded-2xl shadow-xl">
-            <Globe className="w-4 h-4 text-[#71BF44]" />
-            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">Ambiente:</span>
-            <div className="flex gap-2">
+      <div className="flex flex-col md:flex-row md:items-center gap-4 mb-8 bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6 rounded-[32px] shadow-sm">
+          <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-4 sm:px-6 py-2.5 rounded-2xl shadow-xl w-full md:w-auto overflow-hidden">
+            <Globe className="w-4 h-4 text-[#71BF44] shrink-0" />
+            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] whitespace-nowrap">Ambiente:</span>
+            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
                {['V5', 'Colombia'].map(amb => (
                  <button
                   key={amb}
@@ -840,14 +861,14 @@ export default function UnauthorizedVouchersPage() {
                       co_punto_emision: '',
                     });
                   }}
-                  className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all ${selectedAmbiente === amb ? 'bg-[#71BF44] text-white' : 'text-neutral-500 hover:text-white hover:bg-neutral-800'}`}
+                  className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all whitespace-nowrap ${selectedAmbiente === amb ? 'bg-[#71BF44] text-white shadow-lg shadow-[#71BF44]/20' : 'text-neutral-500 hover:text-white hover:bg-neutral-800'}`}
                  >
                    {AMBIENTE_LABELS[amb] || amb}
                  </button>
                ))}
             </div>
           </div>
-          <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest ml-4 italic opacity-50">
+          <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest md:ml-4 italic opacity-50 text-center md:text-left">
             {!selectedAmbiente ? '← Inicie seleccionando un ambiente de trabajo' : 'Ambiente activo'}
           </p>
       </div>
@@ -901,12 +922,12 @@ export default function UnauthorizedVouchersPage() {
           </div>
 
       {/* Filters Area */}
-      <div className="flex flex-wrap items-center gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:flex xl:flex-wrap items-center gap-4 sm:gap-6 mb-8">
 
           {/* Country Selector (Second Step) */}
-          <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-6 py-2.5 rounded-2xl shadow-xl">
-            <MapPin className="w-4 h-4 text-[#71BF44]" />
-            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">País:</span>
+          <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-4 sm:px-6 py-2.5 rounded-2xl shadow-xl w-full sm:w-auto">
+            <MapPin className="w-4 h-4 text-[#71BF44] shrink-0" />
+            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] whitespace-nowrap">País:</span>
             <select
               value={selectedCountryCode || ''}
               onChange={(e) => {
@@ -916,7 +937,7 @@ export default function UnauthorizedVouchersPage() {
                 setFilters(f => ({ ...f, co_pais: countryName }));
                 setCurrentPage(1);
               }}
-              className="bg-transparent text-[9px] font-black uppercase text-[#71BF44] outline-none cursor-pointer hover:text-white transition-colors h-6"
+              className="bg-transparent text-[9px] font-black uppercase text-[#71BF44] outline-none cursor-pointer hover:text-white transition-colors h-6 w-full sm:w-auto"
             >
               <option value="" className="bg-[#111] text-neutral-500">Seleccione País...</option>
               {availableCountries.map((c, idx) => {
@@ -932,17 +953,19 @@ export default function UnauthorizedVouchersPage() {
           </div>
 
           {/* Group Selector "Agrupar" (Now Second) */}
-          <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-6 py-2.5 rounded-2xl shadow-xl">
-            <Layers className="w-4 h-4 text-[#71BF44]" />
-            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">Agrupar:</span>
-            <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 bg-neutral-900 border border-neutral-800 p-2 sm:px-6 sm:py-2.5 rounded-2xl shadow-xl w-full sm:w-auto overflow-hidden">
+            <div className="flex items-center gap-3 px-2 sm:px-0">
+              <Layers className="w-4 h-4 text-[#71BF44] shrink-0" />
+              <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] whitespace-nowrap">Agrupar:</span>
+            </div>
+            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 sm:pb-0 px-2 sm:px-0">
                {[
-                 { id: 'none', label: 'Lista Plana' },
+                 { id: 'none', label: 'Plana' },
                  { id: 'DescripcionEstatus', label: 'Estado' },
                  { id: 'co_detalle', label: 'Motivo' },
                  { id: 'co_nemonico', label: 'Cliente' },
-                 { id: 'DescripcionTipoDocumento', label: 'Documento' },
-                 { id: 'co_hora_in', label: 'F. Llegada' }
+                 { id: 'DescripcionTipoDocumento', label: 'Doc' },
+                 { id: 'co_hora_in', label: 'Fecha' }
                ].map(opt => {
                  const isActive = opt.id === 'none' ? groupBy.length === 0 : groupBy.includes(opt.id);
                  return (
@@ -960,7 +983,7 @@ export default function UnauthorizedVouchersPage() {
                       setCurrentPage(1); 
                       setExpandedGroups(new Set()); 
                     }}
-                    className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all ${isActive ? 'bg-[#71BF44] text-white' : 'text-neutral-500 hover:text-white hover:bg-neutral-800'}`}
+                    className={`px-3 sm:px-4 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all whitespace-nowrap ${isActive ? 'bg-[#71BF44] text-white shadow-lg shadow-[#71BF44]/20' : 'text-neutral-500 hover:text-white hover:bg-neutral-800'}`}
                    >
                      {opt.label}
                    </button>
@@ -971,7 +994,7 @@ export default function UnauthorizedVouchersPage() {
 
          {/* Active Group Tags */}
          {groupBy.length > 0 && (
-           <div className="flex flex-wrap items-center gap-2 p-2 bg-[#1a1a1a] rounded-2xl border border-neutral-800">
+           <div className="flex flex-wrap items-center gap-2 p-2 bg-[#1a1a1a] rounded-2xl border border-neutral-800 w-full sm:w-auto">
              {groupBy.map((g, idx) => {
                const label = [
                  { id: 'DescripcionEstatus', label: 'Estado' },
@@ -1003,34 +1026,38 @@ export default function UnauthorizedVouchersPage() {
 
          {/* Pagination Controls */}
          {totalPages > 1 && (
-            <div className="flex items-center gap-4 bg-[#111] border border-neutral-800 px-4 py-2 rounded-2xl">
-              <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1} className="p-1 text-[#71BF44] disabled:opacity-20"><ChevronsLeft className="w-5 h-5"/></button>
-              <button onClick={() => setCurrentPage(p => Math.max(1, p-1))} disabled={currentPage === 1} className="p-1 text-[#71BF44] disabled:opacity-20"><ChevronLeft className="w-5 h-5"/></button>
-              <span className="text-[10px] font-black text-white px-2">PAG {currentPage} / {totalPages}</span>
-              <button onClick={() => setCurrentPage(p => Math.min(totalPages, p+1))} disabled={currentPage === totalPages} className="p-1 text-[#71BF44] disabled:opacity-20"><ChevronRight className="w-5 h-5"/></button>
-              <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages} className="p-1 text-[#71BF44] disabled:opacity-20"><ChevronsRight className="w-5 h-5"/></button>
+            <div className="flex items-center justify-between sm:justify-start gap-4 bg-[#111] border border-neutral-800 px-4 py-2 rounded-2xl w-full sm:w-auto">
+              <div className="flex items-center gap-1">
+                <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1} className="p-1 text-[#71BF44] disabled:opacity-20"><ChevronsLeft className="w-5 h-5"/></button>
+                <button onClick={() => setCurrentPage(p => Math.max(1, p-1))} disabled={currentPage === 1} className="p-1 text-[#71BF44] disabled:opacity-20"><ChevronLeft className="w-5 h-5"/></button>
+              </div>
+              <span className="text-[10px] font-black text-white px-2 whitespace-nowrap uppercase tracking-widest">PAG {currentPage} / {totalPages}</span>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setCurrentPage(p => Math.min(totalPages, p+1))} disabled={currentPage === totalPages} className="p-1 text-[#71BF44] disabled:opacity-20"><ChevronRight className="w-5 h-5"/></button>
+                <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages} className="p-1 text-[#71BF44] disabled:opacity-20"><ChevronsRight className="w-5 h-5"/></button>
+              </div>
             </div>
          )}
          
          {/* Export & Global Actions */}
-         <div className="flex items-center gap-3 ml-auto">
+         <div className="flex items-center gap-3 w-full sm:w-auto xl:ml-auto">
             {filteredData.length > 0 && anyFilterActive && (
               <button
                 onClick={() => handleCreateCase(filteredData)}
-                className="flex items-center gap-2 px-4 py-2 bg-neutral-900 border border-neutral-800 hover:border-amber-500 hover:bg-amber-500/10 transition-all rounded-2xl shadow-xl group"
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-neutral-900 border border-neutral-800 hover:border-amber-500 hover:bg-amber-500/10 transition-all rounded-2xl shadow-xl group"
               >
                 <LifeBuoy className="w-4 h-4 text-amber-500 group-hover:rotate-12 transition-transform" />
-                <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Crear Caso Global</span>
+                <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Caso Global</span>
               </button>
             )}
 
             {filteredData.length > 0 && anyFilterActive && (
                 <button
                   onClick={exportToCSV}
-                  className="flex items-center gap-2 px-4 py-2 bg-neutral-900 border border-neutral-800 hover:border-[#71BF44] hover:bg-[#71BF44]/10 transition-all rounded-2xl shadow-xl group"
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-neutral-900 border border-neutral-800 hover:border-[#71BF44] hover:bg-[#71BF44]/10 transition-all rounded-2xl shadow-xl group"
                 >
                   <Download className="w-4 h-4 text-[#71BF44] group-hover:-translate-y-0.5 transition-transform" />
-                  <span className="text-[10px] font-black text-[#71BF44] uppercase tracking-widest">Descargar CSV</span>
+                  <span className="text-[10px] font-black text-[#71BF44] uppercase tracking-widest">Exportar</span>
                 </button>
             )}
          </div>
