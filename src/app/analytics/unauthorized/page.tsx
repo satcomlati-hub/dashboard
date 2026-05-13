@@ -131,6 +131,7 @@ export default function UnauthorizedVouchersPage() {
   const [caseArea, setCaseArea] = useState('Infraestructura');
   const [caseDept, setCaseDept] = useState('816030000000006907'); // Default: Soporte
   const [isSubmittingCase, setIsSubmittingCase] = useState(false);
+  const [isPreview, setIsPreview] = useState(true);
 
   // Estados para creación de Regla de Monitoreo
   const [modalTab, setModalTab] = useState<'caso'|'regla'>('caso');
@@ -1414,13 +1415,30 @@ export default function UnauthorizedVouchersPage() {
                     </div>
 
                     <div className="space-y-2">
-                       <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Descripción / Cuerpo del Mensaje</label>
-                       <textarea 
-                         rows={8}
-                         value={caseDescription}
-                         onChange={(e) => setCaseDescription(e.target.value)}
-                         className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-xs font-medium focus:ring-2 focus:ring-amber-500/20 outline-none transition-all resize-none"
-                       />
+                       <div className="flex items-center justify-between">
+                          <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Descripción / Cuerpo del Mensaje</label>
+                          <button 
+                            type="button"
+                            onClick={() => setIsPreview(!isPreview)}
+                            className="text-[9px] font-black uppercase px-2 py-1 rounded-lg bg-amber-500/10 text-amber-600 hover:bg-amber-500 hover:text-white transition-all border border-amber-500/20"
+                          >
+                             {isPreview ? 'Editar Código HTML' : 'Ver Resultado HTML'}
+                          </button>
+                       </div>
+                       
+                       {isPreview ? (
+                         <div 
+                           className="w-full bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 min-h-[250px] max-h-[400px] overflow-y-auto text-sm custom-scrollbar shadow-inner"
+                           dangerouslySetInnerHTML={{ __html: caseDescription }}
+                         />
+                       ) : (
+                         <textarea 
+                           rows={12}
+                           value={caseDescription}
+                           onChange={(e) => setCaseDescription(e.target.value)}
+                           className="w-full bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-[10px] font-mono focus:ring-2 focus:ring-amber-500/20 outline-none transition-all resize-none custom-scrollbar"
+                         />
+                       )}
                     </div>
                  </div>
               ) : (
