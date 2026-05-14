@@ -100,6 +100,8 @@ export default function UnauthorizedVouchersPage() {
   const [countdown, setCountdown] = useState(1800);
   const [copied, setCopied] = useState(false);
   const [groupCopied, setGroupCopied] = useState<string | null>(null);
+  const [rules, setRules] = useState<any[]>([]);
+  const [showUnmappedOnly, setShowUnmappedOnly] = useState(false);
 
   const { data: session } = useSession();
   const { showNotification } = useNotification();
@@ -155,6 +157,7 @@ export default function UnauthorizedVouchersPage() {
   const [selectedCountryCode, setSelectedCountryCode] = useState<number | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [groupBy, setGroupBy] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
@@ -262,6 +265,20 @@ export default function UnauthorizedVouchersPage() {
     }
   }, [selectedAmbiente, selectedCountryCode]);
 
+  const fetchRules = useCallback(async () => {
+    try {
+      const res = await fetch('/api/db/monitoreo-rules');
+      const json = await res.json();
+      if (json.data) setRules(json.data);
+    } catch (err) {
+      console.error('Error fetching rules:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRules();
+  }, [fetchRules]);
+
   useEffect(() => {
     if (selectedAmbiente) {
       fetchCountries(selectedAmbiente);
@@ -311,7 +328,27 @@ export default function UnauthorizedVouchersPage() {
   }, [fetchData]);
 
 
-  const anyFilterActive = useMemo(() => Object.values(filters).some(v => v !== '') || selectedDate !== '', [filters, selectedDate]);
+  const anyFilterActive = useMemo(() => Object.values(filters).some(v => v !== '') || selectedDate !== '' || showUnmappedOnly, [filters, selectedDate, showUnmappedOnly]);
+
+  const isVoucherMapped = useCallback((v: Voucher) => {
+    if (rules.length === 0) return false;
+    return rules.some(rule => {
+      if (!rule.esta_activa) return false;
+      
+      // Filtro de ambiente
+      if (rule.ambiente !== 'Todos' && rule.ambiente !== selectedAmbiente) return false;
+
+      // Match de Estado
+      const statusMatch = rule.expresion_estado === '*' || 
+                         (v.DescripcionEstatus && v.DescripcionEstatus.toLowerCase().includes(rule.expresion_estado.toLowerCase()));
+      
+      // Match de Motivo
+      const reasonMatch = rule.expresion_motivo === '*' || 
+                         (v.co_detalle && v.co_detalle.toLowerCase().includes(rule.expresion_motivo.toLowerCase()));
+                         
+      return statusMatch && reasonMatch;
+    });
+  }, [rules, selectedAmbiente]);
 
   const stats = useMemo(() => {
     const byPais = data.reduce((acc, d) => {
@@ -398,8 +435,12 @@ export default function UnauthorizedVouchersPage() {
       return 0;
     });
 
+    if (showUnmappedOnly) {
+      result = result.filter(v => !isVoucherMapped(v));
+    }
+
     return result;
-  }, [data, filters, sortField, sortOrder, selectedDate]);
+  }, [data, filters, sortField, sortOrder, selectedDate, showUnmappedOnly, isVoucherMapped]);
 
   const groupedData = useMemo(() => {
     if (!anyFilterActive) return [];
@@ -422,12 +463,22 @@ export default function UnauthorizedVouchersPage() {
         groups[key].push(v);
       });
       
-      return Object.entries(groups).map(([key, items]) => ({
-        key,
-        items: groupRecursive(items, fields, depth + 1),
-        count: items.length,
-        field
-      })).sort((a, b) => b.count - a.count);
+      return Object.entries(groups).map(([key, items]) => {
+        const vouchers = Array.isArray(items) ? items : [];
+        const mappedCount = vouchers.filter(v => isVoucherMapped(v)).length;
+        const isFullyMapped = vouchers.length > 0 && mappedCount === vouchers.length;
+        const isPartiallyMapped = mappedCount > 0 && mappedCount < vouchers.length;
+
+        return {
+          key,
+          items: groupRecursive(items, fields, depth + 1),
+          count: items.length,
+          mappedCount,
+          isFullyMapped,
+          isPartiallyMapped,
+          field
+        };
+      }).sort((a, b) => b.count - a.count);
     };
 
     if (groupBy.length === 0) return [{ key: 'Todos', items: filteredData, count: filteredData.length, field: 'none' }];
@@ -461,6 +512,9 @@ export default function UnauthorizedVouchersPage() {
             type: 'header', 
             label: item.key, 
             count: item.count, 
+            mappedCount: item.mappedCount,
+            isFullyMapped: item.isFullyMapped,
+            isPartiallyMapped: item.isPartiallyMapped,
             vouchers: vouchers,
             path: currentPath,
             depth: currentPath.split(' > ').length - 1
@@ -1026,7 +1080,17 @@ export default function UnauthorizedVouchersPage() {
          )}
 
 
-         {/* Pagination Controls */}
+          {/* Unmapped Filter Toggle */}
+          <button
+            onClick={() => setShowUnmappedOnly(!showUnmappedOnly)}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl border transition-all shadow-xl whitespace-nowrap ${showUnmappedOnly ? 'bg-red-500 text-white border-red-400 shadow-red-500/20' : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white'}`}
+          >
+            <AlertCircle className={`w-4 h-4 ${showUnmappedOnly ? 'animate-pulse' : ''}`} />
+            <span className="text-[10px] font-black uppercase tracking-widest">{showUnmappedOnly ? 'Viendo solo No Mapeados' : 'Filtrar No Mapeados'}</span>
+          </button>
+
+
+          {/* Pagination Controls */}
          {totalPages > 1 && (
             <div className="flex items-center justify-between sm:justify-start gap-4 bg-[#111] border border-neutral-800 px-4 py-2 rounded-2xl w-full sm:w-auto">
               <div className="flex items-center gap-1">
@@ -1160,7 +1224,16 @@ export default function UnauthorizedVouchersPage() {
                                       </div>
                                       <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
                                         <span className="text-xs font-black text-white uppercase tracking-[0.1em] break-words line-clamp-2 sm:line-clamp-none">{item.label}</span>
-                                        <span className="text-[10px] sm:text-xs font-bold text-[#71BF44] whitespace-nowrap">({item.count} eventos)</span>
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[10px] sm:text-xs font-bold text-[#71BF44] whitespace-nowrap">({item.count} eventos)</span>
+                                          {item.isFullyMapped ? (
+                                            <span className="px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 text-[8px] font-black uppercase tracking-tighter border border-green-500/30">Mapeado</span>
+                                          ) : item.isPartiallyMapped ? (
+                                            <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 text-[8px] font-black uppercase tracking-tighter border border-amber-500/30">Parcial</span>
+                                          ) : (
+                                            <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 text-[8px] font-black uppercase tracking-tighter border border-red-500/30">Sin Regla</span>
+                                          )}
+                                        </div>
                                       </div>
                                    </div>
                                     <div className="flex flex-wrap items-center gap-2 sm:gap-3 lg:mr-4">
@@ -1279,9 +1352,20 @@ export default function UnauthorizedVouchersPage() {
                               <div className="space-y-4">
                                  <div className="flex items-start gap-4">
                                     {v.DescripcionEstatus && (
-                                       <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${v.DescripcionEstatus.toLowerCase().includes('rechazado') ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 'bg-green-500/10 text-green-500 border border-green-500/20'}`}>
-                                          {v.DescripcionEstatus}
-                                       </span>
+                                       <div className="flex flex-col gap-1">
+                                          <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${v.DescripcionEstatus.toLowerCase().includes('rechazado') ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 'bg-green-500/10 text-green-500 border border-green-500/20'}`}>
+                                             {v.DescripcionEstatus}
+                                          </span>
+                                          {isVoucherMapped(v) ? (
+                                            <div className="flex items-center gap-1 px-1 text-[8px] font-bold text-green-500/60 uppercase">
+                                              <Check className="w-2.5 h-2.5" /> Regla Activa
+                                            </div>
+                                          ) : (
+                                            <div className="flex items-center gap-1 px-1 text-[8px] font-bold text-red-500/60 uppercase">
+                                              <AlertCircle className="w-2.5 h-2.5" /> Sin Regla
+                                            </div>
+                                          )}
+                                       </div>
                                     )}
                                     <p className="text-[10px] font-medium text-neutral-500 leading-normal line-clamp-2 italic" title={v.co_detalle}>
                                        {v.co_detalle || 'Sin detalle técnico reportado.'}
