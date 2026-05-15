@@ -206,7 +206,7 @@ export default function EventHistoryPage() {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
 
-      const res = await fetch(`https://sara.mysatcomla.com/webhook/DetalleEventosRabbit?range=${rangeToFetch}`);
+      const res = await fetch(`/api/db/eventos?range=${rangeToFetch}`);
       if (!res.ok) throw new Error('Error al obtener el historial de eventos');
       
       const json = await res.json();
