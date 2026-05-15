@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
 
     // Usamos "mySatcom" con casing exacto como en el resto del proyecto
     const result = await pool.query(
-      'SELECT * FROM "mySatcom".get_bitacora_eventos($1, $2)',
+      'SELECT * FROM mysatcom.get_bitacora_eventos($1, $2)',
       [evento, range]
     );
 
