@@ -1,4 +1,4 @@
-USE [sat_comprobante]
+USE [sat_catalogo]
 GO
 
 IF OBJECT_ID('[dbo].[tablero_pendientes_reproceso]') IS NOT NULL

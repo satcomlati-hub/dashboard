@@ -54,7 +54,7 @@ interface EventoRabbit {
   justificacion: string | null;
 }
 
-type TimeRange = 'hoy' | 'semana' | 'mes' | 'trimestre' | 'todos';
+type TimeRange = 'hoy' | 'semana' | 'mes' | 'trimestre' | 'mes_actual' | 'mes_anterior' | 'todos';
 
 interface SortConfig {
   key: keyof EventoRabbit | 'fecha_norm';
@@ -175,7 +175,7 @@ export default function EventHistoryPage() {
   const [selectedEventos, setSelectedEventos] = useState<string[]>([]);
   const [selectedAmbientes, setSelectedAmbientes] = useState<string[]>([]);
   const [selectedPaises, setSelectedPaises] = useState<string[]>([]);
-  const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('todos');
+  const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('hoy');
   const [searchQuery, setSearchQuery] = useState('');
   const [chartFilterDate, setChartFilterDate] = useState<string | null>(null);
 
@@ -200,12 +200,13 @@ export default function EventHistoryPage() {
     direction: 'desc'
   });
 
-  const fetchData = useCallback(async (isRefresh = false) => {
+  const fetchData = useCallback(async (isRefresh = false, rangeOverride?: TimeRange) => {
     try {
+      const rangeToFetch = rangeOverride || selectedTimeRange;
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
 
-      const res = await fetch('https://sara.mysatcomla.com/webhook/DetalleEventosRabbit');
+      const res = await fetch(`https://sara.mysatcomla.com/webhook/DetalleEventosRabbit?range=${rangeToFetch}`);
       if (!res.ok) throw new Error('Error al obtener el historial de eventos');
       
       const json = await res.json();
@@ -219,11 +220,11 @@ export default function EventHistoryPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [selectedTimeRange]);
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+  }, [selectedTimeRange, fetchData]);
 
   // Derived filtered data
   const filteredData = useMemo(() => {
@@ -252,10 +253,10 @@ export default function EventHistoryPage() {
         const now = new Date();
         const diffDays = (now.getTime() - eventDate.getTime()) / (1000 * 3600 * 24);
 
-        if (selectedTimeRange === 'hoy' && diffDays > 1) return false;
-        if (selectedTimeRange === 'semana' && diffDays > 7) return false;
-        if (selectedTimeRange === 'mes' && diffDays > 30) return false;
-        if (selectedTimeRange === 'trimestre' && diffDays > 90) return false;
+        if (selectedTimeRange === 'hoy' && diffDays > 1) return true; // Server already filtered
+        if (selectedTimeRange === 'semana' && diffDays > 7) return true; 
+        if (selectedTimeRange === 'mes' && diffDays > 30) return true;
+        if (selectedTimeRange === 'trimestre' && diffDays > 90) return true;
       }
 
       // Chart Date Filter (Matches the chart X-axis label)
@@ -491,18 +492,25 @@ export default function EventHistoryPage() {
           </div>
 
           {/* Time Range - Pushed to right */}
-          <div className="flex items-center gap-1 bg-neutral-100 dark:bg-[#1a1a1a] p-1.5 rounded-2xl shadow-inner ml-auto">
-            {(['hoy', 'semana', 'mes', 'trimestre', 'todos'] as TimeRange[]).map((range) => (
+          <div className="flex flex-wrap items-center gap-1 bg-neutral-100 dark:bg-[#1a1a1a] p-1.5 rounded-2xl shadow-inner ml-auto">
+            {([
+              { id: 'hoy', label: 'Hoy' },
+              { id: 'semana', label: 'Semana' },
+              { id: 'mes_actual', label: 'Mes Actual' },
+              { id: 'mes_anterior', label: 'Mes Anterior' },
+              { id: 'trimestre', label: 'Trimestre' },
+              { id: 'todos', label: 'Todos' }
+            ] as { id: TimeRange, label: string }[]).map((range) => (
               <button
-                key={range}
-                onClick={() => { setSelectedTimeRange(range); setChartFilterDate(null); }}
+                key={range.id}
+                onClick={() => { setSelectedTimeRange(range.id); setChartFilterDate(null); }}
                 className={`px-4 text-[10px] font-black uppercase tracking-widest py-2 rounded-xl transition-all ${
-                  selectedTimeRange === range 
+                  selectedTimeRange === range.id 
                   ? 'bg-[#71BF44] text-white shadow-lg scale-105' 
                   : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
                 }`}
               >
-                {range}
+                {range.label}
               </button>
             ))}
           </div>
