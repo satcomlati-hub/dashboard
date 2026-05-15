@@ -52,6 +52,7 @@ interface EventoRabbit {
   mensaje: string;
   estado: string;
   justificacion: string | null;
+  numero_caso: string | null;
 }
 
 type TimeRange = 'hoy' | 'semana' | 'mes' | 'trimestre' | 'mes_actual' | 'mes_anterior' | 'todos';
@@ -191,7 +192,8 @@ export default function EventHistoryPage() {
     key: '',
     version: '',
     mensaje: '',
-    justificacion: ''
+    justificacion: '',
+    numero_caso: ''
   });
 
   // Sorting
@@ -672,6 +674,7 @@ export default function EventHistoryPage() {
                         { label: 'Version API', key: 'version', minWidth: '200px' },
                         { label: 'Key', key: 'key', minWidth: '200px' },
                         { label: 'Mensaje', key: 'mensaje', minWidth: '150px' },
+                        { label: 'Caso #', key: 'numero_caso', minWidth: '120px' },
                         { label: 'Created At', key: 'created_at', minWidth: '180px' }
                       ].map((col) => (
                         <th key={col.key} className="px-6 py-4" style={{ minWidth: col.minWidth }}>
@@ -742,6 +745,9 @@ export default function EventHistoryPage() {
                         </td>
                         <td className="px-6 py-5">
                           <p className="text-[10px] font-medium text-neutral-400 line-clamp-1">{ev.mensaje || '-'}</p>
+                        </td>
+                        <td className="px-6 py-5">
+                          <span className="text-[10px] font-bold text-[#71BF44]">{ev.numero_caso || '-'}</span>
                         </td>
                         <td className="px-6 py-5 whitespace-nowrap text-[10px] text-neutral-500 uppercase font-bold">
                            {formatDate(ev.created_at, true)}
