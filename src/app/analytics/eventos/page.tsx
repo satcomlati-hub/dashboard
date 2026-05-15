@@ -207,7 +207,10 @@ export default function EventHistoryPage() {
       else setLoading(true);
 
       const res = await fetch(`/api/db/eventos?range=${rangeToFetch}`);
-      if (!res.ok) throw new Error('Error al obtener el historial de eventos');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.details || errorData.error || 'Error al obtener el historial de eventos');
+      }
       
       const json = await res.json();
       const events = Array.isArray(json) ? json : (json.data || []);
@@ -437,6 +440,23 @@ export default function EventHistoryPage() {
           </div>
         </div>
       </header>
+      
+      {/* Error Banner */}
+      {error && (
+        <div className="mb-6 flex items-start gap-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-2xl px-5 py-4 text-sm text-red-700 dark:text-red-400">
+          <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <p className="font-bold">Error al cargar datos</p>
+            <p className="text-xs mt-1 opacity-90">{error}</p>
+          </div>
+          <button 
+            onClick={() => fetchData(true)} 
+            className="px-3 py-1 bg-white dark:bg-black/20 border border-red-200 dark:border-red-800 rounded-lg text-xs font-bold hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
 
       {/* Filters Bar - Premium Redesign */}
       <div className="flex flex-col gap-6 mb-8">
