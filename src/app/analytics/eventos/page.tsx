@@ -26,9 +26,11 @@ import {
   Server,
   FilterX,
   Copy,
-  Check
+  Check,
+  Plus
 } from 'lucide-react';
 import { formatDate } from '@/lib/formatters';
+import RegistroManualModal from './RegistroManualModal';
 import { 
   LineChart, 
   Line, 
@@ -196,6 +198,7 @@ export default function EventHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   
   // Filter States (Multiselect)
   const [selectedEstados, setSelectedEstados] = useState<string[]>([]);
@@ -460,6 +463,13 @@ export default function EventHistoryPage() {
           </div>
 
           <div className="flex items-center gap-3">
+             <button
+              onClick={() => setIsManualModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-[#71BF44] text-xs font-bold text-white rounded-lg shadow-sm hover:bg-[#5da035] transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              Registrar Manual
+            </button>
              <button
               onClick={downloadCSV}
               disabled={filteredData.length === 0}
@@ -834,6 +844,11 @@ export default function EventHistoryPage() {
           </section>
         </>
       )}
+      <RegistroManualModal 
+        isOpen={isManualModalOpen} 
+        onClose={() => setIsManualModalOpen(false)} 
+        onSuccess={() => fetchData(true)} 
+      />
     </div>
   );
 }
