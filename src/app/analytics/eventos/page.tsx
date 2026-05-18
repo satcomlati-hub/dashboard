@@ -24,7 +24,9 @@ import {
   Globe,
   MapPin,
   Server,
-  FilterX
+  FilterX,
+  Copy,
+  Check
 } from 'lucide-react';
 import { formatDate } from '@/lib/formatters';
 import { 
@@ -60,6 +62,30 @@ type TimeRange = 'hoy' | 'semana' | 'mes' | 'trimestre' | 'mes_actual' | 'mes_an
 interface SortConfig {
   key: keyof EventoRabbit | 'fecha_norm';
   direction: 'asc' | 'desc';
+}
+
+// Reusable Copy Button Component
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    if (!text || text === '-') return;
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (!text || text === '-') return null;
+
+  return (
+    <button 
+      onClick={handleCopy}
+      className="p-1.5 ml-2 bg-neutral-100 dark:bg-neutral-800 hover:bg-[#71BF44]/20 hover:text-[#71BF44] text-neutral-400 rounded-lg transition-colors flex-shrink-0 group relative shadow-sm"
+      title="Copiar detalle"
+    >
+      {copied ? <Check className="w-3.5 h-3.5 text-[#71BF44]" /> : <Copy className="w-3.5 h-3.5" />}
+    </button>
+  );
 }
 
 // Reusable MultiSelect Dropdown Component
@@ -771,9 +797,12 @@ export default function EventHistoryPage() {
                         </td>
                         <td className="px-6 py-5 whitespace-nowrap text-[10px] font-bold text-neutral-400 uppercase tracking-tighter">{ev.reporta}</td>
                         <td className="px-6 py-5 max-w-sm">
-                          <p className="text-[11px] font-medium text-neutral-500 leading-relaxed italic line-clamp-2" title={ev.detalle_evento}>
-                            {ev.detalle_evento || '-'}
-                          </p>
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-[11px] font-medium text-neutral-500 leading-relaxed italic line-clamp-2 break-all" title={ev.detalle_evento}>
+                              {ev.detalle_evento || '-'}
+                            </p>
+                            <CopyButton text={ev.detalle_evento} />
+                          </div>
                         </td>
                         <td className="px-6 py-5">
                           <span className="text-[10px] font-medium text-neutral-400 truncate block max-w-[180px]">{ev.version}</span>
