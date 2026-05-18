@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/db';
+import { query } from '@/lib/db';
 
 export async function POST(request: Request) {
   try {
@@ -26,29 +26,28 @@ export async function POST(request: Request) {
     const detalleEvento = `[${severidad}] ${detalle || 'Sin detalles'}`;
     const estado = programado ? 'PROGRAMADO' : 'REGISTRADO';
     const key = `MANUAL-${evento.replace(/\s+/g, '-')}-${Date.now()}`;
+    const numEventos = duracionHoras ? parseInt(duracionHoras) : 1;
 
-    const { data, error } = await supabase
-      .from('bitacora_eventos')
-      .insert([
-        { 
-          key,
-          evento,
-          ambiente: ambiente || 'N/A',
-          version: version || 'N/A',
-          pais: 'GLOBAL', // Default
-          detalle_evento: detalleEvento,
-          reporta: 'Usuario Manual',
-          fecha_evento: fechaEvento.toISOString(),
-          num_eventos: duracionHoras ? parseInt(duracionHoras) : 1, // Duración en horas
-          estado,
-          mensaje: programado ? 'Evento Programado' : 'Registro Manual'
-        }
-      ])
-      .select()
-      .single();
+    const { rows } = await query(
+      `INSERT INTO mysatcom.bitacora_eventos 
+       (key, evento, ambiente, version, pais, detalle_evento, reporta, fecha_evento, num_eventos, estado, mensaje) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+      [
+        key, 
+        evento, 
+        ambiente || 'N/A', 
+        version || 'N/A', 
+        'GLOBAL', 
+        detalleEvento, 
+        'Usuario Manual', 
+        fechaEvento.toISOString(), 
+        numEventos, 
+        estado, 
+        programado ? 'Evento Programado' : 'Registro Manual'
+      ]
+    );
 
-    if (error) throw error;
-    return NextResponse.json(data);
+    return NextResponse.json(rows[0]);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
