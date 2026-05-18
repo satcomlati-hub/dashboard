@@ -1,7 +1,7 @@
 import { workflow, node, links } from '@n8n-as-code/transformer';
 
 // <workflow-map>
-// Workflow : MonitoreoAlertas
+// Workflow : TIMER - MonitoreoAlertas
 // Nodes   : 7  |  Connections: 6
 //
 // NODE INDEX
@@ -32,11 +32,11 @@ import { workflow, node, links } from '@n8n-as-code/transformer';
 
 @workflow({
     id: 'pcZJZpgQLLbbo5uj',
-    name: 'MonitoreoAlertas',
+    name: 'TIMER - MonitoreoAlertas',
     active: true,
     settings: { executionOrder: 'v1', binaryMode: 'separate' },
 })
-export class MonitoreoalertasWorkflow {
+export class TimerMonitoreoalertasWorkflow {
     // =====================================================================
     // CONFIGURATION DES NOEUDS
     // =====================================================================
@@ -73,11 +73,11 @@ export class MonitoreoalertasWorkflow {
         operation: 'executeQuery',
         schema: {
             mode: 'list',
-            value: 'sat_monitoreo',
+            value: 'public',
         },
         table: {
             mode: 'list',
-            value: 'monitoreo_config',
+            value: '',
         },
         query: "SELECT COALESCE(json_agg(t), '[]'::json) as configs FROM (SELECT * FROM sat_monitoreo.monitoreo_config WHERE esta_activo = true) t;",
         options: {},
@@ -151,11 +151,11 @@ return Object.values(mapAmbientes).map(info => ({
         operation: 'executeQuery',
         schema: {
             mode: 'list',
-            value: 'sat_monitoreo',
+            value: 'public',
         },
         table: {
             mode: 'list',
-            value: 'reglas_alertas',
+            value: '',
         },
         query: "SELECT * FROM sat_monitoreo.reglas_alertas WHERE id IN ('{{ $('Desglosar Ambientes').item.json.reglas_ids.join(\"','\") }}');",
         options: {},
@@ -169,135 +169,121 @@ return Object.values(mapAmbientes).map(info => ({
         position: [1088, -448],
     })
     Motoranalisis = {
-        jsCode: `// 1. Preparación de Datos Globales
-let rawData;
+        mode: 'runOnceForEachItem',
+        jsCode: `// 1. Preparación de Datos (Ítem actual)
+const regla = $input.item.json;
+const contexto = $('Desglosar Ambientes').item.json;
+let nodeOutput;
+
 try {
-  rawData = $('ConsultarDatos').item.json.data;
+  nodeOutput = $('ConsultarDatos').item.json;
 } catch (e) {
-  return []; // Sin datos de origen
+  return; // Filtra el ítem si no hay datos vinculados
 }
 
-if (!rawData) return [];
+const rawData = nodeOutput.data || nodeOutput;
+if (!rawData) return;
 
 let data = [];
 try {
   data = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
 } catch (e) {
-  return []; // Error parseo
+  return; // Filtra si el JSON es inválido
 }
 
-if (!Array.isArray(data)) return [];
+if (!Array.isArray(data)) return;
 
-const contexto = $('Desglosar Ambientes').item.json;
-const reglas = $input.all(); 
-const resultadosGlobales = [];
+// 2. Procesamiento de la Regla Actual
+const targetAmb = String(contexto.ambiente_actual || '').trim().toUpperCase();
 
-// 2. Procesamiento de cada Regla (Deduplicación Estricta)
-const keysProcesadas = new Set();
-
-for (const itemRegla of reglas) {
-  const regla = itemRegla.json;
+const matches = data.filter(item => {
+  if (!item) return false;
   
-  // Clave de unicidad para esta ejecución
-  const checkKey = \`\${regla.nombre}|\${contexto.ambiente_actual}\`;
-  if (keysProcesadas.has(checkKey)) continue;
-  keysProcesadas.add(checkKey);
+  const itemAmbiente = String(item.Ambiente || item.ambiente || targetAmb).trim().toUpperCase();
+  if (itemAmbiente !== targetAmb) return false;
+
+  const expEstado = (regla.expresion_estado || '').trim();
+  const expMotivo = (regla.expresion_motivo || '').trim();
+
+  const estadoMatch = !expEstado || new RegExp(expEstado, 'i').test(item.DescripcionEstatus || '');
+  const fullItemText = JSON.stringify(item);
+  const motivoMatch = !expMotivo || new RegExp(expMotivo, 'i').test(fullItemText);
   
-  // Filtrado por regla actual y Ambiente (Doble validación)
-  const matches = data.filter(item => {
-    if (!item) return false;
-    
-    // Validar que el dato sea del ambiente correcto
-    const itemAmbiente = item.Ambiente || item.ambiente || contexto.ambiente_actual;
-    if (itemAmbiente !== contexto.ambiente_actual) return false;
+  return estadoMatch && motivoMatch;
+});
 
-    const expEstado = (regla.expresion_estado || '').trim();
-    const expMotivo = (regla.expresion_motivo || '').trim();
+// 3. Validación de Umbral
+const minEventos = Number(regla.minimo_eventos || 1);
+if (matches.length < minEventos) return; // No generamos alerta si no llegamos al mínimo
 
-    const estadoMatch = !expEstado || new RegExp(expEstado, 'i').test(item.DescripcionEstatus || '');
-    
-    // Búsqueda extendida: Intentamos en campos específicos primero, luego en todo el JSON
-    const fullItemText = JSON.stringify(item);
-    const motivoMatch = !expMotivo || new RegExp(expMotivo, 'i').test(fullItemText);
-    
-    return estadoMatch && motivoMatch;
-  });
+// 4. Consolidación de Incidencias
+const summary = {
+  total: matches.length,
+  afectaciones: {}, 
+  ids: [],
+  paises: new Set()
+};
 
-  if (matches.length === 0) continue;
-
-  // 3. Consolidación de Incidencias por Regla (Agrupar Países/Emisores/Puntos)
-  const summary = {
-    total: 0,
-    afectaciones: {}, // { "Pais | Emisor | Punto": count }
-    ids: [],
-    paises: new Set(),
-    item_ref: matches[0]
-  };
-
-  matches.forEach(item => {
-    summary.total++;
-    // Formato de llave de afectación para el reporte: Pais | Emisor | Punto
-    const pais = item.Pais || item.id_pais || 'N/A';
-    summary.paises.add(pais);
-    const afKey = \`\${pais} | \${item.Emisor || 'N/A'} | \${item.Establecimiento || '000'}-\${item.Punto || '000'}\`;
-    summary.afectaciones[afKey] = (summary.afectaciones[afKey] || 0) + 1;
-    if (item.IdComprobante && summary.ids.length < 15) summary.ids.push(item.IdComprobante);
-  });
-
-  // 4. Generación de p_key basada en Frecuencia
-  const now = new Date();
-  let freqSuffix = "";
-  const freq = (regla.frecuencia || 'DIARIO').toUpperCase();
+matches.forEach(item => {
+  const pais = String(item.Pais || item.id_pais || '506');
+  summary.paises.add(pais);
+  const emisor = item.Emisor || item.emisor || 'N/A';
+  const afKey = \`\${pais} | \${emisor} | \${item.Establecimiento || '000'}-\${item.Punto || '000'}\`;
+  summary.afectaciones[afKey] = (summary.afectaciones[afKey] || 0) + 1;
   
-  if (freq === 'HORARIO') {
-    freqSuffix = now.toISOString().split(':')[0]; 
-  } else if (freq === 'SEMANAL') {
-    const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-    freqSuffix = \`\${d.getUTCFullYear()}-W\${weekNo}\`;
-  } else if (freq === 'MENSUAL') {
-    freqSuffix = now.toISOString().substring(0, 7);
-  } else {
-    freqSuffix = now.toISOString().split('T')[0];
-  }
+  const idComp = item.IdComprobante || item.id_comprobante || item.id;
+  if (idComp && summary.ids.length < 15) summary.ids.push(idComp);
+});
 
-  const eKey = \`REGLA-TICKET:\${regla.nombre}|ENV:\${contexto.ambiente_actual}|FREQ:\${freq}|P:\${freqSuffix}\`;
+// 5. Preparación de Payload (Retorno Directo)
+const now = new Date();
+const freq = (regla.frecuencia || 'DIARIO').toUpperCase();
 
-  // 5. Construcción de Cuerpo HTML consolidado premium
-  let listaAfectacionesHtml = Object.entries(summary.afectaciones)
-    .map(([af, c]) => \`<li><b>\${af}</b>: \${c} documentos</li>\`)
-    .join('');
+let freqSuffix = now.toISOString().split('T')[0]; // Diario por defecto
+if (freq === 'SEMANAL') {
+  const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay()||7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  freqSuffix = d.getUTCFullYear() + '-W' + weekNo;
+} else if (freq === 'MENSUAL') {
+  freqSuffix = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+}
 
-  const htmlBody = \`
-<div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; border: 1px solid #e1e4e8; border-radius: 12px; background-color: #ffffff; max-width: 800px;">
-  <h2 style="color: #d93025; margin: 0 0 15px 0; border-bottom: 2px solid #d93025; padding-bottom: 10px;">🚨 Alerta de Monitoreo: \${regla.nombre}</h2>
-  
+const eKey = \`REGLA-TICKET:\${regla.nombre.trim()}|ENV:\${targetAmb}|FREQ:\${freq}|P:\${freqSuffix}\`;
+
+const listaAfectacionesHtml = Object.entries(summary.afectaciones)
+  .map(([af, c]) => \`<li><b>\${af}</b>: \${c} documentos</li>\`)
+  .join('');
+
+const htmlBody = \`
+<div style="font-family: 'Segoe UI', Tahoma, sans-serif; padding: 20px; border: 1px solid #e1e4e8; border-radius: 12px; background-color: #ffffff;">
+  <h2 style="color: #d93025; border-bottom: 2px solid #d93025; padding-bottom: 10px;">🚨 Alerta: \${regla.nombre}</h2>
   <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 6px solid #d93025; margin-bottom: 20px;">
-    <p style="margin: 0; font-size: 14px; color: #5f6368;"><b>Ambiente Detonador:</b> \${contexto.ambiente_actual}</p>
-    <p style="margin: 5px 0 0 0; font-size: 14px; color: #5f6368;"><b>Frecuencia de Registro:</b> \${freq}</p>
-    <p style="margin: 10px 0 0 0; font-size: 20px; color: #d93025;"><b>Total de Documentos Afectados: \${summary.total}</b></p>
+    <p style="margin: 0; font-size: 14px; color: #5f6368;"><b>Ambiente:</b> \${targetAmb}</p>
+    <p style="margin: 10px 0 0 0; font-size: 20px; color: #d93025;"><b>Total Afectados: \${summary.total}</b></p>
   </div>
-  
-  <h3 style="font-size: 16px; color: #202124; margin: 20px 0 10px 0;">🏢 Detalle de Países, Emisores y Puntos</h3>
-  <ul style="font-size: 13px; color: #3c4043; line-height: 1.6; margin: 0; padding-left: 20px;">
-    \${listaAfectacionesHtml}
-  </ul>
-  
-  <h3 style="font-size: 16px; color: #202124; margin: 25px 0 10px 0;">🔍 Muestra de Comprobantes (Top 15)</h3>
-  <div style="background-color: #202124; color: #f8f9fa; padding: 15px; border-radius: 6px; font-family: 'Courier New', Courier, monospace; font-size: 12px; overflow-x: auto; line-height: 1.5;">
-    \${summary.ids.join('<br>')}
-  </div>
-  
-  <p style="font-size: 11px; color: #70757a; margin-top: 25px; text-align: right; font-style: italic;">
-    Este es un reporte automático generado por el Sistema de Alertas Satcom.
-  </p>
+  <h3 style="font-size: 16px; color: #202124;">🏢 Detalle de Afectaciones</h3>
+  <ul style="font-size: 13px; color: #3c4043;">\${listaAfectacionesHtml}</ul>
+  <h3 style="font-size: 16px; color: #202124;">🔍 Muestra de Comprobantes</h3>
+  <div style="background-color: #202124; color: #f8f9fa; padding: 15px; border-radius: 6px; font-family: monospace; font-size: 12px; line-height: 1.5;">\${summary.ids.join('<br>')}</div>
 </div>\`.trim();
 
-  // 6. Payload para Zoho Desk (Formato Estándar Satcom)
-  const ticket_payload = {
-    subject: \`ALERTA | \${contexto.ambiente_actual} | \${regla.nombre} (\${summary.total})\`,
+// En modo "Run Once for Each Item", devolvemos el objeto directamente
+return {
+  p_ambiente: targetAmb,
+  p_version: 'v1',
+  p_pais: Number(Array.from(summary.paises)[0] || 506),
+  p_evento: regla.nombre.trim(),
+  p_detalle_evento: \`Detección de \${summary.total} incidencias.\`,
+  p_reporta: 'n8n-MonitoreoAlertas',
+  p_fecha_evento: now.toISOString(),
+  p_key: eKey,
+  p_num_eventos: summary.total,
+  p_mensaje: \`ALERTA | \${targetAmb} | \${regla.nombre.trim()}\`,
+  estado: 'activo',
+  ticket_payload: {
+    subject: \`ALERTA | \${targetAmb} | \${regla.nombre.trim()} (\${summary.total})\`,
     description: htmlBody,
     departmentId: "816030000000006907",
     contactId: "816030000053275791",
@@ -308,29 +294,10 @@ for (const itemRegla of reglas) {
     cf: {
       cf_existe_una_solucion_temporal_disponible_1: "No aplica",
       cf_area: "Soporte",
-      cf_portal: contexto.ambiente_actual
+      cf_portal: targetAmb
     }
-  };
-
-  resultadosGlobales.push({
-    json: {
-      p_ambiente: contexto.ambiente_actual,
-      p_version: 'v1',
-      p_pais: Number(Array.from(summary.paises)[0] || 506),
-      p_evento: regla.nombre,
-      p_detalle_evento: \`Consolidado de \${summary.total} incidencias (\${Object.keys(summary.afectaciones).length} combinaciones Pais|Emisor|Punto).\`,
-      p_reporta: 'n8n-MonitoreoAlertas',
-      p_fecha_evento: now.toISOString(),
-      p_key: eKey,
-      p_num_eventos: summary.total,
-      p_mensaje: \`ALERTA | \${contexto.ambiente_actual} | \${regla.nombre}\`,
-      estado: 'activo',
-      ticket_payload
-    }
-  });
-}
-
-return resultadosGlobales;
+  }
+};
 `,
     };
 
@@ -339,7 +306,7 @@ return resultadosGlobales;
         name: 'CallSubGuardaEvento',
         type: 'n8n-nodes-base.executeWorkflow',
         version: 1.3,
-        position: [1280, -592],
+        position: [1296, -608],
     })
     Callsubguardaevento = {
         workflowId: {
@@ -356,7 +323,7 @@ return resultadosGlobales;
                 p_ambiente: "={{ $('MotorAnalisis').item.json.p_ambiente }}",
                 p_version: "={{ $('MotorAnalisis').item.json.p_version }}",
                 p_pais: "={{ $('MotorAnalisis').item.json.p_pais }}",
-                p_evento: "={{ $('MotorAnalisis').item.json.p_evento }}",
+                p_evento: '=Creación Caso Desk',
                 p_detalle_evento: "={{ $('MotorAnalisis').item.json.p_detalle_evento }}",
                 p_reporta: "={{ $('MotorAnalisis').item.json.p_reporta }}",
                 p_fecha_evento: "={{ $('MotorAnalisis').item.json.p_fecha_evento }}",

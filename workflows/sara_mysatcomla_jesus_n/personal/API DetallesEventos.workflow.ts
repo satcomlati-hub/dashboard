@@ -2,28 +2,27 @@ import { workflow, node, links } from '@n8n-as-code/transformer';
 
 // <workflow-map>
 // Workflow : API DetallesEventos
-// Nodes   : 7  |  Connections: 6
+// Nodes   : 6  |  Connections: 6
 //
 // NODE INDEX
 // ──────────────────────────────────────────────────────────────────
 // Property name                    Node type (short)         Flags
-// ExecuteASqlQuery                   postgres                   [onError→regular] [creds] [alwaysOutput]
-// RespondToWebhook                   respondToWebhook
-// EditFields                         set
 // Input                              webhook
+// ExecuteASqlQuery                   postgres                   [creds]
+// EditFields                         set
 // If_                                if
-// ExecuteASqlQuery1                  postgres                   [onError→regular] [creds] [alwaysOutput]
-// RespondToWebhook1                  respondToWebhook
+// ExecuteASqlQuery1                  postgres                   [creds]
+// Response                           respondToWebhook
 //
 // ROUTING MAP
 // ──────────────────────────────────────────────────────────────────
 // Input
 //    → EditFields
 //      → If_
-//        → ExecuteASqlQuery
-//          → RespondToWebhook
-//       .out(1) → ExecuteASqlQuery1
-//          → RespondToWebhook1
+//        → ExecuteASqlQuery1
+//          → Response
+//       .out(1) → ExecuteASqlQuery
+//          → Response (↩ loop)
 // </workflow-map>
 
 // =====================================================================
@@ -47,18 +46,28 @@ export class ApiDetalleseventosWorkflow {
     // =====================================================================
 
     @node({
-        id: '51ed860f-eb50-4c8d-b1ee-384487f004b4',
+        id: 'ac105fa6-851d-4940-b350-987676dabf61',
+        webhookId: 'fe9844bc-d633-4d06-8bfa-815540a4362e',
+        name: 'Input',
+        type: 'n8n-nodes-base.webhook',
+        version: 2,
+        position: [0, 0],
+    })
+    Input = {
+        path: 'DetalleEventosRabbit',
+        options: {},
+    };
+
+    @node({
+        id: '50f11be7-44bb-4de5-8a9f-b2878dae5ef6',
         name: 'Execute a SQL query',
         type: 'n8n-nodes-base.postgres',
         version: 2.6,
-        position: [-560, 16],
-        credentials: { postgres: { id: 'e9lRiPBv5aq4p35i', name: 'Postgres SATCOMTI' } },
-        onError: 'continueRegularOutput',
-        alwaysOutputData: true,
+        position: [600, 100],
+        credentials: { postgres: { id: 'Zq7qQZ6fO98yT6Xv', name: 'Supabase Satcom' } },
     })
     ExecuteASqlQuery = {
         operation: 'executeQuery',
-        query: "select * from mysatcom.get_bitacora_eventos(null, '{{ $json.Range }}')",
         schema: {
             mode: 'list',
             value: 'mysatcom',
@@ -67,38 +76,23 @@ export class ApiDetalleseventosWorkflow {
             mode: 'list',
             value: 'bitacora_eventos',
         },
-        options: {
-            queryReplacement: '=',
-            replaceEmptyStrings: true,
-        },
+        query: "select * from mysatcom.get_bitacora_eventos(null, '{{ $json.Range }}')",
     };
 
     @node({
-        id: 'b4e15671-b43b-483b-9e44-63e7884f5654',
-        name: 'Respond to Webhook',
-        type: 'n8n-nodes-base.respondToWebhook',
-        version: 1.5,
-        position: [-336, 16],
-    })
-    RespondToWebhook = {
-        respondWith: 'allIncomingItems',
-        options: {},
-    };
-
-    @node({
-        id: '68287c04-7ac2-489a-ac79-0ff518066a84',
+        id: '0287cc6f-2b5a-49b6-9f30-cd3d87e9a4af',
         name: 'Edit Fields',
         type: 'n8n-nodes-base.set',
         version: 3.4,
-        position: [-1008, 112],
+        position: [200, 0],
     })
     EditFields = {
         assignments: {
             assignments: [
                 {
-                    id: '43da9a7f-3d06-42ef-89dd-87f12fcb6154',
+                    id: 'evento-param-id',
                     name: 'Evento',
-                    value: "={{ $('Input').item?.json?.query?.Evento ||'' }}",
+                    value: "={{ $('Input').item?.json?.query?.evento }}",
                     type: 'string',
                 },
                 {
@@ -113,64 +107,34 @@ export class ApiDetalleseventosWorkflow {
     };
 
     @node({
-        id: '55db8fea-92e9-4dd1-9172-52e29753d346',
-        webhookId: 'c51a1ec0-4cb9-4850-aad4-8dc812d06845',
-        name: 'Input',
-        type: 'n8n-nodes-base.webhook',
-        version: 2.1,
-        position: [-1232, 112],
-    })
-    Input = {
-        path: 'DetalleEventosRabbit',
-        responseMode: 'responseNode',
-        options: {},
-    };
-
-    @node({
-        id: '7471d5ee-d58f-4358-bc2f-2df78c958bf3',
+        id: '7d0a4369-7ec2-4429-acfb-d571debb430f',
         name: 'If',
         type: 'n8n-nodes-base.if',
-        version: 2.3,
-        position: [-784, 112],
+        version: 2.2,
+        position: [400, 0],
     })
     If_ = {
         conditions: {
-            options: {
-                caseSensitive: true,
-                leftValue: '',
-                typeValidation: 'strict',
-                version: 3,
-            },
-            conditions: [
+            string: [
                 {
-                    id: 'dc257e44-ae75-45c9-8e46-4938795371e0',
-                    leftValue: '={{ $json.Evento }}',
-                    rightValue: '',
-                    operator: {
-                        type: 'string',
-                        operation: 'empty',
-                        singleValue: true,
-                    },
+                    value1: '={{ $json.Evento }}',
+                    value2: '',
+                    operation: 'notEqual',
                 },
             ],
-            combinator: 'and',
         },
-        options: {},
     };
 
     @node({
-        id: 'f88a9646-a6c1-4f81-a227-74224fffdc3b',
-        name: 'Execute a SQL query1',
+        id: '1041c205-7081-46ae-9122-58ab890e1cb2',
+        name: 'Execute a SQL query 1',
         type: 'n8n-nodes-base.postgres',
         version: 2.6,
-        position: [-560, 208],
-        credentials: { postgres: { id: 'e9lRiPBv5aq4p35i', name: 'Postgres SATCOMTI' } },
-        onError: 'continueRegularOutput',
-        alwaysOutputData: true,
+        position: [600, -100],
+        credentials: { postgres: { id: 'Zq7qQZ6fO98yT6Xv', name: 'Supabase Satcom' } },
     })
     ExecuteASqlQuery1 = {
         operation: 'executeQuery',
-        query: "select * from mySatcom.get_bitacora_eventos('{{ $json.Evento }}', '{{ $json.Range }}')",
         schema: {
             mode: 'list',
             value: 'mysatcom',
@@ -179,22 +143,20 @@ export class ApiDetalleseventosWorkflow {
             mode: 'list',
             value: 'bitacora_eventos',
         },
-        options: {
-            queryReplacement: '=',
-            replaceEmptyStrings: true,
-        },
+        query: "select * from mysatcom.get_bitacora_eventos('{{ $json.Evento }}', '{{ $json.Range }}')",
     };
 
     @node({
-        id: 'bf2ce917-20d4-4895-aede-3646a8d4b397',
-        name: 'Respond to Webhook1',
+        id: '6f03c6f6-3ae7-418a-8fbb-cfbd3ff4d00b',
+        name: 'Response',
         type: 'n8n-nodes-base.respondToWebhook',
-        version: 1.5,
-        position: [-336, 208],
+        version: 1.1,
+        position: [900, 0],
     })
-    RespondToWebhook1 = {
-        respondWith: 'allIncomingItems',
-        options: {},
+    Response = {
+        options: {
+            responseCode: 200,
+        },
     };
 
     // =====================================================================
@@ -203,11 +165,11 @@ export class ApiDetalleseventosWorkflow {
 
     @links()
     defineRouting() {
-        this.ExecuteASqlQuery.out(0).to(this.RespondToWebhook.in(0));
-        this.EditFields.out(0).to(this.If_.in(0));
         this.Input.out(0).to(this.EditFields.in(0));
-        this.If_.out(0).to(this.ExecuteASqlQuery.in(0));
-        this.If_.out(1).to(this.ExecuteASqlQuery1.in(0));
-        this.ExecuteASqlQuery1.out(0).to(this.RespondToWebhook1.in(0));
+        this.EditFields.out(0).to(this.If_.in(0));
+        this.If_.out(0).to(this.ExecuteASqlQuery1.in(0));
+        this.If_.out(1).to(this.ExecuteASqlQuery.in(0));
+        this.ExecuteASqlQuery1.out(0).to(this.Response.in(0));
+        this.ExecuteASqlQuery.out(0).to(this.Response.in(0));
     }
 }
