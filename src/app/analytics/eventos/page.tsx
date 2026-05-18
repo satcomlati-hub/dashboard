@@ -345,11 +345,22 @@ export default function EventHistoryPage() {
         : date.toLocaleDateString('es-EC', { month: 'short', day: 'numeric', hour: '2-digit' });
       
       if (!timeMap[label]) {
-        timeMap[label] = { name: label };
+        timeMap[label] = { name: label, _casos: [] };
         types.forEach(t => timeMap[label][t] = 0);
       }
       
-      const val = parseInt(item.num_eventos) || 1;
+      let val = parseInt(item.num_eventos) || 1;
+      
+      if (item.evento === 'Creación Caso Desk') {
+          val = 1; // Un evento de caso cuenta como 1 caso creado
+          if (item.numero_caso) {
+              if (!timeMap[label]._casos) timeMap[label]._casos = [];
+              if (!timeMap[label]._casos.includes(item.numero_caso)) {
+                  timeMap[label]._casos.push(item.numero_caso);
+              }
+          }
+      }
+      
       timeMap[label][item.evento] = (timeMap[label][item.evento] || 0) + val;
     });
 
@@ -611,10 +622,33 @@ export default function EventHistoryPage() {
                     if (val >= 1000) return (val / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
                     return val.toLocaleString();
                   }} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#000', border: 'none', borderRadius: '16px', fontSize: '11px', color: '#fff' }}
-                    itemStyle={{ color: '#fff' }}
-                  />
+                  <Tooltip content={({ active, payload, label }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload;
+                      return (
+                        <div className="bg-black/95 border border-neutral-800 rounded-xl p-3 shadow-xl z-50 min-w-[150px]">
+                          <p className="text-white font-bold text-xs mb-2 border-b border-neutral-800 pb-1">{label}</p>
+                          {payload.map((entry: any, index: number) => (
+                            <div key={index} className="flex flex-col mb-1.5">
+                              <div className="flex items-center gap-2 text-[11px]">
+                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                                <span className="text-neutral-300">{entry.name}:</span>
+                                <span className="text-white font-bold">{entry.value}</span>
+                              </div>
+                              {entry.name === 'Creación Caso Desk' && data._casos && data._casos.length > 0 && (
+                                <div className="ml-4 mt-0.5 text-[10px] text-[#71BF44] font-bold flex flex-wrap gap-1 max-w-[200px]">
+                                  {data._casos.map((c: string, i: number) => (
+                                    <span key={i} className="bg-[#71BF44]/20 px-1.5 py-0.5 rounded">{c}</span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    }
+                    return null;
+                  }} />
                   <Legend 
                     verticalAlign="top" 
                     align="right" 
