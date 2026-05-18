@@ -606,7 +606,11 @@ export default function EventHistoryPage() {
                 >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#88888811" />
                   <XAxis dataKey="name" stroke="#888888" fontSize={10} tickLine={false} axisLine={false} dy={10} />
-                  <YAxis stroke="#888888" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => val.toLocaleString()} />
+                  <YAxis stroke="#888888" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => {
+                    if (val >= 1000000) return (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+                    if (val >= 1000) return (val / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+                    return val.toLocaleString();
+                  }} />
                   <Tooltip 
                     contentStyle={{ backgroundColor: '#000', border: 'none', borderRadius: '16px', fontSize: '11px', color: '#fff' }}
                     itemStyle={{ color: '#fff' }}
