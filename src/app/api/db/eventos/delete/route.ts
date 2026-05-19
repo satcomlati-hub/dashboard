@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'; // Ensure we have the correct path, or just use next-auth
 
 export async function DELETE(request: Request) {
   try {
