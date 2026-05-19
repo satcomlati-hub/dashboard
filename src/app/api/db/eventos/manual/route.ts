@@ -16,9 +16,9 @@ export async function POST(request: Request) {
       programado
     } = body;
 
-    // Combine date and time if it's scheduled, otherwise use current time
+    // Combine date and time (always passed from form)
     let fechaEvento = new Date();
-    if (programado && fecha && hora) {
+    if (fecha && hora) {
       fechaEvento = new Date(`${fecha}T${hora}:00`);
     }
 

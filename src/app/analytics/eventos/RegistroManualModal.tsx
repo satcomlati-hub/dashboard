@@ -11,8 +11,15 @@ interface CatalogoEvento {
   activo: boolean;
 }
 
+interface CatalogoAmbiente {
+  id: string;
+  ambiente: string;
+  activo: boolean;
+}
+
 export default function RegistroManualModal({ isOpen, onClose, onSuccess }: { isOpen: boolean, onClose: () => void, onSuccess: () => void }) {
   const [catalogo, setCatalogo] = useState<CatalogoEvento[]>([]);
+  const [ambientes, setAmbientes] = useState<CatalogoAmbiente[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,10 +48,16 @@ export default function RegistroManualModal({ isOpen, onClose, onSuccess }: { is
   const fetchCatalogo = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/db/catalogo');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Error al cargar el catálogo');
-      setCatalogo(data.filter((e: any) => e.activo));
+      const [resEventos, resAmbientes] = await Promise.all([
+        fetch('/api/db/catalogo'),
+        fetch('/api/db/ambientes')
+      ]);
+      const dataEventos = await resEventos.json();
+      const dataAmbientes = await resAmbientes.json();
+      if (!resEventos.ok) throw new Error(dataEventos.error || 'Error al cargar el catálogo de eventos');
+      if (!resAmbientes.ok) throw new Error(dataAmbientes.error || 'Error al cargar el catálogo de ambientes');
+      setCatalogo(dataEventos.filter((e: any) => e.activo));
+      setAmbientes(dataAmbientes);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -71,8 +84,8 @@ export default function RegistroManualModal({ isOpen, onClose, onSuccess }: { is
           ambiente: form.ambiente,
           version: form.version,
           detalle: form.detalle,
-          fecha: selectedEvent.programar_evento ? form.fecha : undefined,
-          hora: selectedEvent.programar_evento ? form.hora : undefined,
+          fecha: form.fecha,
+          hora: form.hora,
           duracionHoras: form.duracionHoras
         })
       });
@@ -139,7 +152,12 @@ export default function RegistroManualModal({ isOpen, onClose, onSuccess }: { is
                   <label className="block text-xs font-black uppercase tracking-widest text-neutral-500 mb-2">Ambiente</label>
                   <div className="relative">
                     <Server className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-                    <input type="text" required value={form.ambiente} onChange={e => setForm({...form, ambiente: e.target.value})} placeholder="Ej. V5, ColombiaAWS" className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl pl-10 pr-4 py-3 text-sm font-bold outline-none focus:border-[#71BF44] transition-colors" />
+                    <select required value={form.ambiente} onChange={e => setForm({...form, ambiente: e.target.value})} className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl pl-10 pr-4 py-3 text-sm font-bold outline-none focus:border-[#71BF44] transition-colors appearance-none">
+                      <option value="">Selecciona...</option>
+                      {ambientes.map(amb => (
+                        <option key={amb.id} value={amb.ambiente}>{amb.ambiente}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
                 <div>
@@ -151,21 +169,22 @@ export default function RegistroManualModal({ isOpen, onClose, onSuccess }: { is
                 </div>
               </div>
 
-              {selectedEvent?.programar_evento && (
-                <div className="grid grid-cols-2 gap-4 bg-[#71BF44]/5 p-4 rounded-xl border border-[#71BF44]/20">
-                  <div className="col-span-2">
-                    <p className="text-xs font-black uppercase text-[#71BF44] flex items-center gap-2"><Clock className="w-4 h-4"/> Programación del Evento</p>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-2">Fecha</label>
-                    <input type="date" required={selectedEvent.programar_evento} value={form.fecha} onChange={e => setForm({...form, fecha: e.target.value})} className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2.5 text-sm font-bold outline-none focus:border-[#71BF44]" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-2">Hora</label>
-                    <input type="time" required={selectedEvent.programar_evento} value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2.5 text-sm font-bold outline-none focus:border-[#71BF44]" />
-                  </div>
+              <div className="grid grid-cols-2 gap-4 bg-[#71BF44]/5 p-4 rounded-xl border border-[#71BF44]/20">
+                <div className="col-span-2 flex items-center justify-between">
+                  <p className="text-xs font-black uppercase text-[#71BF44] flex items-center gap-2"><Clock className="w-4 h-4"/> Fecha y Hora del Evento</p>
+                  {selectedEvent?.programar_evento && (
+                    <span className="text-[9px] bg-[#71BF44] text-white px-2 py-0.5 rounded uppercase font-black tracking-widest animate-pulse">Generará Notificación</span>
+                  )}
                 </div>
-              )}
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-2">Fecha</label>
+                  <input type="date" required value={form.fecha} onChange={e => setForm({...form, fecha: e.target.value})} className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2.5 text-sm font-bold outline-none focus:border-[#71BF44]" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-2">Hora</label>
+                  <input type="time" required value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2.5 text-sm font-bold outline-none focus:border-[#71BF44]" />
+                </div>
+              </div>
 
               <div>
                 <label className="block text-xs font-black uppercase tracking-widest text-neutral-500 mb-2">Duración (Horas)</label>
