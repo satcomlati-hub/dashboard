@@ -19,7 +19,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           id: profile.ZUID?.toString() || profile.id,
           name: profile.Display_Name || `${profile.First_Name} ${profile.Last_Name}` || profile.name,
           email: profile.Email || profile.email,
-          image: profile.photo || profile.picture || profile.Image_URL || profile.image || null,
+          image: profile.Photo_URL || profile.photo || profile.picture || profile.Image_URL || profile.image || null,
         }
       }
     }),
