@@ -43,12 +43,13 @@ export async function GET() {
     const photoUrl = userInfo.photo;
     const zuid = userInfo.ZUID;
 
-    // Si no hay URL de foto ni ZUID, no podemos hacer más
+    // Si no hay URL de foto ni ZUID, no podemos hacer más, pero devolvemos userInfo para debuguear
     if (!photoUrl && !zuid) {
       console.error('[ZohoPhotoProxy] Error: No se encontró photoUrl ni ZUID en la respuesta de userinfo');
       return NextResponse.json({
         error: 'No photo found',
-        message: 'No se encontró photoUrl ni ZUID en los datos devueltos por Zoho.'
+        message: 'No se encontró photoUrl ni ZUID en los datos devueltos por Zoho.',
+        debugUserInfoReceived: userInfo // Esto nos mostrará el JSON completo en el navegador del usuario
       }, { status: 404 });
     }
 
@@ -90,7 +91,8 @@ export async function GET() {
           return NextResponse.json({
             error: 'Failed to download photo from Zoho',
             status: photoResPublic.status,
-            message: 'No se pudo descargar el archivo de imagen de Zoho con ningún método.'
+            message: 'No se pudo descargar el archivo de imagen de Zoho con ningún método.',
+            debugUserInfoReceived: userInfo
           }, { status: photoResPublic.status });
         }
         console.log('[ZohoPhotoProxy] Descarga pública exitosa');
