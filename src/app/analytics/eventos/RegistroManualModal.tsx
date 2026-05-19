@@ -57,7 +57,7 @@ export default function RegistroManualModal({ isOpen, onClose, onSuccess }: { is
       if (!resEventos.ok) throw new Error(dataEventos.error || 'Error al cargar el catálogo de eventos');
       if (!resAmbientes.ok) throw new Error(dataAmbientes.error || 'Error al cargar el catálogo de ambientes');
       setCatalogo(dataEventos.filter((e: any) => e.activo));
-      setAmbientes(dataAmbientes);
+      setAmbientes(dataAmbientes.filter((a: any) => a.activo));
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -108,8 +108,10 @@ export default function RegistroManualModal({ isOpen, onClose, onSuccess }: { is
         <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
           <div>
             <h2 className="text-xl font-extrabold text-neutral-900 dark:text-white">Registro Manual de Evento</h2>
-            <p className="text-xs text-neutral-500 mt-1">
-              ¿No encuentras el evento? <Link href="/analytics/eventos/catalogo" className="text-[#71BF44] hover:underline" onClick={onClose}>Administrar Catálogo</Link>
+            <p className="text-xs text-neutral-500 mt-1 flex items-center gap-2">
+              ¿No encuentras algo? 
+              <Link href="/analytics/eventos/catalogo" className="text-[#71BF44] hover:underline" onClick={onClose}>Administrar Eventos</Link> •
+              <Link href="/analytics/eventos/ambientes" className="text-[#71BF44] hover:underline" onClick={onClose}>Administrar Ambientes</Link>
             </p>
           </div>
           <button onClick={onClose} className="p-2 bg-neutral-100 dark:bg-neutral-800 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors">

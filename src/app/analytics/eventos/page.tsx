@@ -208,6 +208,7 @@ export default function EventHistoryPage() {
   const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('hoy');
   const [searchQuery, setSearchQuery] = useState('');
   const [chartFilterDate, setChartFilterDate] = useState<string | null>(null);
+  const [showManualOnly, setShowManualOnly] = useState(false);
 
   // Column Filters
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({
@@ -275,6 +276,14 @@ export default function EventHistoryPage() {
         if (!matches) return false;
       }
 
+      if (showManualOnly) {
+        const isManual = item.key?.startsWith('MANUAL-') || 
+                         item.reporta === 'Usuario Manual' || 
+                         item.mensaje?.includes('Registro Manual') ||
+                         item.mensaje?.includes('Evento Programado');
+        if (!isManual) return false;
+      }
+
       // Dropdown Filters (Multiselect)
       if (selectedEstados.length > 0 && !selectedEstados.includes(item.estado)) return false;
       if (selectedEventos.length > 0 && !selectedEventos.includes(item.evento)) return false;
@@ -330,7 +339,7 @@ export default function EventHistoryPage() {
     });
 
     return result;
-  }, [data, selectedEstados, selectedEventos, selectedAmbientes, selectedPaises, selectedTimeRange, searchQuery, chartFilterDate, columnFilters, sortConfig]);
+  }, [data, selectedEstados, selectedEventos, selectedAmbientes, selectedPaises, selectedTimeRange, searchQuery, chartFilterDate, columnFilters, sortConfig, showManualOnly]);
 
   // Unique values for filters (Removed 'todos' as we handle empty array as 'todos')
   const estados = useMemo(() => Array.from(new Set(data.map(d => d.estado).filter(Boolean))).sort(), [data]);
@@ -469,6 +478,12 @@ export default function EventHistoryPage() {
             >
               <Plus className="w-4 h-4" />
               Registrar Manual
+            </button>
+            <button
+              onClick={() => setShowManualOnly(!showManualOnly)}
+              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg shadow-sm transition-all border ${showManualOnly ? 'bg-[#71BF44]/20 border-[#71BF44]/50 text-[#71BF44]' : 'bg-white dark:bg-[#1a1a1a] border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-[#222]'}`}
+            >
+              Ver Solo Manuales
             </button>
              <button
               onClick={downloadCSV}
