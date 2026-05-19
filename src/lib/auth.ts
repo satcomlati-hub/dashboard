@@ -19,7 +19,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           id: profile.ZUID?.toString() || profile.id,
           name: profile.Display_Name || `${profile.First_Name} ${profile.Last_Name}` || profile.name,
           email: profile.Email || profile.email,
-          image: profile.Photo_URL || profile.photo || profile.picture || profile.Image_URL || profile.image || null,
+          image: profile.photo || profile.picture || profile.Image_URL || profile.image || null,
         }
       }
     }),
@@ -42,9 +42,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       return false;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       if (user) {
         token.image = user.image;
+      }
+      if (account) {
+        token.accessToken = account.access_token;
       }
       if (token.email && !token.permissions) {
         try {
@@ -66,9 +69,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (session.user) {
         session.user.role = token.role;
         session.user.permissions = token.permissions;
-        if (token.image) {
-          session.user.image = token.image as string;
-        }
+        // Apuntar a nuestra ruta de API proxy local que maneja la autenticación y evita bloqueos de cookies de terceros
+        session.user.image = "/api/user/photo";
+        (session as any).accessToken = token.accessToken;
       }
       return session;
     },
