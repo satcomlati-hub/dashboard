@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, ChangeEvent } from 'react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 
 type Message = {
   id: string;
@@ -35,6 +36,7 @@ const WELCOME: Message = {
 };
 
 export default function SaraChatWidget() {
+  const { data: session } = useSession();
   const [open, setOpen]               = useState(false);
   const [messages, setMessages]       = useState<Message[]>([]);
   const [input, setInput]             = useState('');
@@ -269,6 +271,15 @@ export default function SaraChatWidget() {
                   {m.role === 'assistant' && (
                     <div className="w-6 h-6 rounded-full shrink-0 mt-0.5 flex items-center justify-center font-bold text-[10px] bg-gradient-to-br from-[#71BF44] to-[#5a9c33] text-white shadow-sm">
                       S
+                    </div>
+                  )}
+                  {m.role === 'user' && (
+                    <div className="w-6 h-6 rounded-full shrink-0 mt-0.5 flex items-center justify-center bg-neutral-200 dark:bg-neutral-800 text-[10px] font-bold text-neutral-500 overflow-hidden shadow-sm">
+                      {session?.user?.image ? (
+                        <img src={session.user.image} alt="User" className="w-full h-full object-cover" />
+                      ) : (
+                        session?.user?.name?.[0] || 'U'
+                      )}
                     </div>
                   )}
                   <div

@@ -9,6 +9,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Zoho({
       clientId: process.env.ZOHO_CLIENT_ID,
       clientSecret: process.env.ZOHO_CLIENT_SECRET,
+      authorization: {
+        params: {
+          scope: "AaaServer.profile.Read",
+        },
+      },
+      profile(profile) {
+        return {
+          id: profile.ZUID?.toString() || profile.id,
+          name: profile.Display_Name || `${profile.First_Name} ${profile.Last_Name}` || profile.name,
+          email: profile.Email || profile.email,
+          image: profile.photo || profile.picture || profile.Image_URL || profile.image || null,
+        }
+      }
     }),
   ],
   callbacks: {
@@ -29,7 +42,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       return false;
     },
-    async jwt({ token }) {
+    async jwt({ token, user }) {
+      if (user) {
+        token.image = user.image;
+      }
       if (token.email && !token.permissions) {
         try {
           const { role, permissions } = await getUserPermissions(token.email as string);
@@ -50,6 +66,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (session.user) {
         session.user.role = token.role;
         session.user.permissions = token.permissions;
+        if (token.image) {
+          session.user.image = token.image as string;
+        }
       }
       return session;
     },
