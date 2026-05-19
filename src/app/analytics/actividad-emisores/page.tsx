@@ -35,6 +35,7 @@ interface CatalogEmisor {
   RazonSocial: string;
   IdPais: number;
   NombrePais?: string;
+  CodigoPais?: number;
 }
 
 interface ActivityRecord {
@@ -64,13 +65,16 @@ interface EmitterGroup {
   estabCount: number;
   puntosCount: number;
   estadoReporte: string;
+  isDisconnected: boolean;
+  disconnectedEstabs: string[];
   details: ActivityRecord[];
 }
 
 type SortKey = 'ID_Emisor' | 'RazonSocial' | 'ultimaAutorizacion' | 'ultimaError' | 'totalOk' | 'estabCount' | 'puntosCount';
 
 export default function ActividadEmisoresPage() {
-  const [emitterGroups, setEmitterGroups] = useState<EmitterGroup[]>([]);
+  const [rawCatalog, setRawCatalog] = useState<CatalogEmisor[]>([]);
+  const [rawActivity, setRawActivity] = useState<ActivityRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -79,6 +83,9 @@ export default function ActividadEmisoresPage() {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [expandedEmisores, setExpandedEmisores] = useState<Set<number>>(new Set());
   const [selectedEmisorId, setSelectedEmisorId] = useState<number | null>(null);
+  const [countryFilter, setCountryFilter] = useState<string | null>(null);
+  const [alertFilter, setAlertFilter] = useState(false);
+  const [inactivityDays, setInactivityDays] = useState(3);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey, direction: 'asc' | 'desc' } | null>({ key: 'ultimaAutorizacion', direction: 'desc' });
 
   const toggleExpand = (id: number) => {
@@ -128,43 +135,8 @@ export default function ActividadEmisoresPage() {
         });
       }
 
-      const groups: EmitterGroup[] = catalog.map(c => {
-        const emisorActivities = activity.filter(a => Number(a.IdEmisor) === Number(c.IdEmisor));
-        const totalOk = emisorActivities.reduce((acc, curr) => acc + (Number(curr.TotalAutorizados) || 0), 0);
-        const totalError = emisorActivities.reduce((acc, curr) => acc + (Number(curr.TotalErrores) || 0), 0);
-        
-        const maxDate = (records: ActivityRecord[], field: keyof ActivityRecord) => {
-          const vals = records.map(r => String(r[field])).filter(d => d && d !== '---' && d !== 'NULL').sort((a, b) => b.localeCompare(a));
-          return vals[0] || '---';
-        };
-
-        // Normalización de estados basada en SQL: ACTIVO, SIN ACTIVIDAD, ULTIMO AUTORIZADO
-        const estados = emisorActivities.map(a => a.EstadoReporte?.toUpperCase());
-        let estado = 'SIN ACTIVIDAD';
-        if (estados.includes('ACTIVO')) estado = 'ACTIVO';
-        else if (estados.includes('ULTIMO AUTORIZADO')) estado = 'ULTIMO AUTORIZADO';
-
-        const estabs = new Set(emisorActivities.map(a => a.Establecimiento));
-
-        return {
-          ID_Emisor: c.IdEmisor,
-          Nemonico: c.Nemonico,
-          Identificacion: c.Identificacion,
-          RazonSocial: c.RazonSocial,
-          NombrePais: c.NombrePais || 'Ecuador',
-          Pais_ID: c.IdPais,
-          totalOk,
-          totalError,
-          ultimaAutorizacion: maxDate(emisorActivities, 'UltimoAutorizado'),
-          ultimaError: maxDate(emisorActivities, 'UltimoNoAutorizado'),
-          estabCount: estabs.size,
-          puntosCount: emisorActivities.length,
-          estadoReporte: estado,
-          details: emisorActivities
-        };
-      });
-      
-      setEmitterGroups(groups);
+      setRawCatalog(catalog);
+      setRawActivity(activity);
       setError(null);
     } catch (err: any) {
       setError(err.message || 'Error desconocido');
@@ -178,6 +150,85 @@ export default function ActividadEmisoresPage() {
     fetchData();
   }, [fetchData]);
 
+  const emitterGroups = useMemo(() => {
+    if (rawCatalog.length === 0) return [];
+
+    return rawCatalog.map(c => {
+      const emisorActivities = rawActivity.filter(a => Number(a.IdEmisor) === Number(c.IdEmisor));
+      const totalOk = emisorActivities.reduce((acc, curr) => acc + (Number(curr.TotalAutorizados) || 0), 0);
+      const totalError = emisorActivities.reduce((acc, curr) => acc + (Number(curr.TotalErrores) || 0), 0);
+      
+      const maxDate = (records: ActivityRecord[], field: keyof ActivityRecord) => {
+        const vals = records.map(r => String(r[field])).filter(d => d && d !== '---' && d !== 'NULL').sort((a, b) => b.localeCompare(a));
+        return vals[0] || '---';
+      };
+
+      // Normalización de estados basada en SQL: ACTIVO, SIN ACTIVIDAD, AÑOS ANTERIOR
+      const estados = emisorActivities.map(a => a.EstadoReporte?.toUpperCase());
+      let estado = 'SIN ACTIVIDAD';
+      if (estados.includes('ACTIVO')) estado = 'ACTIVO';
+      else if (estados.includes('AÑOS ANTERIOR') || estados.includes('ULTIMO AUTORIZADO')) estado = 'AÑOS ANTERIOR';
+
+      const estabs = new Set(emisorActivities.map(a => a.Establecimiento));
+      
+      // Mapeo manual de países si el nombre no viene del SP
+      const COUNTRY_MAP: Record<number, string> = {
+        593: 'Ecuador',
+        506: 'Costa Rica',
+        507: 'Panamá',
+        57: 'Colombia'
+      };
+
+      const paisId = c.CodigoPais || c.IdPais;
+      const nombrePais = c.NombrePais || COUNTRY_MAP[paisId] || 'Ecuador';
+
+      // Lógica de Alertas (Desconexiones)
+      // Hoy es 29 de Abril 2026
+      const today = new Date('2026-04-29');
+      const inactivityThreshold = new Date(today);
+      inactivityThreshold.setDate(today.getDate() - inactivityDays);
+      const thirtyDaysAgo = new Date(today);
+      thirtyDaysAgo.setDate(today.getDate() - 30);
+
+      const parseDate = (d: string) => (d && d !== '---' && d !== 'NULL') ? new Date(d) : null;
+
+      const estabsStatus = Array.from(estabs).map(e => {
+         // Excluir punto PPPPP de la lógica de alertas
+         const eActivities = emisorActivities.filter(a => a.Establecimiento === e && a.PuntoEmision !== 'PPPPP');
+         
+         if (eActivities.length === 0) return { id: e, lastOk: null, isAlerted: false };
+
+         const lastOk = parseDate(maxDate(eActivities, 'UltimoAutorizado'));
+         const hasActiveLastMonth = lastOk && lastOk >= thirtyDaysAgo;
+         const hasInactiveThreshold = !lastOk || lastOk < inactivityThreshold;
+         
+         return { id: e, lastOk, isAlerted: hasActiveLastMonth && hasInactiveThreshold };
+      });
+
+      const disconnectedEstabs = estabsStatus.filter(e => e.isAlerted).map(e => e.id);
+      const isDisconnected = estado === 'ACTIVO' && disconnectedEstabs.length > 0;
+
+      return {
+        ID_Emisor: c.IdEmisor,
+        Nemonico: c.Nemonico,
+        Identificacion: c.Identificacion,
+        RazonSocial: c.RazonSocial,
+        NombrePais: nombrePais,
+        Pais_ID: paisId,
+        totalOk,
+        totalError,
+        ultimaAutorizacion: maxDate(emisorActivities, 'UltimoAutorizado'),
+        ultimaError: maxDate(emisorActivities, 'UltimoNoAutorizado'),
+        estabCount: estabs.size,
+        puntosCount: emisorActivities.length,
+        estadoReporte: estado,
+        isDisconnected,
+        disconnectedEstabs,
+        details: emisorActivities
+      };
+    });
+  }, [rawCatalog, rawActivity, inactivityDays]);
+
   const sortedAndFilteredGroups = useMemo(() => {
     let result = emitterGroups.filter(g => {
       const matchSearch = !searchTerm || 
@@ -186,9 +237,11 @@ export default function ActividadEmisoresPage() {
         g.Identificacion?.includes(searchTerm);
       
       const matchStatus = !statusFilter || g.estadoReporte === statusFilter;
+      const matchCountry = !countryFilter || g.NombrePais === countryFilter;
+      const matchAlert = !alertFilter || g.isDisconnected;
       const matchSelected = !selectedEmisorId || g.ID_Emisor === selectedEmisorId;
 
-      return matchSearch && matchStatus && matchSelected;
+      return matchSearch && matchStatus && matchCountry && matchAlert && matchSelected;
     });
 
     if (sortConfig) {
@@ -206,7 +259,7 @@ export default function ActividadEmisoresPage() {
           if (aEmpty) return 1;
           if (bEmpty) return -1;
         }
-
+ 
         if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
         if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
         return 0;
@@ -214,7 +267,12 @@ export default function ActividadEmisoresPage() {
     }
 
     return result;
-  }, [emitterGroups, searchTerm, statusFilter, selectedEmisorId, sortConfig]);
+  }, [emitterGroups, searchTerm, statusFilter, countryFilter, alertFilter, selectedEmisorId, sortConfig]);
+
+  const countries = useMemo(() => {
+    const set = new Set(emitterGroups.map(g => g.NombrePais));
+    return Array.from(set).sort();
+  }, [emitterGroups]);
 
   const kpis = useMemo(() => {
     const getStats = (status: string) => {
@@ -228,8 +286,9 @@ export default function ActividadEmisoresPage() {
 
     return {
       activo: getStats('ACTIVO'),
-      ultimoAutorizado: getStats('ULTIMO AUTORIZADO'),
+      ultimoAutorizado: getStats('AÑOS ANTERIOR'),
       sinActividad: getStats('SIN ACTIVIDAD'),
+      desconectados: emitterGroups.filter(g => g.isDisconnected).length,
       globalOk: emitterGroups.reduce((acc, g) => acc + g.totalOk, 0),
       globalError: emitterGroups.reduce((acc, g) => acc + g.totalError, 0)
     };
@@ -283,7 +342,7 @@ export default function ActividadEmisoresPage() {
       </header>
 
       {/* KPI Cards: Emisores (Grande), Estabs (Pequeño), Puntos (Pequeño) */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-10">
         <div 
           onClick={() => handleKPIFilter('ACTIVO')}
           className={`cursor-pointer bg-white dark:bg-[#111] border rounded-[32px] p-8 shadow-sm transition-all border-l-8 ${statusFilter === 'ACTIVO' ? 'border-[#71BF44] ring-4 ring-[#71BF44]/10' : 'border-neutral-100 dark:border-neutral-800 border-l-[#71BF44] hover:border-neutral-200 hover:-translate-y-1'}`}
@@ -311,10 +370,10 @@ export default function ActividadEmisoresPage() {
         </div>
 
         <div 
-          onClick={() => handleKPIFilter('ULTIMO AUTORIZADO')}
-          className={`cursor-pointer bg-white dark:bg-[#111] border rounded-[32px] p-8 shadow-sm transition-all border-l-8 ${statusFilter === 'ULTIMO AUTORIZADO' ? 'border-orange-400 ring-4 ring-orange-400/10' : 'border-neutral-100 dark:border-neutral-800 border-l-orange-400 hover:border-neutral-200 hover:-translate-y-1'}`}
+          onClick={() => handleKPIFilter('AÑOS ANTERIOR')}
+          className={`cursor-pointer bg-white dark:bg-[#111] border rounded-[32px] p-8 shadow-sm transition-all border-l-8 ${statusFilter === 'AÑOS ANTERIOR' ? 'border-orange-400 ring-4 ring-orange-400/10' : 'border-neutral-100 dark:border-neutral-800 border-l-orange-400 hover:border-neutral-200 hover:-translate-y-1'}`}
         >
-           <p className="text-[10px] font-black text-orange-400 uppercase tracking-widest mb-6">Último Autorizado</p>
+           <p className="text-[10px] font-black text-orange-400 uppercase tracking-widest mb-6">Años Anterior</p>
            <div className="flex items-baseline gap-2 mb-6">
               <h3 className="text-6xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">{kpis.ultimoAutorizado.emisores}</h3>
               <span className="text-xs font-black text-neutral-400 uppercase tracking-widest">Empresas</span>
@@ -362,19 +421,79 @@ export default function ActividadEmisoresPage() {
            </div>
         </div>
 
+        <div 
+          onClick={() => setAlertFilter(!alertFilter)}
+          className={`cursor-pointer bg-white dark:bg-[#111] border rounded-[32px] p-8 shadow-sm transition-all border-l-8 ${alertFilter ? 'border-red-600 ring-4 ring-red-600/10' : 'border-neutral-100 dark:border-neutral-800 border-l-red-600 hover:border-neutral-200 hover:-translate-y-1'}`}
+        >
+           <p className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-6 flex items-center gap-2">
+             <AlertCircle className="w-3 h-3" /> Posibles Desconexiones
+           </p>
+           <div className="flex items-baseline gap-2 mb-6">
+              <h3 className="text-6xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">{kpis.desconectados}</h3>
+              <span className="text-xs font-black text-neutral-400 uppercase tracking-widest">Alertas</span>
+           </div>
+           <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest leading-relaxed">
+             Emisores activos con puntos sin trx en +{inactivityDays} días
+           </p>
+        </div>
+
         <div className="bg-white dark:bg-[#111] border border-neutral-100 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm flex flex-col justify-center">
            <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-6 italic opacity-50">Volumen Consolidado</p>
            <div className="space-y-4">
               <div className="flex items-center justify-between group">
                 <span className="text-[10px] font-black text-[#71BF44] uppercase tracking-widest group-hover:scale-110 transition-transform">Autorizados</span>
-                <span className="text-2xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">{kpis.globalOk.toLocaleString()}</span>
+                <span className="text-xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">{kpis.globalOk.toLocaleString()}</span>
               </div>
               <div className="flex items-center justify-between group">
                 <span className="text-[10px] font-black text-red-500 uppercase tracking-widest group-hover:scale-110 transition-transform">Errores</span>
-                <span className="text-2xl font-black text-red-500 tracking-tighter leading-none">{kpis.globalError.toLocaleString()}</span>
+                <span className="text-xl font-black text-red-500 tracking-tighter leading-none">{kpis.globalError.toLocaleString()}</span>
               </div>
            </div>
         </div>
+      </div>
+
+      {/* Filtro de País y Configuración */}
+      <div className="flex flex-wrap items-center gap-3 mb-10 overflow-x-auto pb-2 no-scrollbar">
+         <button 
+           onClick={() => setCountryFilter(null)}
+           className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${!countryFilter ? 'bg-neutral-900 text-white border-neutral-900 dark:bg-white dark:text-neutral-900' : 'bg-white dark:bg-neutral-800 text-neutral-400 border-neutral-100 dark:border-neutral-700 hover:border-neutral-300'}`}
+         >
+           Todos los Países
+         </button>
+         {countries.map(c => (
+           <button 
+             key={c}
+             onClick={() => setCountryFilter(c)}
+             className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${countryFilter === c ? 'bg-[#71BF44] text-white border-[#71BF44] shadow-lg shadow-[#71BF44]/20' : 'bg-white dark:bg-neutral-800 text-neutral-400 border-neutral-100 dark:border-neutral-700 hover:border-neutral-300'}`}
+           >
+             <Globe className="w-3 h-3" /> {c}
+           </button>
+         ))}
+
+         <div className="h-8 w-px bg-neutral-200 dark:bg-neutral-700 mx-2 hidden md:block"></div>
+
+         <button 
+           onClick={() => setAlertFilter(!alertFilter)}
+           className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${alertFilter ? 'bg-red-600 text-white border-red-600 shadow-lg shadow-red-600/20' : 'bg-white dark:bg-neutral-800 text-red-500 border-red-100 dark:border-red-500/20 hover:border-red-300'}`}
+         >
+           <AlertCircle className="w-3 h-3" /> Solo Alertas
+         </button>
+
+         <div className="h-8 w-px bg-neutral-200 dark:bg-neutral-700 mx-2 hidden md:block"></div>
+
+         <div className="flex items-center gap-3 bg-white dark:bg-neutral-800 px-6 py-2 rounded-2xl border border-neutral-100 dark:border-neutral-700 shadow-sm">
+            <Clock className="w-3 h-3 text-[#71BF44]" />
+            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Umbral Inactividad:</span>
+            <input 
+              type="number" 
+              min="1" 
+              max="30"
+              value={inactivityDays}
+              onChange={(e) => setInactivityDays(Math.max(1, parseInt(e.target.value) || 1))}
+              className="w-12 bg-neutral-50 dark:bg-neutral-900 border-none text-[12px] font-black text-[#71BF44] text-center focus:ring-0 outline-none rounded-lg"
+            />
+            <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Días</span>
+         </div>
       </div>
 
       {/* Grid Principal */}
@@ -390,8 +509,8 @@ export default function ActividadEmisoresPage() {
               className="w-full bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl pl-12 pr-4 py-4 text-xs font-bold focus:ring-4 focus:ring-[#71BF44]/10 outline-none transition-all placeholder:text-neutral-300 placeholder:italic"
             />
           </div>
-          {(selectedEmisorId || statusFilter) && (
-            <button onClick={() => { setSelectedEmisorId(null); setStatusFilter(null); }} className="text-[10px] font-black text-red-500 uppercase flex items-center gap-2 px-6 py-3 bg-red-50 dark:bg-red-500/10 rounded-2xl transition-all hover:scale-105 active:scale-95 border border-red-100 dark:border-red-500/20 shadow-lg shadow-red-500/5">
+          {(selectedEmisorId || statusFilter || countryFilter || alertFilter) && (
+            <button onClick={() => { setSelectedEmisorId(null); setStatusFilter(null); setCountryFilter(null); setAlertFilter(false); }} className="text-[10px] font-black text-red-500 uppercase flex items-center gap-2 px-6 py-3 bg-red-50 dark:bg-red-500/10 rounded-2xl transition-all hover:scale-105 active:scale-95 border border-red-100 dark:border-red-500/20 shadow-lg shadow-red-500/5">
               Reiniciar Auditoría <X className="w-4 h-4" />
             </button>
           )}
@@ -437,7 +556,7 @@ export default function ActividadEmisoresPage() {
                     </td>
                     <td className="px-8 py-8">
                       <div className="flex items-center gap-5">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all group-hover:scale-110 group-hover:rotate-3 shadow-sm ${g.estadoReporte === 'ACTIVO' ? 'bg-[#71BF44]/10 text-[#71BF44]' : g.estadoReporte === 'ULTIMO AUTORIZADO' ? 'bg-orange-400/10 text-orange-400' : 'bg-red-500/10 text-red-500'}`}>
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all group-hover:scale-110 group-hover:rotate-3 shadow-sm ${g.estadoReporte === 'ACTIVO' ? 'bg-[#71BF44]/10 text-[#71BF44]' : g.estadoReporte === 'AÑOS ANTERIOR' ? 'bg-orange-400/10 text-orange-400' : 'bg-red-500/10 text-red-500'}`}>
                           <Globe className="w-6 h-6" />
                         </div>
                         <div>
@@ -447,9 +566,15 @@ export default function ActividadEmisoresPage() {
                           </div>
                           <div className="flex items-center gap-3">
                              <p className="text-[9px] font-black text-neutral-400 uppercase tracking-[0.25em]">{g.NombrePais}</p>
-                             <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${g.estadoReporte === 'ACTIVO' ? 'bg-[#71BF44]/10 text-[#71BF44]' : g.estadoReporte === 'ULTIMO AUTORIZADO' ? 'bg-orange-400/10 text-orange-400' : 'bg-red-500/10 text-red-500'}`}>
+                             <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${g.estadoReporte === 'ACTIVO' ? 'bg-[#71BF44]/10 text-[#71BF44]' : g.estadoReporte === 'AÑOS ANTERIOR' ? 'bg-orange-400/10 text-orange-400' : 'bg-red-500/10 text-red-500'}`}>
                                 {g.estadoReporte}
                              </span>
+                             {g.isDisconnected && (
+                                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-red-500/10 border border-red-500/20 rounded-md animate-pulse">
+                                  <AlertCircle className="w-3 h-3 text-red-500" />
+                                  <span className="text-[8px] font-black text-red-500 uppercase tracking-tighter">Posible Desconexión</span>
+                                </div>
+                             )}
                           </div>
                         </div>
                       </div>
@@ -514,7 +639,15 @@ export default function ActividadEmisoresPage() {
                                if (!acc[d.Establecimiento]) acc[d.Establecimiento] = [];
                                acc[d.Establecimiento].push(d);
                                return acc;
-                             }, {} as Record<string, ActivityRecord[]>)).map(([estab, points]) => (
+                             }, {} as Record<string, ActivityRecord[]>))
+                             .sort(([estabA], [estabB]) => {
+                               const isA = g.disconnectedEstabs.includes(estabA) ? 1 : 0;
+                               const isB = g.disconnectedEstabs.includes(estabB) ? 1 : 0;
+                               return isB - isA;
+                             })
+                             .map(([estab, points]) => {
+                                const lastEstabOk = points.map(p => p.UltimoAutorizado).filter(d => d && d !== '---' && d !== 'NULL').sort((a, b) => b.localeCompare(a))[0] || 'Sin registros';
+                                return (
                                <div key={estab} className="relative pl-12 border-l-4 border-dashed border-[#71BF44]/20 space-y-6">
                                   <div className="absolute -left-[14px] top-0 w-6 h-6 bg-[#71BF44] text-white rounded-full flex items-center justify-center ring-8 ring-white dark:ring-[#111] shadow-lg shadow-[#71BF44]/20">
                                      <Building2 className="w-3 h-3" />
@@ -524,13 +657,18 @@ export default function ActividadEmisoresPage() {
                                      <div className="flex items-center gap-5">
                                         <div className="flex flex-col">
                                            <span className="text-[10px] font-black text-[#71BF44] uppercase tracking-[0.4em] mb-1">Nivel Auditoría</span>
-                                           <span className="text-sm font-black bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 px-6 py-2.5 rounded-2xl uppercase shadow-xl tracking-widest">
+                                           <span className={`text-sm font-black px-6 py-2.5 rounded-2xl uppercase shadow-xl tracking-widest ${g.disconnectedEstabs.includes(estab) ? 'bg-red-600 text-white animate-pulse ring-4 ring-red-600/20' : 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'}`}>
                                              ESTABLECIMIENTO {estab}
                                            </span>
                                         </div>
                                         <div className="flex items-center gap-3 px-4 py-2 bg-white dark:bg-neutral-800 rounded-xl border border-neutral-100 dark:border-neutral-700 shadow-sm mt-4">
                                            <span className="text-[11px] font-black text-neutral-800 dark:text-neutral-200">{points.length}</span>
                                            <span className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">Puntos Registrados</span>
+                                        </div>
+                                        <div className="flex items-center gap-3 px-4 py-2 bg-white dark:bg-neutral-800 rounded-xl border border-neutral-100 dark:border-neutral-700 shadow-sm mt-4">
+                                           <Calendar className="w-3 h-3 text-[#71BF44]" />
+                                           <span className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">Último OK:</span>
+                                           <span className="text-[11px] font-black text-neutral-800 dark:text-neutral-200">{lastEstabOk}</span>
                                         </div>
                                      </div>
                                      <div className="h-px flex-1 mx-12 bg-gradient-to-r from-neutral-200 via-neutral-100 to-transparent dark:from-neutral-800 dark:via-neutral-900"></div>
@@ -592,7 +730,8 @@ export default function ActividadEmisoresPage() {
                                      </table>
                                   </div>
                                </div>
-                             ))}
+                                );
+                             })}
                              
                              {g.details.length === 0 && (
                                <div className="py-24 text-center bg-white dark:bg-[#111] rounded-[40px] border-4 border-dashed border-neutral-100 dark:border-neutral-900">

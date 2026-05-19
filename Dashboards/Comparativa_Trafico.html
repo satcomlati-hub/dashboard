@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Satcom - Monitoreo en Tiempo Real</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --card-bg: #161b22;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --accent-today: #58a6ff;
+            --accent-yesterday: #3fb950;
+            --accent-week: #a371f7;
+            --accent-month: #d29922;
+            --danger: #f85149;
+            --success: #3fb950;
+        }
+
+        body { font-family: 'Outfit', sans-serif; background-color: var(--bg-color); color: var(--text-primary); margin: 0; padding: 15px; }
+        .container { max-width: 1600px; margin: 0 auto; }
+        
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .header h1 { font-size: 1.6rem; margin: 0; color: var(--accent-today); }
+
+        .data-input-section { background: var(--card-bg); border-radius: 10px; padding: 12px; margin-bottom: 20px; border: 1px solid #30363d; }
+        textarea { width: 100%; height: 60px; background: #010409; color: #58a6ff; border: 1px solid #30363d; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 11px; }
+
+        .btn { padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; border: 1px solid #30363d; transition: 0.2s; background: #21262d; color: white; }
+        .btn-primary { background: #238636; border: none; }
+        .btn:hover { filter: brightness(1.2); }
+
+        .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(48%, 1fr)); gap: 15px; }
+        .chart-card { background-color: var(--card-bg); border-radius: 12px; padding: 15px; border: 1px solid #30363d; }
+        
+        .chart-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; }
+        .country-info h2 { margin: 0; font-size: 1.2rem; }
+        
+        .kpi-last-hour { text-align: right; }
+        .kpi-value { font-size: 1.4rem; font-weight: 600; display: block; }
+        .kpi-label { font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; }
+
+        .legend-bar { display: flex; gap: 15px; font-size: 0.75rem; justify-content: center; margin-bottom: 15px; }
+        .legend-item { display: flex; align-items: center; gap: 5px; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+        canvas { max-height: 260px; }
+        
+        .trend-up { color: var(--success); }
+        .trend-down { color: var(--danger); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>Satcom Real-Time Monitor</h1>
+        <div style="display:flex; gap:10px;">
+            <button class="btn" onclick="toggleScale()">Escala: <span id="scaleLabel">Lineal</span></button>
+            <button class="btn btn-primary" onclick="processData()">Actualizar Datos</button>
+        </div>
+    </div>
+
+    <div class="data-input-section">
+        <textarea id="sqlInput" placeholder="Pega aquí los resultados de SQL..."></textarea>
+    </div>
+
+    <div class="legend-bar">
+        <div class="legend-item"><span class="dot" style="background:var(--accent-today)"></span> Hoy</div>
+        <div class="legend-item"><span class="dot" style="background:var(--accent-yesterday)"></span> Ayer</div>
+        <div class="legend-item"><span class="dot" style="background:var(--accent-week)"></span> Semana Pasada</div>
+        <div class="legend-item"><span class="dot" style="background:var(--accent-month)"></span> Mes Pasado</div>
+    </div>
+
+    <div class="dashboard-grid" id="chartsContainer"></div>
+</div>
+
+<script>
+    let charts = {};
+    let currentScale = 'linear';
+
+    function toggleScale() {
+        currentScale = currentScale === 'linear' ? 'logarithmic' : 'linear';
+        document.getElementById('scaleLabel').innerText = currentScale === 'linear' ? 'Lineal' : 'Logarítmica';
+        processData();
+    }
+
+    function processData() {
+        const rawText = document.getElementById('sqlInput').value;
+        if (!rawText.trim()) return;
+
+        const lines = rawText.trim().split('\n');
+        const data = {};
+
+        for (let i = 1; i < lines.length; i++) {
+            const cols = lines[i].split('\t');
+            if (cols.length < 6) continue;
+            const p = cols[0].trim();
+            const h = parseInt(cols[1]);
+            if (!data[p]) data[p] = Array.from({length: 24}, () => ({hoy:0, ayer:0, semana:0, mes:0}));
+            data[p][h] = { hoy: parseInt(cols[2])||0, ayer: parseInt(cols[3])||0, semana: parseInt(cols[4])||0, mes: parseInt(cols[5])||0 };
+        }
+        render(data);
+    }
+
+    function render(data) {
+        const container = document.getElementById('chartsContainer');
+        Object.keys(data).forEach(id => {
+            const countryData = data[id];
+            // Encontrar la última hora con datos de HOY
+            let lastHour = 0;
+            for(let h=23; h>=0; h--) { if(countryData[h].hoy > 0) { lastHour = h; break; } }
+            
+            const hoyVal = countryData[lastHour].hoy;
+            const semanaVal = countryData[lastHour].semana;
+            const desviacion = semanaVal > 0 ? ((hoyVal - semanaVal) / semanaVal * 100).toFixed(1) : 0;
+            const trendClass = desviacion < -20 ? 'trend-down' : (desviacion > 10 ? 'trend-up' : '');
+
+            if (!document.getElementById(`card-${id}`)) {
+                const div = document.createElement('div');
+                div.className = 'chart-card';
+                div.id = `card-${id}`;
+                container.appendChild(div);
+            }
+
+            const names = { "593": "Ecuador 🇪🇨", "506": "Costa Rica 🇨🇷", "507": "Panamá 🇵🇦", "57": "Colombia 🇨🇴" };
+            const card = document.getElementById(`card-${id}`);
+            card.innerHTML = `
+                <div class="chart-header">
+                    <div class="country-info">
+                        <h2>${names[id] || 'País ' + id}</h2>
+                        <span style="font-size:0.7rem; color:var(--text-secondary)">Última hora procesada: ${lastHour}:00</span>
+                    </div>
+                    <div class="kpi-last-hour">
+                        <span class="kpi-value ${trendClass}">${desviacion}%</span>
+                        <span class="kpi-label">Vs Semana Pasada</span>
+                    </div>
+                </div>
+                <canvas id="c-${id}"></canvas>
+            `;
+            updateChart(id, countryData, lastHour);
+        });
+    }
+
+    function updateChart(id, hourlyData, lastHour) {
+        const ctx = document.getElementById(`c-${id}`).getContext('2d');
+        const ds = (label, key, color, thickness) => ({
+            label: label,
+            data: hourlyData.map((d, i) => {
+                let val = d[key];
+                if (currentScale === 'logarithmic' && val === 0) val = 0.1;
+                return val;
+            }),
+            borderColor: color,
+            borderWidth: thickness,
+            pointRadius: (context) => (context.dataIndex === lastHour && label === 'Hoy') ? 6 : 0,
+            pointBackgroundColor: color,
+            tension: 0.3,
+            fill: label === 'Hoy',
+            backgroundColor: color + '10'
+        });
+
+        if (charts[id]) charts[id].destroy();
+        charts[id] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: Array.from({length: 24}, (_, i) => i + ':00'),
+                datasets: [
+                    ds('Hoy', 'hoy', '#58a6ff', 3),
+                    ds('Ayer', 'ayer', '#3fb950', 1),
+                    ds('Semana Pasada', 'semana', '#a371f7', 1),
+                    ds('Mes Pasado', 'mes', '#d29922', 1)
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { type: currentScale, grid: { color: '#30363d' }, ticks: { color: '#8b949e', callback: v => Number.isInteger(v) ? v : null } },
+                    x: { grid: { display: false }, ticks: { color: '#8b949e' } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+</script>
+</body>
+</html>

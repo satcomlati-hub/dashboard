@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 import { 
   ChevronLeft, 
   ChevronDown,
@@ -20,13 +21,18 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  Trash2,
   X,
   Globe,
   MapPin,
   Server,
-  FilterX
+  FilterX,
+  Copy,
+  Check,
+  Plus
 } from 'lucide-react';
 import { formatDate } from '@/lib/formatters';
+import RegistroManualModal from './RegistroManualModal';
 import { 
   LineChart, 
   Line, 
@@ -52,13 +58,38 @@ interface EventoRabbit {
   mensaje: string;
   estado: string;
   justificacion: string | null;
+  numero_caso: string | null;
 }
 
-type TimeRange = 'hoy' | 'semana' | 'mes' | 'trimestre' | 'todos';
+type TimeRange = 'hoy' | 'semana' | 'mes' | 'trimestre' | 'mes_actual' | 'mes_anterior' | 'todos';
 
 interface SortConfig {
   key: keyof EventoRabbit | 'fecha_norm';
   direction: 'asc' | 'desc';
+}
+
+// Reusable Copy Button Component
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    if (!text || text === '-') return;
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (!text || text === '-') return null;
+
+  return (
+    <button 
+      onClick={handleCopy}
+      className="p-1.5 ml-2 bg-neutral-100 dark:bg-neutral-800 hover:bg-[#71BF44]/20 hover:text-[#71BF44] text-neutral-400 rounded-lg transition-colors flex-shrink-0 group relative shadow-sm"
+      title="Copiar detalle"
+    >
+      {copied ? <Check className="w-3.5 h-3.5 text-[#71BF44]" /> : <Copy className="w-3.5 h-3.5" />}
+    </button>
+  );
 }
 
 // Reusable MultiSelect Dropdown Component
@@ -169,15 +200,20 @@ export default function EventHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+
+  const { data: session } = useSession();
+  const canDelete = session?.user?.email === 'kleber.toapanta@satcomla.com' || session?.user?.email === 'kleber.toapanta@satcola.com';
   
   // Filter States (Multiselect)
   const [selectedEstados, setSelectedEstados] = useState<string[]>([]);
   const [selectedEventos, setSelectedEventos] = useState<string[]>([]);
   const [selectedAmbientes, setSelectedAmbientes] = useState<string[]>([]);
   const [selectedPaises, setSelectedPaises] = useState<string[]>([]);
-  const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('todos');
+  const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('hoy');
   const [searchQuery, setSearchQuery] = useState('');
   const [chartFilterDate, setChartFilterDate] = useState<string | null>(null);
+  const [showManualOnly, setShowManualOnly] = useState(false);
 
   // Column Filters
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({
@@ -191,7 +227,8 @@ export default function EventHistoryPage() {
     key: '',
     version: '',
     mensaje: '',
-    justificacion: ''
+    justificacion: '',
+    numero_caso: ''
   });
 
   // Sorting
@@ -200,13 +237,17 @@ export default function EventHistoryPage() {
     direction: 'desc'
   });
 
-  const fetchData = useCallback(async (isRefresh = false) => {
+  const fetchData = useCallback(async (isRefresh = false, rangeOverride?: TimeRange) => {
     try {
+      const rangeToFetch = rangeOverride || selectedTimeRange;
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
 
-      const res = await fetch('https://sara.mysatcomla.com/webhook/DetalleEventosRabbit');
-      if (!res.ok) throw new Error('Error al obtener el historial de eventos');
+      const res = await fetch(`/api/db/eventos?range=${rangeToFetch}`);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.details || errorData.error || 'Error al obtener el historial de eventos');
+      }
       
       const json = await res.json();
       const events = Array.isArray(json) ? json : (json.data || []);
@@ -219,11 +260,24 @@ export default function EventHistoryPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [selectedTimeRange]);
+
+  const handleDelete = async (key: string) => {
+    if (!confirm('¿Seguro que deseas eliminar este evento?')) return;
+    try {
+      const res = await fetch(`/api/db/eventos/delete?key=${encodeURIComponent(key)}`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) throw new Error('Error al eliminar');
+      fetchData(true);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+  }, [selectedTimeRange, fetchData]);
 
   // Derived filtered data
   const filteredData = useMemo(() => {
@@ -240,6 +294,14 @@ export default function EventHistoryPage() {
         if (!matches) return false;
       }
 
+      if (showManualOnly) {
+        const isManual = item.key?.startsWith('MANUAL-') || 
+                         item.reporta === 'Usuario Manual' || 
+                         item.mensaje?.includes('Registro Manual') ||
+                         item.mensaje?.includes('Evento Programado');
+        if (!isManual) return false;
+      }
+
       // Dropdown Filters (Multiselect)
       if (selectedEstados.length > 0 && !selectedEstados.includes(item.estado)) return false;
       if (selectedEventos.length > 0 && !selectedEventos.includes(item.evento)) return false;
@@ -252,10 +314,10 @@ export default function EventHistoryPage() {
         const now = new Date();
         const diffDays = (now.getTime() - eventDate.getTime()) / (1000 * 3600 * 24);
 
-        if (selectedTimeRange === 'hoy' && diffDays > 1) return false;
-        if (selectedTimeRange === 'semana' && diffDays > 7) return false;
-        if (selectedTimeRange === 'mes' && diffDays > 30) return false;
-        if (selectedTimeRange === 'trimestre' && diffDays > 90) return false;
+        if (selectedTimeRange === 'hoy' && diffDays > 1) return true; // Server already filtered
+        if (selectedTimeRange === 'semana' && diffDays > 7) return true; 
+        if (selectedTimeRange === 'mes' && diffDays > 30) return true;
+        if (selectedTimeRange === 'trimestre' && diffDays > 90) return true;
       }
 
       // Chart Date Filter (Matches the chart X-axis label)
@@ -295,7 +357,7 @@ export default function EventHistoryPage() {
     });
 
     return result;
-  }, [data, selectedEstados, selectedEventos, selectedAmbientes, selectedPaises, selectedTimeRange, searchQuery, chartFilterDate, columnFilters, sortConfig]);
+  }, [data, selectedEstados, selectedEventos, selectedAmbientes, selectedPaises, selectedTimeRange, searchQuery, chartFilterDate, columnFilters, sortConfig, showManualOnly]);
 
   // Unique values for filters (Removed 'todos' as we handle empty array as 'todos')
   const estados = useMemo(() => Array.from(new Set(data.map(d => d.estado).filter(Boolean))).sort(), [data]);
@@ -339,11 +401,22 @@ export default function EventHistoryPage() {
         : date.toLocaleDateString('es-EC', { month: 'short', day: 'numeric', hour: '2-digit' });
       
       if (!timeMap[label]) {
-        timeMap[label] = { name: label };
+        timeMap[label] = { name: label, _casos: [] };
         types.forEach(t => timeMap[label][t] = 0);
       }
       
-      const val = parseInt(item.num_eventos) || 1;
+      let val = parseInt(item.num_eventos) || 1;
+      
+      if (item.evento === 'Creación Caso Desk') {
+          val = 1; // Un evento de caso cuenta como 1 caso creado
+          if (item.numero_caso) {
+              if (!timeMap[label]._casos) timeMap[label]._casos = [];
+              if (!timeMap[label]._casos.includes(item.numero_caso)) {
+                  timeMap[label]._casos.push(item.numero_caso);
+              }
+          }
+      }
+      
       timeMap[label][item.evento] = (timeMap[label][item.evento] || 0) + val;
     });
 
@@ -418,6 +491,19 @@ export default function EventHistoryPage() {
 
           <div className="flex items-center gap-3">
              <button
+              onClick={() => setIsManualModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-[#71BF44] text-xs font-bold text-white rounded-lg shadow-sm hover:bg-[#5da035] transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              Registrar Manual
+            </button>
+            <button
+              onClick={() => setShowManualOnly(!showManualOnly)}
+              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg shadow-sm transition-all border ${showManualOnly ? 'bg-[#71BF44]/20 border-[#71BF44]/50 text-[#71BF44]' : 'bg-white dark:bg-[#1a1a1a] border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-[#222]'}`}
+            >
+              Ver Solo Manuales
+            </button>
+             <button
               onClick={downloadCSV}
               disabled={filteredData.length === 0}
               className="flex items-center gap-2 px-4 py-2 bg-neutral-900 border border-neutral-800 text-xs font-bold text-white rounded-lg shadow-sm hover:bg-neutral-800 transition-all disabled:opacity-50"
@@ -436,6 +522,23 @@ export default function EventHistoryPage() {
           </div>
         </div>
       </header>
+      
+      {/* Error Banner */}
+      {error && (
+        <div className="mb-6 flex items-start gap-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-2xl px-5 py-4 text-sm text-red-700 dark:text-red-400">
+          <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <p className="font-bold">Error al cargar datos</p>
+            <p className="text-xs mt-1 opacity-90">{error}</p>
+          </div>
+          <button 
+            onClick={() => fetchData(true)} 
+            className="px-3 py-1 bg-white dark:bg-black/20 border border-red-200 dark:border-red-800 rounded-lg text-xs font-bold hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
 
       {/* Filters Bar - Premium Redesign */}
       <div className="flex flex-col gap-6 mb-8">
@@ -491,18 +594,25 @@ export default function EventHistoryPage() {
           </div>
 
           {/* Time Range - Pushed to right */}
-          <div className="flex items-center gap-1 bg-neutral-100 dark:bg-[#1a1a1a] p-1.5 rounded-2xl shadow-inner ml-auto">
-            {(['hoy', 'semana', 'mes', 'trimestre', 'todos'] as TimeRange[]).map((range) => (
+          <div className="flex flex-wrap items-center gap-1 bg-neutral-100 dark:bg-[#1a1a1a] p-1.5 rounded-2xl shadow-inner ml-auto">
+            {([
+              { id: 'hoy', label: 'Hoy' },
+              { id: 'semana', label: 'Semana' },
+              { id: 'mes_actual', label: 'Mes Actual' },
+              { id: 'mes_anterior', label: 'Mes Anterior' },
+              { id: 'trimestre', label: 'Trimestre' },
+              { id: 'todos', label: 'Todos' }
+            ] as { id: TimeRange, label: string }[]).map((range) => (
               <button
-                key={range}
-                onClick={() => { setSelectedTimeRange(range); setChartFilterDate(null); }}
+                key={range.id}
+                onClick={() => { setSelectedTimeRange(range.id); setChartFilterDate(null); }}
                 className={`px-4 text-[10px] font-black uppercase tracking-widest py-2 rounded-xl transition-all ${
-                  selectedTimeRange === range 
+                  selectedTimeRange === range.id 
                   ? 'bg-[#71BF44] text-white shadow-lg scale-105' 
                   : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
                 }`}
               >
-                {range}
+                {range.label}
               </button>
             ))}
           </div>
@@ -576,11 +686,38 @@ export default function EventHistoryPage() {
                 >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#88888811" />
                   <XAxis dataKey="name" stroke="#888888" fontSize={10} tickLine={false} axisLine={false} dy={10} />
-                  <YAxis stroke="#888888" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => val.toLocaleString()} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#000', border: 'none', borderRadius: '16px', fontSize: '11px', color: '#fff' }}
-                    itemStyle={{ color: '#fff' }}
-                  />
+                  <YAxis stroke="#888888" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => {
+                    if (val >= 1000000) return (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+                    if (val >= 1000) return (val / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+                    return val.toLocaleString();
+                  }} />
+                  <Tooltip content={({ active, payload, label }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload;
+                      return (
+                        <div className="bg-black/95 border border-neutral-800 rounded-xl p-3 shadow-xl z-50 min-w-[150px]">
+                          <p className="text-white font-bold text-xs mb-2 border-b border-neutral-800 pb-1">{label}</p>
+                          {payload.map((entry: any, index: number) => (
+                            <div key={index} className="flex flex-col mb-1.5">
+                              <div className="flex items-center gap-2 text-[11px]">
+                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                                <span className="text-neutral-300">{entry.name}:</span>
+                                <span className="text-white font-bold">{entry.value}</span>
+                              </div>
+                              {entry.name === 'Creación Caso Desk' && data._casos && data._casos.length > 0 && (
+                                <div className="ml-4 mt-0.5 text-[10px] text-[#71BF44] font-bold flex flex-wrap gap-1 max-w-[200px]">
+                                  {data._casos.map((c: string, i: number) => (
+                                    <span key={i} className="bg-[#71BF44]/20 px-1.5 py-0.5 rounded">{c}</span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    }
+                    return null;
+                  }} />
                   <Legend 
                     verticalAlign="top" 
                     align="right" 
@@ -644,30 +781,38 @@ export default function EventHistoryPage() {
                         { label: 'Version API', key: 'version', minWidth: '200px' },
                         { label: 'Key', key: 'key', minWidth: '200px' },
                         { label: 'Mensaje', key: 'mensaje', minWidth: '150px' },
-                        { label: 'Created At', key: 'created_at', minWidth: '180px' }
+                        { label: 'Caso #', key: 'numero_caso', minWidth: '120px' },
+                        { label: 'Created At', key: 'created_at', minWidth: '180px' },
+                        ...(canDelete ? [{ label: 'Acciones', key: 'actions', minWidth: '80px' }] : [])
                       ].map((col) => (
                         <th key={col.key} className="px-6 py-4" style={{ minWidth: col.minWidth }}>
                           <div className="flex flex-col gap-3">
-                            <button 
-                              onClick={() => handleSort(col.key as any)}
-                              className="flex items-center gap-2 text-[10px] font-black text-neutral-400 uppercase tracking-widest hover:text-[#71BF44] transition-colors"
-                            >
-                              {col.label}
-                              {sortConfig.key === col.key ? (
-                                sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
-                              ) : <ArrowUpDown className="w-3 h-3 opacity-20" />}
-                            </button>
-                            {/* Individual Column Filter */}
-                            <div className="relative">
-                               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-neutral-600" />
-                               <input 
-                                 type="text" 
-                                 placeholder="..."
-                                 value={columnFilters[col.key === 'fecha_norm' ? 'fecha_evento' : col.key] || ''}
-                                 onChange={(e) => setColumnFilters(f => ({ ...f, [col.key === 'fecha_norm' ? 'fecha_evento' : col.key]: e.target.value }))}
-                                 className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-lg pl-7 pr-2 py-1.5 text-[10px] font-medium transition-all focus:border-[#71BF44] outline-none"
-                               />
-                            </div>
+                            {col.key !== 'actions' ? (
+                              <>
+                                <button 
+                                  onClick={() => handleSort(col.key as any)}
+                                  className="flex items-center gap-2 text-[10px] font-black text-neutral-400 uppercase tracking-widest hover:text-[#71BF44] transition-colors"
+                                >
+                                  {col.label}
+                                  {sortConfig.key === col.key ? (
+                                    sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                                  ) : <ArrowUpDown className="w-3 h-3 opacity-20" />}
+                                </button>
+                                {/* Individual Column Filter */}
+                                <div className="relative">
+                                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-neutral-600" />
+                                   <input 
+                                     type="text" 
+                                     placeholder="..."
+                                     value={columnFilters[col.key === 'fecha_norm' ? 'fecha_evento' : col.key] || ''}
+                                     onChange={(e) => setColumnFilters(f => ({ ...f, [col.key === 'fecha_norm' ? 'fecha_evento' : col.key]: e.target.value }))}
+                                     className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-lg pl-7 pr-2 py-1.5 text-[10px] font-medium transition-all focus:border-[#71BF44] outline-none"
+                                   />
+                                </div>
+                              </>
+                            ) : (
+                              <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">{col.label}</span>
+                            )}
                           </div>
                         </th>
                       ))}
@@ -702,9 +847,12 @@ export default function EventHistoryPage() {
                         </td>
                         <td className="px-6 py-5 whitespace-nowrap text-[10px] font-bold text-neutral-400 uppercase tracking-tighter">{ev.reporta}</td>
                         <td className="px-6 py-5 max-w-sm">
-                          <p className="text-[11px] font-medium text-neutral-500 leading-relaxed italic line-clamp-2" title={ev.detalle_evento}>
-                            {ev.detalle_evento || '-'}
-                          </p>
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-[11px] font-medium text-neutral-500 leading-relaxed italic line-clamp-2 break-all" title={ev.detalle_evento}>
+                              {ev.detalle_evento || '-'}
+                            </p>
+                            <CopyButton text={ev.detalle_evento} />
+                          </div>
                         </td>
                         <td className="px-6 py-5">
                           <span className="text-[10px] font-medium text-neutral-400 truncate block max-w-[180px]">{ev.version}</span>
@@ -715,9 +863,19 @@ export default function EventHistoryPage() {
                         <td className="px-6 py-5">
                           <p className="text-[10px] font-medium text-neutral-400 line-clamp-1">{ev.mensaje || '-'}</p>
                         </td>
+                        <td className="px-6 py-5">
+                          <span className="text-[10px] font-bold text-[#71BF44]">{ev.numero_caso || '-'}</span>
+                        </td>
                         <td className="px-6 py-5 whitespace-nowrap text-[10px] text-neutral-500 uppercase font-bold">
                            {formatDate(ev.created_at, true)}
                         </td>
+                        {canDelete && (
+                          <td className="px-6 py-5 whitespace-nowrap text-right">
+                            <button onClick={() => handleDelete(ev.key)} className="text-red-500 hover:text-red-600 p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -733,6 +891,11 @@ export default function EventHistoryPage() {
           </section>
         </>
       )}
+      <RegistroManualModal 
+        isOpen={isManualModalOpen} 
+        onClose={() => setIsManualModalOpen(false)} 
+        onSuccess={() => fetchData(true)} 
+      />
     </div>
   );
 }
