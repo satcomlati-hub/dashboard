@@ -18,7 +18,7 @@ export async function GET() {
   console.log(`[ZohoPhotoProxy] AccessToken obtenido: ${accessToken.substring(0, 10)}...`);
 
   try {
-    // 1. Obtener información del usuario para sacar la URL de la foto y el ZUID
+    // 1. Obtener información del usuario para sacar la URL de la foto y el identificador
     const userInfoRes = await fetch('https://accounts.zoho.com/oauth/v2/userinfo', {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -40,25 +40,26 @@ export async function GET() {
     const userInfo = await userInfoRes.json();
     console.log(`[ZohoPhotoProxy] Información de usuario obtenida: `, JSON.stringify(userInfo));
     
-    const photoUrl = userInfo.photo;
-    const zuid = userInfo.ZUID;
+    // Mapear picture (OIDC estándar de Zoho) o photo (antiguo Zoho)
+    const photoUrl = userInfo.picture || userInfo.photo;
+    const zuid = userInfo.sub || userInfo.ZUID;
 
-    // Si no hay URL de foto ni ZUID, no podemos hacer más, pero devolvemos userInfo para debuguear
+    // Si no hay URL de foto ni identificador, no podemos continuar
     if (!photoUrl && !zuid) {
-      console.error('[ZohoPhotoProxy] Error: No se encontró photoUrl ni ZUID en la respuesta de userinfo');
+      console.error('[ZohoPhotoProxy] Error: No se encontró photoUrl ni ZUID/sub en la respuesta de userinfo');
       return NextResponse.json({
         error: 'No photo found',
-        message: 'No se encontró photoUrl ni ZUID en los datos devueltos por Zoho.',
-        debugUserInfoReceived: userInfo // Esto nos mostrará el JSON completo en el navegador del usuario
+        message: 'No se encontró una foto de perfil válida ni identificador (sub/ZUID) en los datos devueltos por Zoho.',
+        debugUserInfoReceived: userInfo
       }, { status: 404 });
     }
 
-    // Usar la URL devuelta por Zoho, o el fallback clásico usando el ZUID
+    // Usar la URL devuelta por Zoho, o construir el fallback clásico de Zoho contacts
     const targetUrl = photoUrl || `https://contacts.zoho.com/file?fs=thumb&ID=${zuid}`;
     console.log(`[ZohoPhotoProxy] Descargando foto desde: ${targetUrl}`);
 
     // 2. Descargar la imagen desde Zoho
-    // Probamos con la cabecera estándar de Zoho
+    // Probamos con la cabecera estándar de Zoho o de Bearer según corresponda
     console.log('[ZohoPhotoProxy] Intentando descarga con Zoho-oauthtoken...');
     let photoRes = await fetch(targetUrl, {
       headers: {
@@ -69,7 +70,7 @@ export async function GET() {
     console.log(`[ZohoPhotoProxy] Respuesta descarga 1 (Zoho-oauthtoken): ${photoRes.status} ${photoRes.statusText}`);
 
     if (!photoRes.ok) {
-      // Intentar con Bearer por si acaso
+      // Intentar con Bearer (muy común en endpoints OIDC / profile)
       console.log('[ZohoPhotoProxy] Intentando descarga alternativa con Bearer...');
       const photoResAlt = await fetch(targetUrl, {
         headers: {
