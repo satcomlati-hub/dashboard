@@ -1,0 +1,14 @@
+[Unit]
+Description=Satcom SARA Performance Monitor
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/sara-monitor
+ExecStart=/usr/bin/python3 -u /home/ubuntu/sara-monitor/sara_monitor.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
