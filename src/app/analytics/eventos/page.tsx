@@ -21,6 +21,7 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  Trash2,
   X,
   Globe,
   MapPin,
