@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 import { 
   ChevronLeft, 
   ChevronDown,
@@ -199,6 +200,9 @@ export default function EventHistoryPage() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+
+  const { data: session } = useSession();
+  const canDelete = session?.user?.email === 'kleber.toapanta@satcomla.com' || session?.user?.email === 'kleber.toapanta@satcola.com';
   
   // Filter States (Multiselect)
   const [selectedEstados, setSelectedEstados] = useState<string[]>([]);
@@ -256,6 +260,19 @@ export default function EventHistoryPage() {
       setRefreshing(false);
     }
   }, [selectedTimeRange]);
+
+  const handleDelete = async (key: string) => {
+    if (!confirm('¿Seguro que deseas eliminar este evento?')) return;
+    try {
+      const res = await fetch(`/api/db/eventos/delete?key=${encodeURIComponent(key)}`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) throw new Error('Error al eliminar');
+      fetchData(true);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
 
   useEffect(() => {
     fetchData();
@@ -764,30 +781,37 @@ export default function EventHistoryPage() {
                         { label: 'Key', key: 'key', minWidth: '200px' },
                         { label: 'Mensaje', key: 'mensaje', minWidth: '150px' },
                         { label: 'Caso #', key: 'numero_caso', minWidth: '120px' },
-                        { label: 'Created At', key: 'created_at', minWidth: '180px' }
+                        { label: 'Created At', key: 'created_at', minWidth: '180px' },
+                        ...(canDelete ? [{ label: 'Acciones', key: 'actions', minWidth: '80px' }] : [])
                       ].map((col) => (
                         <th key={col.key} className="px-6 py-4" style={{ minWidth: col.minWidth }}>
                           <div className="flex flex-col gap-3">
-                            <button 
-                              onClick={() => handleSort(col.key as any)}
-                              className="flex items-center gap-2 text-[10px] font-black text-neutral-400 uppercase tracking-widest hover:text-[#71BF44] transition-colors"
-                            >
-                              {col.label}
-                              {sortConfig.key === col.key ? (
-                                sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
-                              ) : <ArrowUpDown className="w-3 h-3 opacity-20" />}
-                            </button>
-                            {/* Individual Column Filter */}
-                            <div className="relative">
-                               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-neutral-600" />
-                               <input 
-                                 type="text" 
-                                 placeholder="..."
-                                 value={columnFilters[col.key === 'fecha_norm' ? 'fecha_evento' : col.key] || ''}
-                                 onChange={(e) => setColumnFilters(f => ({ ...f, [col.key === 'fecha_norm' ? 'fecha_evento' : col.key]: e.target.value }))}
-                                 className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-lg pl-7 pr-2 py-1.5 text-[10px] font-medium transition-all focus:border-[#71BF44] outline-none"
-                               />
-                            </div>
+                            {col.key !== 'actions' ? (
+                              <>
+                                <button 
+                                  onClick={() => handleSort(col.key as any)}
+                                  className="flex items-center gap-2 text-[10px] font-black text-neutral-400 uppercase tracking-widest hover:text-[#71BF44] transition-colors"
+                                >
+                                  {col.label}
+                                  {sortConfig.key === col.key ? (
+                                    sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                                  ) : <ArrowUpDown className="w-3 h-3 opacity-20" />}
+                                </button>
+                                {/* Individual Column Filter */}
+                                <div className="relative">
+                                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-neutral-600" />
+                                   <input 
+                                     type="text" 
+                                     placeholder="..."
+                                     value={columnFilters[col.key === 'fecha_norm' ? 'fecha_evento' : col.key] || ''}
+                                     onChange={(e) => setColumnFilters(f => ({ ...f, [col.key === 'fecha_norm' ? 'fecha_evento' : col.key]: e.target.value }))}
+                                     className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-lg pl-7 pr-2 py-1.5 text-[10px] font-medium transition-all focus:border-[#71BF44] outline-none"
+                                   />
+                                </div>
+                              </>
+                            ) : (
+                              <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">{col.label}</span>
+                            )}
                           </div>
                         </th>
                       ))}
@@ -844,6 +868,13 @@ export default function EventHistoryPage() {
                         <td className="px-6 py-5 whitespace-nowrap text-[10px] text-neutral-500 uppercase font-bold">
                            {formatDate(ev.created_at, true)}
                         </td>
+                        {canDelete && (
+                          <td className="px-6 py-5 whitespace-nowrap text-right">
+                            <button onClick={() => handleDelete(ev.key)} className="text-red-500 hover:text-red-600 p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

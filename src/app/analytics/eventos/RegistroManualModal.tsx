@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Calendar, Clock, Server, Info, AlertCircle, Save } from 'lucide-react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 
 interface CatalogoEvento {
   id: string;
@@ -18,6 +19,7 @@ interface CatalogoAmbiente {
 }
 
 export default function RegistroManualModal({ isOpen, onClose, onSuccess }: { isOpen: boolean, onClose: () => void, onSuccess: () => void }) {
+  const { data: session } = useSession();
   const [catalogo, setCatalogo] = useState<CatalogoEvento[]>([]);
   const [ambientes, setAmbientes] = useState<CatalogoAmbiente[]>([]);
   const [loading, setLoading] = useState(false);
@@ -86,7 +88,8 @@ export default function RegistroManualModal({ isOpen, onClose, onSuccess }: { is
           detalle: form.detalle,
           fecha: form.fecha,
           hora: form.hora,
-          duracionHoras: form.duracionHoras
+          duracionHoras: form.duracionHoras,
+          reporta: session?.user?.email || 'Usuario Manual'
         })
       });
       const data = await res.json();

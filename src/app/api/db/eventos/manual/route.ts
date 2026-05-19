@@ -13,7 +13,8 @@ export async function POST(request: Request) {
       hora, 
       duracionHoras, 
       severidad,
-      programado
+      programado,
+      reporta
     } = body;
 
     // Combine date and time (always passed from form)
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
         version || 'N/A', 
         'GLOBAL', 
         detalleEvento, 
-        'Usuario Manual', 
+        reporta || 'Usuario Manual', 
         fechaEvento.toISOString(), 
         numEventos, 
         estado, 
