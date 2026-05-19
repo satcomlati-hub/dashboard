@@ -9,19 +9,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Zoho({
       clientId: process.env.ZOHO_CLIENT_ID,
       clientSecret: process.env.ZOHO_CLIENT_SECRET,
-      authorization: {
-        params: {
-          scope: "AaaServer.profile.Read",
-        },
-      },
-      profile(profile) {
-        return {
-          id: profile.ZUID?.toString() || profile.id,
-          name: profile.Display_Name || `${profile.First_Name} ${profile.Last_Name}` || profile.name,
-          email: profile.Email || profile.email,
-          image: profile.photo || profile.picture || profile.Image_URL || profile.image || null,
-        }
-      }
     }),
   ],
   callbacks: {
