@@ -1008,6 +1008,15 @@ export default function UnauthorizedVouchersPage() {
             </select>
           </div>
 
+          {/* Última Actualización del País */}
+          {selectedCountryCode && (
+            <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-4 sm:px-6 py-2.5 rounded-2xl shadow-xl w-full sm:w-auto animate-in fade-in slide-in-from-left duration-300">
+              <Clock className="w-4 h-4 text-[#71BF44] shrink-0 animate-pulse" />
+              <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] whitespace-nowrap">Última Actualización:</span>
+              <span className="text-[10px] font-black text-[#71BF44] uppercase tracking-widest">{lastUpdate}</span>
+            </div>
+          )}
+
           {/* Group Selector "Agrupar" (Now Second) */}
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 bg-neutral-900 border border-neutral-800 p-2 sm:px-6 sm:py-2.5 rounded-2xl shadow-xl w-full sm:w-auto overflow-hidden">
             <div className="flex items-center gap-3 px-2 sm:px-0">
