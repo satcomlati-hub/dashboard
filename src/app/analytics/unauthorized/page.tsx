@@ -415,7 +415,7 @@ export default function UnauthorizedVouchersPage() {
     const now = new Date().getTime();
     const diffMs = now - maxTimestamp;
     const diffHours = diffMs / (1000 * 60 * 60);
-    return diffHours > 12;
+    return diffHours > 3;
   }, [data]);
 
   const filteredData = useMemo(() => {
@@ -957,7 +957,7 @@ export default function UnauthorizedVouchersPage() {
                 <div>
                   <h4 className="text-xs font-black text-red-500 uppercase tracking-widest mb-1">Alerta: Datos Desactualizados</h4>
                   <p className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 leading-relaxed">
-                    La última actualización de datos para el país seleccionado fue el <span className="font-bold text-neutral-800 dark:text-white">{lastUpdate}</span>, lo que supera las 12 horas de antigüedad permitidas.
+                    La última actualización de datos para el país seleccionado fue el <span className="font-bold text-neutral-800 dark:text-white">{lastUpdate}</span>, lo que supera las 3 horas de antigüedad permitidas.
                   </p>
                 </div>
               </div>
