@@ -13,6 +13,18 @@ const MonitoreoWidget = dynamic(() => import('@/components/MonitoreoWidget'));
 const MonitoreoChart = dynamic(() => import('@/components/MonitoreoChart'));
 const QuickLinks = dynamic(() => import('./QuickLinks'));
 
+// Nuevos widgets lazy
+const SaraChatWidget = dynamic(() => import('./SaraChatDashboardWidget'));
+const UsageChartWidget = dynamic(() => import('./UsageChartWidget'));
+const SystemHealthWidget = dynamic(() => import('./SystemHealthWidget'));
+const RagCollectionsWidget = dynamic(() => import('./RagCollectionsWidget'));
+const MonitoreoRulesWidget = dynamic(() => import('./MonitoreoRulesWidget'));
+const UserProfileWidget = dynamic(() => import('./UserProfileWidget'));
+const QuickActionsWidget = dynamic(() => import('./QuickActionsWidget'));
+const WorkflowStatsWidget = dynamic(() => import('./WorkflowStatsWidget'));
+const RecentLogsWidget = dynamic(() => import('./RecentLogsWidget'));
+const SystemResourcesWidget = dynamic(() => import('./SystemResourcesWidget'));
+
 // Wrapper que auto-carga datos para MonitoreoChart
 function MonitoreoChartWidget() {
   const [data, setData] = useState<any[]>([]);
@@ -42,9 +54,19 @@ const WIDGET_COMPONENTS: Record<string, React.ComponentType> = {
   'monitoreo-chart': MonitoreoChartWidget,
   'monitoreo-widget': MonitoreoWidget as React.ComponentType,
   'quick-links': QuickLinks,
+  'sara-chat': SaraChatWidget as React.ComponentType,
+  'usage-chart': UsageChartWidget as React.ComponentType,
+  'system-health': SystemHealthWidget as React.ComponentType,
+  'rag-collections': RagCollectionsWidget as React.ComponentType,
+  'monitoreo-rules': MonitoreoRulesWidget as React.ComponentType,
+  'user-profile': UserProfileWidget as React.ComponentType,
+  'quick-actions': QuickActionsWidget as React.ComponentType,
+  'workflow-stats': WorkflowStatsWidget as React.ComponentType,
+  'recent-logs': RecentLogsWidget as React.ComponentType,
+  'system-resources': SystemResourcesWidget as React.ComponentType,
 };
 
-// Widget placeholder para "Uso en el Tiempo"
+// Widget placeholder para "Uso en el Tiempo" (mantenido por compatibilidad)
 function UsagePlaceholder() {
   return (
     <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 shadow-sm flex flex-col items-center justify-center text-center">
