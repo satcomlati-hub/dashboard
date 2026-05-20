@@ -407,6 +407,17 @@ export default function UnauthorizedVouchersPage() {
     return formatDate(new Date(Math.max(...dates)), true);
   }, [data]);
 
+  const isOutdated = useMemo(() => {
+    if (data.length === 0) return false;
+    const dates = data.map(d => new Date(d.co_ultima_actualizacion).getTime()).filter(t => !isNaN(t));
+    if (dates.length === 0) return false;
+    const maxTimestamp = Math.max(...dates);
+    const now = new Date().getTime();
+    const diffMs = now - maxTimestamp;
+    const diffHours = diffMs / (1000 * 60 * 60);
+    return diffHours > 12;
+  }, [data]);
+
   const filteredData = useMemo(() => {
     let result = data.filter(item => {
       return (
@@ -936,6 +947,30 @@ export default function UnauthorizedVouchersPage() {
         </div>
       ) : (
         <>
+          {/* Alerta de Desactualización */}
+          {selectedCountryCode && isOutdated && (
+            <div className="mb-8 p-4 bg-red-500/10 border border-red-500/20 rounded-[24px] flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top duration-500 shadow-lg shadow-red-500/5">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-red-500/20 rounded-xl text-red-500 shrink-0 animate-pulse">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-red-500 uppercase tracking-widest mb-1">Alerta: Datos Desactualizados</h4>
+                  <p className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 leading-relaxed">
+                    La última actualización de datos para el país seleccionado fue el <span className="font-bold text-neutral-800 dark:text-white">{lastUpdate}</span>, lo que supera las 12 horas de antigüedad permitidas.
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={handleSync}
+                className="w-full sm:w-auto px-4 py-2.5 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-xl text-[9px] font-black text-red-500 uppercase tracking-widest transition-all whitespace-nowrap active:scale-95 flex items-center justify-center gap-2"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Sincronizar Ahora
+              </button>
+            </div>
+          )}
+
           {/* Timeline Chart */}
           <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[24px] p-6 mb-8 shadow-sm">
              <div className="flex items-center gap-2 mb-8">
@@ -1010,10 +1045,10 @@ export default function UnauthorizedVouchersPage() {
 
           {/* Última Actualización del País */}
           {selectedCountryCode && (
-            <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-4 sm:px-6 py-2.5 rounded-2xl shadow-xl w-full sm:w-auto animate-in fade-in slide-in-from-left duration-300">
-              <Clock className="w-4 h-4 text-[#71BF44] shrink-0 animate-pulse" />
+            <div className={`flex items-center gap-3 bg-neutral-900 px-4 sm:px-6 py-2.5 rounded-2xl shadow-xl w-full sm:w-auto animate-in fade-in slide-in-from-left duration-300 border ${isOutdated ? 'border-red-500/50' : 'border-neutral-800'}`}>
+              <Clock className={`w-4 h-4 shrink-0 ${isOutdated ? 'text-red-500 animate-bounce' : 'text-[#71BF44] animate-pulse'}`} />
               <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] whitespace-nowrap">Última Actualización:</span>
-              <span className="text-[10px] font-black text-[#71BF44] uppercase tracking-widest">{lastUpdate}</span>
+              <span className={`text-[10px] font-black uppercase tracking-widest ${isOutdated ? 'text-red-500' : 'text-[#71BF44]'}`}>{lastUpdate}</span>
             </div>
           )}
 
