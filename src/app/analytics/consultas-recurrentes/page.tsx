@@ -17,7 +17,10 @@ import {
   Building2,
   Calendar,
   AlertCircle,
-  EyeOff
+  EyeOff,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -55,6 +58,18 @@ export default function ConsultasRecurrentesPage() {
   const [activeSubTab, setActiveSubTab] = useState<'mas-ejecutados' | 'mas-lentos' | 'mas-bloqueados' | 'alertas' | 'todos'>('mas-ejecutados');
   const [excludedSPs, setExcludedSPs] = useState<string[]>([]);
   const [groupBySP, setGroupBySP] = useState(true);
+  const [sortConfig, setSortConfig] = useState<{ key: keyof SPRecord | 'PaisNombre'; direction: 'asc' | 'desc' } | null>(null);
+
+  const requestSort = (key: keyof SPRecord | 'PaisNombre') => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    } else if (sortConfig && sortConfig.key === key && sortConfig.direction === 'desc') {
+      setSortConfig(null);
+      return;
+    }
+    setSortConfig({ key, direction });
+  };
 
   const fetchData = useCallback(async (isRefresh = false) => {
     try {
@@ -268,29 +283,45 @@ export default function ConsultasRecurrentesPage() {
       .slice(0, 10);
   }, [dataFilteredByExclusions]);
 
-  // Datos para la gráfica: Top 7 SPs más lentos en promedio
+  // Datos para la gráfica: dinámicos según el activeSubTab seleccionado
   const chartData = useMemo(() => {
-    // Agrupar por SP para consolidar en la gráfica
-    const spMap = new Map<string, { sp: string, maxPromedio: number }>();
-    dataFilteredByExclusions.forEach(r => {
-      const current = spMap.get(r.StoredProcedure) || { sp: r.StoredProcedure, maxPromedio: 0 };
-      if (r.TiempoPromedio_ms > current.maxPromedio) {
-        spMap.set(r.StoredProcedure, {
-          sp: r.StoredProcedure,
-          maxPromedio: r.TiempoPromedio_ms
-        });
+    // Si la pestaña es alertas, graficamos sobre los emisores con alertas. De lo contrario, usamos dataFilteredByExclusions
+    const baseData = activeSubTab === 'alertas' ? emisoresConAlertas : dataFilteredByExclusions;
+    
+    const spMap = new Map<string, { sp: string; value: number }>();
+    
+    baseData.forEach(r => {
+      const key = r.StoredProcedure;
+      const current = spMap.get(key) || { sp: key, value: 0 };
+      
+      if (activeSubTab === 'mas-ejecutados' || activeSubTab === 'todos') {
+        // Para ejecuciones, sumamos todas las ejecuciones
+        spMap.set(key, { sp: key, value: current.value + r.TotalEjecuciones });
+      } else if (activeSubTab === 'mas-bloqueados') {
+        // Para bloqueos, sumamos todos los bloqueos
+        spMap.set(key, { sp: key, value: current.value + r.TotalBloqueos });
+      } else {
+        // Para mas-lentos y alertas, tomamos el mayor promedio de ejecución (ms)
+        if (r.TiempoPromedio_ms > current.value) {
+          spMap.set(key, { sp: key, value: r.TiempoPromedio_ms });
+        }
       }
     });
 
+    const metricName = 
+      (activeSubTab === 'mas-ejecutados' || activeSubTab === 'todos') ? 'Ejecuciones' :
+      (activeSubTab === 'mas-bloqueados') ? 'Bloqueos' : 'Promedio (ms)';
+
     return Array.from(spMap.values())
-      .sort((a, b) => b.maxPromedio - a.maxPromedio)
+      .sort((a, b) => b.value - a.value)
       .slice(0, 7)
       .map(item => ({
-        name: item.sp.length > 30 ? item.sp.substring(0, 27) + '...' : item.sp,
+        name: item.sp.length > 25 ? item.sp.substring(0, 22) + '...' : item.sp,
         fullName: item.sp,
-        'Promedio (ms)': item.maxPromedio
+        value: item.value,
+        metricName: metricName
       }));
-  }, [dataFilteredByExclusions]);
+  }, [dataFilteredByExclusions, activeSubTab, emisoresConAlertas]);
 
   // Helper para mapear IDs de País a Nombre
   const getPaisNombre = (paisId: number | null) => {
@@ -313,7 +344,7 @@ export default function ConsultasRecurrentesPage() {
     }
   };
 
-  const activeRecords = useMemo(() => {
+  const baseActiveRecords = useMemo(() => {
     switch (activeSubTab) {
       case 'mas-ejecutados': return topMasEjecutados;
       case 'mas-lentos': return topMasLentos;
@@ -322,6 +353,53 @@ export default function ConsultasRecurrentesPage() {
       default: return filteredData;
     }
   }, [activeSubTab, topMasEjecutados, topMasLentos, topMasBloqueados, emisoresConAlertas, filteredData]);
+
+  const activeRecords = useMemo(() => {
+    const records = [...baseActiveRecords];
+    if (!sortConfig) return records;
+    
+    const { key, direction } = sortConfig;
+    
+    records.sort((a, b) => {
+      let aVal: any;
+      let bVal: any;
+      
+      if (key === 'PaisNombre') {
+        aVal = getPaisNombre(a.PaisId);
+        bVal = getPaisNombre(b.PaisId);
+      } else if (key === 'Nemonico' && groupBySP) {
+        aVal = (a.EmisoresAgrupados || []).join(', ');
+        bVal = (b.EmisoresAgrupados || []).join(', ');
+      } else {
+        aVal = a[key as keyof SPRecord];
+        bVal = b[key as keyof SPRecord];
+      }
+      
+      if (aVal === null || aVal === undefined) return direction === 'asc' ? 1 : -1;
+      if (bVal === null || bVal === undefined) return direction === 'asc' ? -1 : 1;
+      
+      if (typeof aVal === 'string') {
+        return direction === 'asc' 
+          ? aVal.localeCompare(bVal) 
+          : bVal.localeCompare(aVal);
+      } else {
+        return direction === 'asc' 
+          ? (aVal > bVal ? 1 : -1) 
+          : (bVal > aVal ? 1 : -1);
+      }
+    });
+    
+    return records;
+  }, [baseActiveRecords, sortConfig, groupBySP]);
+    
+  const renderSortIcon = (key: keyof SPRecord | 'PaisNombre') => {
+    if (!sortConfig || sortConfig.key !== key) {
+      return <ArrowUpDown className="w-3.5 h-3.5 ml-1.5 opacity-30 group-hover:opacity-100 transition-opacity shrink-0 inline-block" />;
+    }
+    return sortConfig.direction === 'asc' 
+      ? <ArrowUp className="w-3.5 h-3.5 ml-1.5 text-[#71BF44] shrink-0 inline-block" />
+      : <ArrowDown className="w-3.5 h-3.5 ml-1.5 text-[#71BF44] shrink-0 inline-block" />;
+  };
 
   return (
     <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 pb-20">
@@ -460,7 +538,15 @@ export default function ConsultasRecurrentesPage() {
         <div className="lg:col-span-2 bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-6 shadow-sm">
           <div className="flex items-center gap-2 mb-6">
             <BarChart3 className="w-5 h-5 text-[#71BF44]" />
-            <h3 className="text-lg font-bold text-neutral-900 dark:text-white">Top 7 SPs más lentos (Promedio de Ejecución)</h3>
+            <h3 className="text-lg font-bold text-neutral-900 dark:text-white">
+              {activeSubTab === 'mas-ejecutados' || activeSubTab === 'todos' 
+                ? 'Top 7 SPs más Ejecutados' 
+                : activeSubTab === 'mas-bloqueados' 
+                  ? 'Top 7 SPs más Bloqueados' 
+                  : activeSubTab === 'alertas'
+                    ? 'Top 7 SPs de Emisores Alertados (Latencia)'
+                    : 'Top 7 SPs con mayor Latencia (Promedio)'}
+            </h3>
           </div>
           
           <div className="h-[300px] w-full">
@@ -480,15 +566,31 @@ export default function ConsultasRecurrentesPage() {
                   <YAxis 
                     tick={{ fill: '#888888', fontSize: 10, fontWeight: 700 }}
                     axisLine={{ stroke: '#e0e0e0' }}
-                    label={{ value: 'milisegundos (ms)', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: '#888888', fontSize: 10, fontWeight: 700 } }}
+                    label={{ 
+                      value: activeSubTab === 'mas-ejecutados' || activeSubTab === 'todos' 
+                        ? 'ejecuciones' 
+                        : activeSubTab === 'mas-bloqueados' 
+                          ? 'bloqueos' 
+                          : 'milisegundos (ms)', 
+                      angle: -90, 
+                      position: 'insideLeft', 
+                      style: { textAnchor: 'middle', fill: '#888888', fontSize: 10, fontWeight: 700 } 
+                    }}
                   />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#131313', borderColor: '#262626', borderRadius: '12px' }}
                     labelStyle={{ color: '#fff', fontWeight: 'bold', fontSize: 11 }}
                     itemStyle={{ color: '#71BF44', fontSize: 11 }}
+                    formatter={(value: any, name: any, props: any) => {
+                      const metric = props.payload.metricName || 'Valor';
+                      if (metric === 'Promedio (ms)') {
+                        return [`${value.toLocaleString()} ms`, 'Latencia Promedio'];
+                      }
+                      return [value.toLocaleString(), metric];
+                    }}
                   />
                   <Bar 
-                    dataKey="Promedio (ms)" 
+                    dataKey="value" 
                     radius={[8, 8, 0, 0]}
                     onClick={(entry: any) => {
                       if (entry && entry.fullName) {
@@ -565,32 +667,32 @@ export default function ConsultasRecurrentesPage() {
           {/* Sub tabs internas */}
           <div className="flex flex-wrap gap-2 border-b border-neutral-200/50 dark:border-neutral-800/50 lg:border-none pb-4 lg:pb-0">
             <button
-              onClick={() => setActiveSubTab('mas-ejecutados')}
+              onClick={() => { setActiveSubTab('mas-ejecutados'); setSortConfig(null); }}
               className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${activeSubTab === 'mas-ejecutados' ? 'bg-[#71BF44] text-white border-[#71BF44] shadow-lg shadow-[#71BF44]/20' : 'bg-white dark:bg-neutral-800 text-neutral-400 border-neutral-100 dark:border-neutral-700 hover:border-neutral-300'}`}
             >
               Más Ejecutados
             </button>
             <button
-              onClick={() => setActiveSubTab('mas-lentos')}
+              onClick={() => { setActiveSubTab('mas-lentos'); setSortConfig(null); }}
               className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${activeSubTab === 'mas-lentos' ? 'bg-[#71BF44] text-white border-[#71BF44] shadow-lg shadow-[#71BF44]/20' : 'bg-white dark:bg-neutral-800 text-neutral-400 border-neutral-100 dark:border-neutral-700 hover:border-neutral-300'}`}
             >
               Más Lentos (Promedio)
             </button>
             <button
-              onClick={() => setActiveSubTab('mas-bloqueados')}
+              onClick={() => { setActiveSubTab('mas-bloqueados'); setSortConfig(null); }}
               className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${activeSubTab === 'mas-bloqueados' ? 'bg-[#71BF44] text-white border-[#71BF44] shadow-lg shadow-[#71BF44]/20' : 'bg-white dark:bg-neutral-800 text-neutral-400 border-neutral-100 dark:border-neutral-700 hover:border-neutral-300'}`}
             >
               Más Bloqueados
             </button>
             <button
-              onClick={() => setActiveSubTab('alertas')}
+              onClick={() => { setActiveSubTab('alertas'); setSortConfig(null); }}
               className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${activeSubTab === 'alertas' ? 'bg-red-600 text-white border-red-600 shadow-lg shadow-red-600/20' : 'bg-white dark:bg-neutral-800 text-red-500 border-red-100 dark:border-red-500/20 hover:border-red-300'}`}
             >
               <AlertCircle className="w-3.5 h-3.5" />
               Sin Transacciones ({kpis.alertasCount})
             </button>
             <button
-              onClick={() => setActiveSubTab('todos')}
+              onClick={() => { setActiveSubTab('todos'); setSortConfig(null); }}
               className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${activeSubTab === 'todos' ? 'bg-neutral-900 text-white border-neutral-900 dark:bg-white dark:text-neutral-900' : 'bg-white dark:bg-neutral-800 text-neutral-400 border-neutral-100 dark:border-neutral-700 hover:border-neutral-300'}`}
             >
               Todos
@@ -643,15 +745,79 @@ export default function ConsultasRecurrentesPage() {
           ) : activeRecords.length > 0 ? (
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.25em] border-b border-neutral-100 dark:border-neutral-800">
-                  <th className="px-8 py-5">Procedimiento Almacenado (SP)</th>
-                  <th className="px-6 py-5 text-center">Emisor / Nemónico</th>
-                  <th className="px-6 py-5 text-center">País</th>
-                  <th className="px-6 py-5 text-right">Ejecuciones</th>
-                  <th className="px-6 py-5 text-right">Promedio (ms)</th>
-                  <th className="px-6 py-5 text-right">Máximo (ms)</th>
-                  <th className="px-6 py-5 text-right">Total Bloqueos</th>
-                  <th className="px-8 py-5">Última Trx Autorizada</th>
+                <tr className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.12em] border-b border-neutral-100 dark:border-neutral-800 select-none">
+                  <th 
+                    onClick={() => requestSort('StoredProcedure')} 
+                    className="px-8 py-5 cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                  >
+                    <div className="flex items-center group">
+                      Procedimiento Almacenado (SP)
+                      {renderSortIcon('StoredProcedure')}
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => requestSort('Nemonico')} 
+                    className="px-6 py-5 text-center cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                  >
+                    <div className="flex items-center justify-center group">
+                      Emisor / Nemónico
+                      {renderSortIcon('Nemonico')}
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => requestSort('PaisNombre')} 
+                    className="px-6 py-5 text-center cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                  >
+                    <div className="flex items-center justify-center group">
+                      País
+                      {renderSortIcon('PaisNombre')}
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => requestSort('TotalEjecuciones')} 
+                    className="px-6 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                  >
+                    <div className="flex items-center justify-end group">
+                      Ejecuciones
+                      {renderSortIcon('TotalEjecuciones')}
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => requestSort('TiempoPromedio_ms')} 
+                    className="px-6 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                  >
+                    <div className="flex items-center justify-end group">
+                      Promedio (ms)
+                      {renderSortIcon('TiempoPromedio_ms')}
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => requestSort('TiempoMaximo_ms')} 
+                    className="px-6 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                  >
+                    <div className="flex items-center justify-end group">
+                      Máximo (ms)
+                      {renderSortIcon('TiempoMaximo_ms')}
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => requestSort('TotalBloqueos')} 
+                    className="px-6 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                  >
+                    <div className="flex items-center justify-end group">
+                      Total Bloqueos
+                      {renderSortIcon('TotalBloqueos')}
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => requestSort('UltimaTrxAutorizada')} 
+                    className="px-8 py-5 cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                  >
+                    <div className="flex items-center group">
+                      Última Trx Autorizada
+                      {renderSortIcon('UltimaTrxAutorizada')}
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/50">
@@ -737,7 +903,7 @@ export default function ConsultasRecurrentesPage() {
                       </td>
                       <td className="px-8 py-5">
                         {hasAlert ? (
-                          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/20 rounded-xl max-w-fit">
+                          <div className="relative group/alert cursor-help flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/20 rounded-xl max-w-fit select-none">
                             <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
                             <div className="flex flex-col">
                               <span className="text-[9px] font-black text-red-500 uppercase tracking-tighter leading-none mb-0.5">
@@ -746,6 +912,24 @@ export default function ConsultasRecurrentesPage() {
                               <span className="text-[8px] text-red-400 font-bold leading-none">
                                 Última: {r.UltimaTrxAutorizada && r.UltimaTrxAutorizada !== 'NULL' && r.UltimaTrxAutorizada !== '---' ? r.UltimaTrxAutorizada.split(' ')[0] : 'Ninguna'}
                               </span>
+                            </div>
+
+                            {/* Tooltip Ampliado al posarse encima */}
+                            <div className="absolute bottom-full right-0 mb-2.5 w-80 p-4 bg-neutral-900 dark:bg-neutral-950 text-white rounded-2xl shadow-2xl border border-neutral-800 dark:border-neutral-800/80 text-[10px] leading-relaxed hidden group-hover/alert:block z-50 pointer-events-none transition-all">
+                              <div className="font-black text-red-500 dark:text-red-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                                <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Alerta de Inactividad Transaccional
+                              </div>
+                              <p className="text-neutral-300 font-semibold mb-2 normal-case leading-normal">
+                                {r.UltimaTrxAutorizada && r.UltimaTrxAutorizada !== 'NULL' && r.UltimaTrxAutorizada !== '---' 
+                                  ? `El emisor está registrando consultas en la base de datos pero no ha autorizado transacciones exitosas desde el ${r.UltimaTrxAutorizada.split(' ')[0]} a las ${r.UltimaTrxAutorizada.split(' ')[1] || ''} (hace más de 14 días).`
+                                  : 'El emisor registra consultas recurrentes en los últimos 2 días pero no cuenta con ningún registro histórico de transacciones autorizadas en el sistema.'}
+                              </p>
+                              <div className="border-t border-neutral-850 dark:border-neutral-800 pt-2 text-[9px] text-neutral-500 font-bold uppercase tracking-wider flex justify-between">
+                                <span>Emisor: {r.Nemonico || 'S/N'}</span>
+                                <span>ID: {r.IdEmisor || 'N/A'}</span>
+                              </div>
+                              {/* Triangulito del tooltip en la esquina derecha para alinearlo al badge */}
+                              <div className="absolute top-full right-6 border-4 border-transparent border-t-neutral-900 dark:border-t-neutral-950"></div>
                             </div>
                           </div>
                         ) : r.UltimaTrxAutorizada && r.UltimaTrxAutorizada !== 'NULL' && r.UltimaTrxAutorizada !== '---' ? (
