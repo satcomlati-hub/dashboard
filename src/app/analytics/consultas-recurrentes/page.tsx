@@ -897,9 +897,16 @@ export default function ConsultasRecurrentesPage() {
                         {r.TiempoMaximo_ms.toLocaleString()} ms
                       </td>
                       <td className="px-6 py-5 text-right font-bold">
-                        <span className={r.TotalBloqueos > 0 ? 'text-red-500' : 'text-neutral-300 opacity-40'}>
-                          {r.TotalBloqueos.toLocaleString()}
-                        </span>
+                        <div className="flex flex-col items-end">
+                          <span className={r.TotalBloqueos > 0 ? 'text-red-500' : 'text-neutral-300 opacity-40'}>
+                            {r.TotalBloqueos.toLocaleString()}
+                          </span>
+                          {r.TotalBloqueos > 0 && r.TotalEjecuciones > 0 && (
+                            <span className="text-[9px] text-red-400/80 font-bold mt-0.5" title="Porcentaje de comprobantes bloqueados sobre el total de consultas">
+                              {((r.TotalBloqueos / r.TotalEjecuciones) * 100).toFixed(1)}%
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-8 py-5">
                         {hasAlert ? (
