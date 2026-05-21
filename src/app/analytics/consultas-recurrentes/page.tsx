@@ -16,7 +16,8 @@ import {
   Database,
   Building2,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  EyeOff
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -42,6 +43,7 @@ interface SPRecord {
   TotalBloqueos: number;
   UltimaTrxAutorizada: string | null;
   HoraUltimaTrx: string | null;
+  EmisoresAgrupados?: string[];
 }
 
 export default function ConsultasRecurrentesPage() {
@@ -50,7 +52,9 @@ export default function ConsultasRecurrentesPage() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeSubTab, setActiveSubTab] = useState<'mas-ejecutados' | 'mas-lentos' | 'alertas' | 'todos'>('mas-ejecutados');
+  const [activeSubTab, setActiveSubTab] = useState<'mas-ejecutados' | 'mas-lentos' | 'mas-bloqueados' | 'alertas' | 'todos'>('mas-ejecutados');
+  const [excludedSPs, setExcludedSPs] = useState<string[]>([]);
+  const [groupBySP, setGroupBySP] = useState(true);
 
   const fetchData = useCallback(async (isRefresh = false) => {
     try {
@@ -101,18 +105,71 @@ export default function ConsultasRecurrentesPage() {
     fetchData();
   }, [fetchData]);
 
+  // Datos filtrados por exclusión (se excluye si coincide con la lista de SPs excluidos)
+  const dataFilteredByExclusions = useMemo(() => {
+    return data.filter(r => !excludedSPs.some(excluded => r.StoredProcedure.toLowerCase() === excluded.toLowerCase()));
+  }, [data, excludedSPs]);
+
+  // Agrupamiento por Stored Procedure (opcional)
+  const groupedData = useMemo(() => {
+    if (!groupBySP) return dataFilteredByExclusions;
+    
+    const map = new Map<string, SPRecord>();
+    dataFilteredByExclusions.forEach(r => {
+      const key = r.StoredProcedure;
+      const current = map.get(key);
+      const nemonicoActual = r.Nemonico || (r.IdEmisor ? `ID ${r.IdEmisor}` : null);
+      
+      if (!current) {
+        map.set(key, {
+          ...r,
+          IdEmisor: null,
+          Nemonico: null,
+          EmisoresAgrupados: nemonicoActual ? [nemonicoActual] : []
+        });
+      } else {
+        const totalEj = current.TotalEjecuciones + r.TotalEjecuciones;
+        const tiempoTotal = current.TiempoTotal_ms + r.TiempoTotal_ms;
+        
+        const emisores = [...(current.EmisoresAgrupados || [])];
+        if (nemonicoActual && !emisores.includes(nemonicoActual)) {
+          emisores.push(nemonicoActual);
+        }
+        
+        map.set(key, {
+          StoredProcedure: key,
+          IdEmisor: null,
+          Nemonico: null,
+          PaisId: current.PaisId === r.PaisId ? current.PaisId : null,
+          TotalEjecuciones: totalEj,
+          TiempoTotal_ms: tiempoTotal,
+          TiempoPromedio_ms: totalEj > 0 ? Math.round(tiempoTotal / totalEj) : 0,
+          TiempoMaximo_ms: Math.max(current.TiempoMaximo_ms, r.TiempoMaximo_ms),
+          TiempoMinimo_ms: Math.min(current.TiempoMinimo_ms, r.TiempoMinimo_ms),
+          TotalBloqueos: current.TotalBloqueos + r.TotalBloqueos,
+          UltimaTrxAutorizada: (current.UltimaTrxAutorizada && r.UltimaTrxAutorizada) 
+            ? (new Date(current.UltimaTrxAutorizada) > new Date(r.UltimaTrxAutorizada) ? current.UltimaTrxAutorizada : r.UltimaTrxAutorizada)
+            : (current.UltimaTrxAutorizada || r.UltimaTrxAutorizada),
+          HoraUltimaTrx: current.HoraUltimaTrx,
+          EmisoresAgrupados: emisores
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [dataFilteredByExclusions, groupBySP]);
+
   // KPIs globales calculados
   const kpis = useMemo(() => {
-    const totalConsultas = data.reduce((acc, r) => acc + r.TotalEjecuciones, 0);
-    const tiempoTotalSec = data.reduce((acc, r) => acc + r.TiempoTotal_ms, 0) / 1000;
-    const totalBloqueos = data.reduce((acc, r) => acc + r.TotalBloqueos, 0);
+    const totalConsultas = dataFilteredByExclusions.reduce((acc, r) => acc + r.TotalEjecuciones, 0);
+    const tiempoTotalSec = dataFilteredByExclusions.reduce((acc, r) => acc + r.TiempoTotal_ms, 0) / 1000;
+    const totalBloqueos = dataFilteredByExclusions.reduce((acc, r) => acc + r.TotalBloqueos, 0);
     const tasaBloqueo = totalConsultas > 0 ? (totalBloqueos / totalConsultas) * 100 : 0;
     
     // Alertas de emisores activos pero sin trx autorizadas en las últimas 2 semanas (14 días)
     const thresholdDate = new Date();
     thresholdDate.setDate(thresholdDate.getDate() - 14);
     
-    const alertEmisores = data.filter(r => {
+    const alertEmisores = dataFilteredByExclusions.filter(r => {
       // Debe tener emisor válido
       if (!r.IdEmisor || r.IdEmisor <= 0) return false;
       // Debe tener consultas registradas
@@ -139,18 +196,19 @@ export default function ConsultasRecurrentesPage() {
       alertasCount: uniqueAlertEmisores.length,
       alertEmisoresList: alertEmisores
     };
-  }, [data]);
+  }, [dataFilteredByExclusions]);
 
   // Filtrado de registros para las tablas
   const filteredData = useMemo(() => {
-    return data.filter(r => {
+    return groupedData.filter(r => {
       const matchSearch = !searchTerm || 
         r.StoredProcedure?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         r.Nemonico?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (r.IdEmisor && String(r.IdEmisor).includes(searchTerm));
+        (r.IdEmisor && String(r.IdEmisor).includes(searchTerm)) ||
+        (r.EmisoresAgrupados && r.EmisoresAgrupados.some(e => e.toLowerCase().includes(searchTerm.toLowerCase())));
       return matchSearch;
     });
-  }, [data, searchTerm]);
+  }, [groupedData, searchTerm]);
 
   // 1. Top Más Ejecutados
   const topMasEjecutados = useMemo(() => {
@@ -162,14 +220,25 @@ export default function ConsultasRecurrentesPage() {
     return [...filteredData].sort((a, b) => b.TiempoPromedio_ms - a.TiempoPromedio_ms).slice(0, 50);
   }, [filteredData]);
 
-  // 3. Emisores con Actividad sin Trxs (Alertas)
+  // 3. Más Bloqueados
+  const topMasBloqueados = useMemo(() => {
+    return [...filteredData].sort((a, b) => b.TotalBloqueos - a.TotalBloqueos).slice(0, 50);
+  }, [filteredData]);
+
+  // 4. Emisores con Actividad sin Trxs (Alertas) - Nota: Siempre se evalúa a nivel individual de emisor
   const emisoresConAlertas = useMemo(() => {
     const thresholdDate = new Date();
     thresholdDate.setDate(thresholdDate.getDate() - 14);
 
-    return filteredData.filter(r => {
+    const matchSearch = (r: SPRecord) => !searchTerm || 
+      r.StoredProcedure?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      r.Nemonico?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (r.IdEmisor && String(r.IdEmisor).includes(searchTerm));
+
+    return dataFilteredByExclusions.filter(r => {
       if (!r.IdEmisor || r.IdEmisor <= 0) return false;
       if (r.TotalEjecuciones === 0) return false;
+      if (!matchSearch(r)) return false;
       
       if (!r.UltimaTrxAutorizada || r.UltimaTrxAutorizada === 'NULL' || r.UltimaTrxAutorizada === '---') {
         return true;
@@ -178,12 +247,12 @@ export default function ConsultasRecurrentesPage() {
       const trxDate = new Date(r.UltimaTrxAutorizada);
       return !isNaN(trxDate.getTime()) && trxDate < thresholdDate;
     }).sort((a, b) => b.TotalEjecuciones - a.TotalEjecuciones);
-  }, [filteredData]);
+  }, [dataFilteredByExclusions, searchTerm]);
 
   // Top Emisores con Más Consultas (para una métrica secundaria)
   const topEmisoresConsultas = useMemo(() => {
     const map = new Map<number, { nemonico: string, count: number, bloqueos: number }>();
-    data.forEach(r => {
+    dataFilteredByExclusions.forEach(r => {
       if (r.IdEmisor && r.IdEmisor > 0) {
         const current = map.get(r.IdEmisor) || { nemonico: r.Nemonico || `Emisor ${r.IdEmisor}`, count: 0, bloqueos: 0 };
         map.set(r.IdEmisor, {
@@ -197,13 +266,13 @@ export default function ConsultasRecurrentesPage() {
       .map(([id, info]) => ({ id, ...info }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
-  }, [data]);
+  }, [dataFilteredByExclusions]);
 
   // Datos para la gráfica: Top 7 SPs más lentos en promedio
   const chartData = useMemo(() => {
     // Agrupar por SP para consolidar en la gráfica
     const spMap = new Map<string, { sp: string, maxPromedio: number }>();
-    data.forEach(r => {
+    dataFilteredByExclusions.forEach(r => {
       const current = spMap.get(r.StoredProcedure) || { sp: r.StoredProcedure, maxPromedio: 0 };
       if (r.TiempoPromedio_ms > current.maxPromedio) {
         spMap.set(r.StoredProcedure, {
@@ -221,7 +290,7 @@ export default function ConsultasRecurrentesPage() {
         fullName: item.sp,
         'Promedio (ms)': item.maxPromedio
       }));
-  }, [data]);
+  }, [dataFilteredByExclusions]);
 
   // Helper para mapear IDs de País a Nombre
   const getPaisNombre = (paisId: number | null) => {
@@ -248,10 +317,11 @@ export default function ConsultasRecurrentesPage() {
     switch (activeSubTab) {
       case 'mas-ejecutados': return topMasEjecutados;
       case 'mas-lentos': return topMasLentos;
+      case 'mas-bloqueados': return topMasBloqueados;
       case 'alertas': return emisoresConAlertas;
       default: return filteredData;
     }
-  }, [activeSubTab, topMasEjecutados, topMasLentos, emisoresConAlertas, filteredData]);
+  }, [activeSubTab, topMasEjecutados, topMasLentos, topMasBloqueados, emisoresConAlertas, filteredData]);
 
   return (
     <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 pb-20">
@@ -295,6 +365,33 @@ export default function ConsultasRecurrentesPage() {
           </button>
         </div>
       </header>
+
+      {/* Listado de SPs Excluidos */}
+      {excludedSPs.length > 0 && (
+        <div className="mb-8 p-5 bg-neutral-50 dark:bg-neutral-900/40 border border-neutral-200 dark:border-neutral-800 rounded-3xl flex flex-wrap items-center gap-3">
+          <span className="text-[10px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest">Procedimientos Excluidos:</span>
+          <div className="flex flex-wrap gap-2">
+            {excludedSPs.map(sp => (
+              <span key={sp} className="inline-flex items-center gap-1.5 px-3 py-1 bg-white dark:bg-neutral-850 rounded-xl text-xs font-bold text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-800">
+                <span className="line-clamp-1 max-w-[200px]" title={sp}>{sp}</span>
+                <button 
+                  onClick={() => setExcludedSPs(excludedSPs.filter(item => item !== sp))}
+                  className="text-neutral-400 hover:text-red-500 font-bold ml-1 transition-colors cursor-pointer"
+                  title="Restaurar"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+          <button 
+            onClick={() => setExcludedSPs([])} 
+            className="text-[10px] font-black text-[#71BF44] hover:underline uppercase tracking-widest ml-auto"
+          >
+            Restaurar Todos
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="mb-8 p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 rounded-2xl flex items-start gap-3">
@@ -480,6 +577,12 @@ export default function ConsultasRecurrentesPage() {
               Más Lentos (Promedio)
             </button>
             <button
+              onClick={() => setActiveSubTab('mas-bloqueados')}
+              className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${activeSubTab === 'mas-bloqueados' ? 'bg-[#71BF44] text-white border-[#71BF44] shadow-lg shadow-[#71BF44]/20' : 'bg-white dark:bg-neutral-800 text-neutral-400 border-neutral-100 dark:border-neutral-700 hover:border-neutral-300'}`}
+            >
+              Más Bloqueados
+            </button>
+            <button
               onClick={() => setActiveSubTab('alertas')}
               className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${activeSubTab === 'alertas' ? 'bg-red-600 text-white border-red-600 shadow-lg shadow-red-600/20' : 'bg-white dark:bg-neutral-800 text-red-500 border-red-100 dark:border-red-500/20 hover:border-red-300'}`}
             >
@@ -492,6 +595,19 @@ export default function ConsultasRecurrentesPage() {
             >
               Todos
             </button>
+
+            {/* Switch de Agrupamiento por Stored Procedure */}
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-white dark:bg-neutral-850 border border-neutral-200/60 dark:border-neutral-850 rounded-2xl ml-2 shadow-sm">
+              <span className="text-[9px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest">Agrupar SPs:</span>
+              <button
+                onClick={() => setGroupBySP(!groupBySP)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${groupBySP ? 'bg-[#71BF44]' : 'bg-neutral-200 dark:bg-neutral-700'}`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${groupBySP ? 'translate-x-5' : 'translate-x-0'}`}
+                />
+              </button>
+            </div>
           </div>
 
           {/* Buscador */}
@@ -551,11 +667,37 @@ export default function ConsultasRecurrentesPage() {
                       className={`group hover:bg-neutral-50/50 dark:hover:bg-white/[0.01] transition-colors ${hasAlert ? 'bg-red-500/[0.02]' : ''}`}
                     >
                       <td className="px-8 py-5 font-bold text-neutral-800 dark:text-neutral-200 text-xs break-all">
-                        <span className="text-[10px] text-neutral-400 mr-2">#{idx + 1}</span>
-                        {r.StoredProcedure}
+                        <div className="flex items-center gap-3">
+                          <button 
+                            onClick={() => {
+                              if (!excludedSPs.includes(r.StoredProcedure)) {
+                                setExcludedSPs([...excludedSPs, r.StoredProcedure]);
+                              }
+                            }}
+                            className="p-1.5 text-neutral-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 transition-all cursor-pointer shrink-0"
+                            title="Excluir de análisis"
+                          >
+                            <EyeOff className="w-3.5 h-3.5" />
+                          </button>
+                          <span className="text-[10px] text-neutral-400 shrink-0">#{idx + 1}</span>
+                          <span className="line-clamp-2">{r.StoredProcedure}</span>
+                        </div>
                       </td>
                       <td className="px-6 py-5 text-center">
-                        {r.IdEmisor && r.IdEmisor > 0 ? (
+                        {groupBySP ? (
+                          r.EmisoresAgrupados && r.EmisoresAgrupados.length > 0 ? (
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="text-[10px] font-black text-[#71BF44] bg-[#71BF44]/10 border border-[#71BF44]/20 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                {r.EmisoresAgrupados.length} {r.EmisoresAgrupados.length === 1 ? 'Emisor' : 'Emisores'}
+                              </span>
+                              <span className="text-[9px] text-neutral-400 font-bold max-w-[120px] truncate block" title={r.EmisoresAgrupados.join(', ')}>
+                                {r.EmisoresAgrupados.join(', ')}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-neutral-400 italic">Sin emisores</span>
+                          )
+                        ) : r.IdEmisor && r.IdEmisor > 0 ? (
                           <div className="inline-flex flex-col items-center">
                             <span className="text-xs font-black text-neutral-800 dark:text-neutral-100 leading-none mb-1">
                               {r.Nemonico || 'S/N'}
@@ -570,7 +712,11 @@ export default function ConsultasRecurrentesPage() {
                       </td>
                       <td className="px-6 py-5 text-center">
                         <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">
-                          {getPaisNombre(r.PaisId)}
+                          {groupBySP && !r.PaisId ? (
+                            <span className="text-neutral-400 italic">Múltiples</span>
+                          ) : (
+                            getPaisNombre(r.PaisId)
+                          )}
                         </span>
                       </td>
                       <td className="px-6 py-5 text-right font-black text-neutral-900 dark:text-white">
