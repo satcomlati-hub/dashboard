@@ -1,0 +1,197 @@
+{
+  "updatedAt": "2026-05-18T17:49:22.281Z",
+  "createdAt": "2026-03-23T16:36:39.251Z",
+  "id": "9SUpGm5FL4xSDkNN",
+  "name": "MAIN_registra_logs_rag",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "logs",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -256,
+        -32
+      ],
+      "id": "0eade0f2-1d23-42fb-b36d-5f1127269de8",
+      "name": "Webhook",
+      "webhookId": "8e14ba4e-9342-4f65-b79b-1ed858ae55ef"
+    },
+    {
+      "parameters": {
+        "operation": "push",
+        "list": "=logs:rag:{{ $workflow.id }}",
+        "messageData": "={\n  \"message\": \"{{ $json.body.message }}\", \n  \"level\": \"{{ $json.body.level }}\", \n  \"timestamp\": new Date().toISOString()\n}\n"
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        -32
+      ],
+      "id": "7bde97d0-cf14-4db1-8c6b-7e5c91914982",
+      "name": "Redis",
+      "credentials": {
+        "redis": {
+          "id": "b6cRIgfV3Ybv1aQr",
+          "name": "Redis account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Redis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "sara.mysatcomla.com",
+            "user-agent": "python-requests/2.32.5",
+            "content-length": "132",
+            "accept": "*/*",
+            "accept-encoding": "gzip, deflate, zstd",
+            "content-type": "application/json",
+            "via": "1.1 Caddy",
+            "x-forwarded-for": "129.146.162.57",
+            "x-forwarded-host": "sara.mysatcomla.com",
+            "x-forwarded-proto": "https"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "message": "\u2705 Ingesta de manual completa (14 art\u00edculos procesados).",
+            "level": "success",
+            "timestamp": 1774386760.966815
+          },
+          "webhookUrl": "https://sara.mysatcomla.com/webhook/logs",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "versionId": "e14c8d08-e26d-4ba5-878b-6d90c95dd95a",
+  "activeVersionId": "e14c8d08-e26d-4ba5-878b-6d90c95dd95a",
+  "versionCounter": 43,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-03-23T16:36:39.253Z",
+      "createdAt": "2026-03-23T16:36:39.253Z",
+      "role": "workflow:owner",
+      "workflowId": "9SUpGm5FL4xSDkNN",
+      "projectId": "Gl0z3DNsbKkj4wmb",
+      "project": {
+        "updatedAt": "2025-07-14T00:32:57.724Z",
+        "createdAt": "2025-07-14T00:30:54.688Z",
+        "id": "Gl0z3DNsbKkj4wmb",
+        "name": "Jesus Navarrete <jesus.navarrete@satcomla.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "57c765b1-1447-43a1-a14d-bbeacac5d303"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-03-25T14:16:18.000Z",
+    "createdAt": "2026-03-24T21:16:30.794Z",
+    "versionId": "e14c8d08-e26d-4ba5-878b-6d90c95dd95a",
+    "workflowId": "9SUpGm5FL4xSDkNN",
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "logs",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2.1,
+        "position": [
+          -256,
+          -32
+        ],
+        "id": "0eade0f2-1d23-42fb-b36d-5f1127269de8",
+        "name": "Webhook",
+        "webhookId": "8e14ba4e-9342-4f65-b79b-1ed858ae55ef"
+      },
+      {
+        "parameters": {
+          "operation": "push",
+          "list": "=logs:rag:{{ $workflow.id }}",
+          "messageData": "={\n  \"message\": \"{{ $json.body.message }}\", \n  \"level\": \"{{ $json.body.level }}\", \n  \"timestamp\": new Date().toISOString()\n}\n"
+        },
+        "type": "n8n-nodes-base.redis",
+        "typeVersion": 1,
+        "position": [
+          -48,
+          -32
+        ],
+        "id": "7bde97d0-cf14-4db1-8c6b-7e5c91914982",
+        "name": "Redis",
+        "credentials": {
+          "redis": {
+            "id": "b6cRIgfV3Ybv1aQr",
+            "name": "Redis account"
+          }
+        }
+      }
+    ],
+    "connections": {
+      "Webhook": {
+        "main": [
+          [
+            {
+              "node": "Redis",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "Jesus Navarrete",
+    "name": "Version e14c8d08",
+    "description": "",
+    "autosaved": true,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-03-25T14:16:18.737Z",
+        "id": 392,
+        "workflowId": "9SUpGm5FL4xSDkNN",
+        "versionId": "e14c8d08-e26d-4ba5-878b-6d90c95dd95a",
+        "event": "activated",
+        "userId": "57c765b1-1447-43a1-a14d-bbeacac5d303"
+      }
+    ]
+  }
+}

@@ -1,0 +1,102 @@
+import Link from 'next/link';
+
+const API_URL = (process.env.AGENTES_API_URL ?? 'http://localhost:8080').replace(/\/$/, '');
+const API_TOKEN = process.env.AGENTES_API_TOKEN ?? '';
+
+async function getRuns(agentId: string) {
+  try {
+    const res = await fetch(
+      `${API_URL}/v1/runs?agent_id=${agentId}&limit=50`,
+      { headers: { Authorization: `Bearer ${API_TOKEN}` }, cache: 'no-store' },
+    );
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}
+
+async function getAgent(agentId: string) {
+  try {
+    const res = await fetch(`${API_URL}/v1/agents/${agentId}`, {
+      headers: { Authorization: `Bearer ${API_TOKEN}` }, cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch { return null; }
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  completed: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
+  error: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400',
+  running: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400',
+  cancelled: 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500',
+};
+
+export default async function RunsPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const [agent, runs] = await Promise.all([getAgent(id), getRuns(id)]);
+
+  return (
+    <>
+      <header className="mb-8">
+        <div className="flex items-center gap-2 mb-2">
+          <Link href={`/projects/agentes/${id}`} className="text-sm text-[#71BF44] hover:underline flex items-center gap-1">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            {agent?.name ?? 'Agente'}
+          </Link>
+        </div>
+        <h2 className="text-2xl font-bold text-neutral-900 dark:text-[#e5e5e5] tracking-tight">Historial de invocaciones</h2>
+        <p className="text-sm text-neutral-500 dark:text-[#ababab] mt-1">
+          Últimas {runs.length} ejecuciones del agente.
+        </p>
+      </header>
+
+      {runs.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <p className="text-neutral-400 text-sm">Sin invocaciones aún.</p>
+          <Link href={`/projects/agentes/${id}/playground`} className="mt-2 text-sm text-[#71BF44] hover:underline">
+            Probar en el playground →
+          </Link>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {runs.map((run: any) => (
+            <div
+              key={run.id}
+              className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-4"
+            >
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[run.status] ?? STATUS_COLORS.cancelled}`}>
+                    {run.status}
+                  </span>
+                  <span className="text-xs text-neutral-400">{run.source}</span>
+                  {run.duration_ms && (
+                    <span className="text-xs text-neutral-400">{run.duration_ms}ms</span>
+                  )}
+                </div>
+                <span className="text-xs text-neutral-400">
+                  {run.created_at ? new Date(run.created_at).toLocaleString('es-MX') : ''}
+                </span>
+              </div>
+              <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200 truncate mb-1">
+                {run.prompt}
+              </p>
+              {run.response && (
+                <p className="text-sm text-neutral-500 dark:text-neutral-400 line-clamp-2">
+                  {run.response}
+                </p>
+              )}
+              {run.error && (
+                <p className="text-xs text-red-500 mt-1">{run.error}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
