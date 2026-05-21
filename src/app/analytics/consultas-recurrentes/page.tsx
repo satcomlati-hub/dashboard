@@ -39,7 +39,7 @@ interface SPRecord {
   TiempoPromedio_ms: number;
   TiempoMaximo_ms: number;
   TiempoMinimo_ms: number;
-  TotalErrores: number;
+  TotalBloqueos: number;
   UltimaTrxAutorizada: string | null;
   HoraUltimaTrx: string | null;
 }
@@ -82,7 +82,7 @@ export default function ConsultasRecurrentesPage() {
         TiempoPromedio_ms: Number(r.TiempoPromedio_ms) || 0,
         TiempoMaximo_ms: Number(r.TiempoMaximo_ms) || 0,
         TiempoMinimo_ms: Number(r.TiempoMinimo_ms) || 0,
-        TotalErrores: Number(r.TotalErrores) || 0,
+        TotalBloqueos: Number(r.TotalBloqueos) || 0,
         IdEmisor: r.IdEmisor !== null ? Number(r.IdEmisor) : null,
         PaisId: r.PaisId !== null ? Number(r.PaisId) : null
       }));
@@ -105,8 +105,8 @@ export default function ConsultasRecurrentesPage() {
   const kpis = useMemo(() => {
     const totalConsultas = data.reduce((acc, r) => acc + r.TotalEjecuciones, 0);
     const tiempoTotalSec = data.reduce((acc, r) => acc + r.TiempoTotal_ms, 0) / 1000;
-    const totalErrores = data.reduce((acc, r) => acc + r.TotalErrores, 0);
-    const tasaError = totalConsultas > 0 ? (totalErrores / totalConsultas) * 100 : 0;
+    const totalBloqueos = data.reduce((acc, r) => acc + r.TotalBloqueos, 0);
+    const tasaBloqueo = totalConsultas > 0 ? (totalBloqueos / totalConsultas) * 100 : 0;
     
     // Alertas de emisores activos pero sin trx autorizadas en las últimas 2 semanas (14 días)
     const thresholdDate = new Date();
@@ -134,7 +134,8 @@ export default function ConsultasRecurrentesPage() {
     return {
       totalConsultas,
       tiempoTotalSec,
-      tasaError,
+      totalBloqueos,
+      tasaBloqueo,
       alertasCount: uniqueAlertEmisores.length,
       alertEmisoresList: alertEmisores
     };
@@ -181,14 +182,14 @@ export default function ConsultasRecurrentesPage() {
 
   // Top Emisores con Más Consultas (para una métrica secundaria)
   const topEmisoresConsultas = useMemo(() => {
-    const map = new Map<number, { nemonico: string, count: number, error: number }>();
+    const map = new Map<number, { nemonico: string, count: number, bloqueos: number }>();
     data.forEach(r => {
       if (r.IdEmisor && r.IdEmisor > 0) {
-        const current = map.get(r.IdEmisor) || { nemonico: r.Nemonico || `Emisor ${r.IdEmisor}`, count: 0, error: 0 };
+        const current = map.get(r.IdEmisor) || { nemonico: r.Nemonico || `Emisor ${r.IdEmisor}`, count: 0, bloqueos: 0 };
         map.set(r.IdEmisor, {
           nemonico: r.Nemonico || current.nemonico,
           count: current.count + r.TotalEjecuciones,
-          error: current.error + r.TotalErrores
+          bloqueos: current.bloqueos + r.TotalBloqueos
         });
       }
     });
@@ -331,13 +332,15 @@ export default function ConsultasRecurrentesPage() {
 
         <div className="bg-white dark:bg-[#111] border border-neutral-100 dark:border-neutral-800 rounded-[32px] p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">Tasa de Errores</span>
+            <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">Bloqueos de Rate Limit</span>
             <AlertTriangle className="w-4 h-4 text-red-500" />
           </div>
           <h3 className="text-4xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">
-            {loading ? '...' : `${kpis.tasaError.toFixed(2)}%`}
+            {loading ? '...' : kpis.totalBloqueos.toLocaleString()}
           </h3>
-          <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mt-4">Ejecuciones fallidas</p>
+          <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mt-4">
+            {loading ? '...' : `Tasa de bloqueo: ${kpis.tasaBloqueo.toFixed(2)}%`}
+          </p>
         </div>
 
         <div className={`border rounded-[32px] p-6 shadow-sm transition-all duration-300 ${kpis.alertasCount > 0 ? 'bg-red-50/50 dark:bg-red-950/10 border-red-200 dark:border-red-900/50 animate-pulse' : 'bg-white dark:bg-[#111] border-neutral-100 dark:border-neutral-800'}`}>
@@ -387,7 +390,16 @@ export default function ConsultasRecurrentesPage() {
                     labelStyle={{ color: '#fff', fontWeight: 'bold', fontSize: 11 }}
                     itemStyle={{ color: '#71BF44', fontSize: 11 }}
                   />
-                  <Bar dataKey="Promedio (ms)" radius={[8, 8, 0, 0]}>
+                  <Bar 
+                    dataKey="Promedio (ms)" 
+                    radius={[8, 8, 0, 0]}
+                    onClick={(entry: any) => {
+                      if (entry && entry.fullName) {
+                        setSearchTerm(entry.fullName);
+                      }
+                    }}
+                    className="cursor-pointer"
+                  >
                     {chartData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={index === 0 ? '#ef4444' : index < 3 ? '#f97316' : '#71BF44'} />
                     ))}
@@ -435,7 +447,7 @@ export default function ConsultasRecurrentesPage() {
                       {em.count.toLocaleString()}
                     </span>
                     <span className="text-[8px] font-black text-red-500 uppercase tracking-widest">
-                      {em.error.toLocaleString()} Errores
+                      {em.bloqueos.toLocaleString()} Bloqueos
                     </span>
                   </div>
                 </div>
@@ -490,8 +502,19 @@ export default function ConsultasRecurrentesPage() {
               placeholder="Buscar por SP, nemónico o ID..." 
               value={searchTerm} 
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl pl-12 pr-4 py-3.5 text-xs font-bold focus:ring-4 focus:ring-[#71BF44]/10 outline-none transition-all placeholder:text-neutral-300 placeholder:italic"
+              className="w-full bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl pl-12 pr-10 py-3.5 text-xs font-bold focus:ring-4 focus:ring-[#71BF44]/10 outline-none transition-all placeholder:text-neutral-300 placeholder:italic"
             />
+            {searchTerm && (
+              <button 
+                onClick={() => setSearchTerm('')} 
+                className="absolute right-4 top-1/2 -translate-y-1/2 p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-full transition-colors cursor-pointer"
+                title="Limpiar búsqueda"
+              >
+                <svg className="w-3.5 h-3.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
 
@@ -511,7 +534,7 @@ export default function ConsultasRecurrentesPage() {
                   <th className="px-6 py-5 text-right">Ejecuciones</th>
                   <th className="px-6 py-5 text-right">Promedio (ms)</th>
                   <th className="px-6 py-5 text-right">Máximo (ms)</th>
-                  <th className="px-6 py-5 text-right">Total Errores</th>
+                  <th className="px-6 py-5 text-right">Total Bloqueos</th>
                   <th className="px-8 py-5">Última Trx Autorizada</th>
                 </tr>
               </thead>
@@ -562,8 +585,8 @@ export default function ConsultasRecurrentesPage() {
                         {r.TiempoMaximo_ms.toLocaleString()} ms
                       </td>
                       <td className="px-6 py-5 text-right font-bold">
-                        <span className={r.TotalErrores > 0 ? 'text-red-500' : 'text-neutral-300 opacity-40'}>
-                          {r.TotalErrores.toLocaleString()}
+                        <span className={r.TotalBloqueos > 0 ? 'text-red-500' : 'text-neutral-300 opacity-40'}>
+                          {r.TotalBloqueos.toLocaleString()}
                         </span>
                       </td>
                       <td className="px-8 py-5">

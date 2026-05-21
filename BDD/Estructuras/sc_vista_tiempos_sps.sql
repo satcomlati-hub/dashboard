@@ -32,17 +32,16 @@ SELECT
     AVG(DATEDIFF(MILLISECOND, L.lc_inicio, L.lc_fin)) AS [TiempoPromedio_ms],
     MAX(DATEDIFF(MILLISECOND, L.lc_inicio, L.lc_fin)) AS [TiempoMaximo_ms],
     MIN(DATEDIFF(MILLISECOND, L.lc_inicio, L.lc_fin)) AS [TiempoMinimo_ms],
-    SUM(CASE WHEN L.lc_error IS NOT NULL AND L.lc_error <> '' THEN 1 ELSE 0 END) AS [TotalErrores],
+    SUM(CASE WHEN L.lc_origen =  'Bloqueado' THEN 1 ELSE 0 END) AS [TotalBloqueos],  --[TotalErrores]
     MAX(VUA.Ultima_Fecha_Autorizacion_Global) AS [UltimaTrxAutorizada],
     MAX(VUA.Ultima_Hora_Ingreso_Global) AS [HoraUltimaTrx]
 FROM sat_logging.dbo.com_log_consultas_bdd L WITH(NOLOCK)
-LEFT JOIN sat_logging.dbo.log_vista_ultima_actividad_emisor VUA ON VUA.ID_Emisor = L.lc_emisor
-WHERE L.lc_origen <> 'Bloqueado'
-  -- Se utiliza lc_hora_registro para aprovechar el índice IX_com_log_consultas_bdd_rate_limiting
-  AND L.lc_hora_registro >= DATEADD(DAY, -3, GETDATE())
+LEFT OUTER JOIN sat_logging.dbo.log_vista_ultima_actividad_emisor VUA ON VUA.ID_Emisor = L.lc_emisor
+WHERE L.lc_hora_registro >= DATEADD(DAY, -3, GETDATE())
 GROUP BY 
     L.lc_nombre_sp,     
     L.lc_emisor,
     VUA.Nemonico,
     VUA.Pais_ID;
-GO
+
+
