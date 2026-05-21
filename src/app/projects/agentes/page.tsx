@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import AgentesNav from '@/components/agentes/AgentesNav';
 
 const API_URL = (process.env.AGENTES_API_URL ?? 'http://localhost:8080').replace(/\/$/, '');
 const API_TOKEN = process.env.AGENTES_API_TOKEN ?? '';
@@ -46,6 +47,8 @@ export default async function AgentesPage() {
           Nuevo agente
         </Link>
       </header>
+
+      <AgentesNav />
 
       {agents.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">

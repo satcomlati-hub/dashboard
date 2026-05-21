@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import AgentesNav from '@/components/agentes/AgentesNav';
 
 const MODELS = ['gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-3.1-flash-image-preview'];
 const THINKING_LEVELS = ['minimal', 'low', 'medium', 'high'];
@@ -128,6 +129,8 @@ export default function AgentEditorPage() {
           )}
         </div>
       </header>
+
+      <AgentesNav />
 
       <div className="space-y-6 max-w-3xl">
         {/* Básicos */}
