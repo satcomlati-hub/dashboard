@@ -20,7 +20,10 @@ import {
   EyeOff,
   ArrowUp,
   ArrowDown,
-  ArrowUpDown
+  ArrowUpDown,
+  Copy,
+  Braces,
+  Check
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -59,6 +62,7 @@ export default function ConsultasRecurrentesPage() {
   const [excludedSPs, setExcludedSPs] = useState<string[]>([]);
   const [groupBySP, setGroupBySP] = useState(true);
   const [sortConfig, setSortConfig] = useState<{ key: keyof SPRecord | 'PaisNombre'; direction: 'asc' | 'desc' } | null>(null);
+  const [copiedState, setCopiedState] = useState<{ idx: number; type: 'text' | 'json' } | null>(null);
 
   const requestSort = (key: keyof SPRecord | 'PaisNombre') => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -399,6 +403,45 @@ export default function ConsultasRecurrentesPage() {
     return sortConfig.direction === 'asc' 
       ? <ArrowUp className="w-3.5 h-3.5 ml-1.5 text-[#71BF44] shrink-0 inline-block" />
       : <ArrowDown className="w-3.5 h-3.5 ml-1.5 text-[#71BF44] shrink-0 inline-block" />;
+  };
+
+  // Copia el contenido de la fila formateado como texto legible con cabeceras
+  const handleCopyText = (r: SPRecord, idx: number) => {
+    const emisoresText = groupBySP 
+      ? (r.EmisoresAgrupados && r.EmisoresAgrupados.length > 0 ? r.EmisoresAgrupados.join(', ') : 'Sin emisores')
+      : `${r.Nemonico || 'S/N'} (ID: ${r.IdEmisor || 'N/A'})`;
+      
+    const paisText = groupBySP && !r.PaisId ? 'Múltiples' : getPaisNombre(r.PaisId);
+    const ultTrx = r.UltimaTrxAutorizada && r.UltimaTrxAutorizada !== 'NULL' && r.UltimaTrxAutorizada !== '---' 
+      ? r.UltimaTrxAutorizada 
+      : 'Sin registros trx';
+
+    const text = [
+      `--- DETALLE DE CONSULTA RECURRENTE ---`,
+      `Procedimiento Almacenado (SP): ${r.StoredProcedure}`,
+      `Emisor / Nemónico: ${emisoresText}`,
+      `País: ${paisText}`,
+      `Ejecuciones: ${r.TotalEjecuciones.toLocaleString()}`,
+      `Promedio: ${r.TiempoPromedio_ms.toLocaleString()} ms`,
+      `Máximo: ${r.TiempoMaximo_ms.toLocaleString()} ms`,
+      `Total Bloqueos: ${r.TotalBloqueos.toLocaleString()}`,
+      `Última Trx Autorizada: ${ultTrx}`,
+      `--------------------------------------`
+    ].join('\n');
+
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedState({ idx, type: 'text' });
+      setTimeout(() => setCopiedState(null), 2000);
+    });
+  };
+
+  // Copia el objeto de la fila en formato JSON estructurado
+  const handleCopyJson = (r: SPRecord, idx: number) => {
+    const jsonStr = JSON.stringify(r, null, 2);
+    navigator.clipboard.writeText(jsonStr).then(() => {
+      setCopiedState({ idx, type: 'json' });
+      setTimeout(() => setCopiedState(null), 2000);
+    });
   };
 
   return (
@@ -845,6 +888,39 @@ export default function ConsultasRecurrentesPage() {
                           >
                             <EyeOff className="w-3.5 h-3.5" />
                           </button>
+
+                          <button
+                            onClick={() => handleCopyText(r, idx)}
+                            className={`p-1.5 rounded-lg transition-all cursor-pointer shrink-0 ${
+                              copiedState?.idx === idx && copiedState?.type === 'text'
+                                ? 'text-green-500 bg-green-50 dark:bg-green-950/20'
+                                : 'text-neutral-400 hover:text-[#71BF44] hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                            }`}
+                            title="Copiar fila (texto con cabeceras)"
+                          >
+                            {copiedState?.idx === idx && copiedState?.type === 'text' ? (
+                              <Check className="w-3.5 h-3.5" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+
+                          <button
+                            onClick={() => handleCopyJson(r, idx)}
+                            className={`p-1.5 rounded-lg transition-all cursor-pointer shrink-0 ${
+                              copiedState?.idx === idx && copiedState?.type === 'json'
+                                ? 'text-green-500 bg-green-50 dark:bg-green-950/20'
+                                : 'text-neutral-400 hover:text-[#71BF44] hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                            }`}
+                            title="Copiar objeto (JSON)"
+                          >
+                            {copiedState?.idx === idx && copiedState?.type === 'json' ? (
+                              <Check className="w-3.5 h-3.5" />
+                            ) : (
+                              <Braces className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+
                           <span className="text-[10px] text-neutral-400 shrink-0">#{idx + 1}</span>
                           <span className="line-clamp-2">{r.StoredProcedure}</span>
                         </div>
