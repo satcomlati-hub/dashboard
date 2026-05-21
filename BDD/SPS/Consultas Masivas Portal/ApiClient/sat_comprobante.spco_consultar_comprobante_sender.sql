@@ -31,15 +31,63 @@ BEGIN
             @fin DATETIME, 
             @inicio DATETIME = GETDATE(),
             @row_count INT = 0,
-            @error_msg NVARCHAR(MAX) = NULL;
+            @error_msg NVARCHAR(MAX) = NULL,
+            @sp_name VARCHAR(200) = DB_NAME() + '.' + OBJECT_NAME(@@PROCID);
 
-    -- Construcción de la ejecución completa para el log
-    SELECT @params = 'EXEC [dbo].[spco_consultar_comprobante_sender] ' +
-        '@i_co_id_emisor = ' + ISNULL(CAST(@i_co_id_emisor AS VARCHAR), 'NULL') + ', ' +
-        '@i_co_establecimiento = ' + ISNULL('''' + @i_co_establecimiento + '''', 'NULL') + ', ' +
-        '@i_co_punto_emision = ' + ISNULL('''' + @i_co_punto_emision + '''', 'NULL') + ', ' +
-        '@i_co_nombre_archivo = ' + ISNULL('''' + @i_co_nombre_archivo + '''', 'NULL') + ', ' +
-        '@i_co_comprobantes = ' + ISNULL('''' + @i_co_comprobantes + '''', 'NULL');
+    -- Log Ejecutivo: Replicación de comando SQL listo para ejecutar (SSMS)
+    SET @params = 'EXEC [' + DB_NAME() + '].[dbo].[' + OBJECT_NAME(@@PROCID) + '] ' +
+                  '@i_co_id_emisor = ' + ISNULL(CAST(@i_co_id_emisor AS VARCHAR), 'NULL') + ', ' +
+                  '@i_co_establecimiento = ' + ISNULL('''' + @i_co_establecimiento + '''', 'NULL') + ', ' +
+                  '@i_co_punto_emision = ' + ISNULL('''' + @i_co_punto_emision + '''', 'NULL') + ', ' +
+                  '@i_co_nombre_archivo = ' + ISNULL('''' + @i_co_nombre_archivo + '''', 'NULL') + ', ' +
+                  '@i_co_comprobantes = ' + ISNULL('''' + @i_co_comprobantes + '''', 'NULL');
+
+    -------------------------------------------------------------------
+    -- CONTROL DE CONSULTAS RECURRENTES (10 por hora, ventana deslizante)
+    -- Aplica para todas las llamadas al SP
+    -------------------------------------------------------------------
+    DECLARE @Consultas int = 0
+    DECLARE @LimiteConsultas int = 10  -- Límite: 10 consultas por hora
+
+    BEGIN TRY
+        -- Registrar el intento de consulta y obtener la recurrencia acumulada de la última hora
+        EXEC dbo.spco_crear_log_consulta 
+            @i_lc_nombre_sp = @sp_name,  
+            @i_lc_emisor = @i_co_id_emisor,  
+            @i_lc_parametros = @params,  
+            @i_lc_origen = 'Intento',  
+            @i_lc_inicio = @inicio,  
+            @i_lc_fin = @inicio,
+            @o_recurrencias = @Consultas OUTPUT;
+    END TRY
+    BEGIN CATCH
+        -- Tolerancia a fallos: Si falla el logging, omitimos el control y continuamos con la consulta
+        PRINT '>>> ERROR EN CONTROL DE RECURRENCIAS: ' + ERROR_MESSAGE() + '. Se omite rate limit para evitar bloqueo del servicio.';
+        SET @Consultas = 0;
+    END CATCH
+
+    IF (@Consultas > @LimiteConsultas)
+    BEGIN
+        BEGIN TRY
+            DECLARE @fin_block DATETIME = GETDATE();
+            -- Registrar el log de bloqueo
+            EXEC dbo.spco_crear_log_consulta 
+                @i_lc_nombre_sp = @sp_name,  
+                @i_lc_emisor = @i_co_id_emisor,  
+                @i_lc_parametros = @params,  
+                @i_lc_origen = 'Bloqueado',  
+                @i_lc_inicio = @inicio,  
+                @i_lc_fin = @fin_block,  
+                @i_lc_error = 'Bloqueado por exceso de consultas';
+        END TRY
+        BEGIN CATCH
+            PRINT '>>> ERROR AL REGISTRAR LOG DE BLOQUEO: ' + ERROR_MESSAGE();
+        END CATCH
+
+        -- Salida temprana: devolver error controlado sin ejecutar la consulta pesada
+        PRINT 'BLOQUEADO: ' + CAST(@Consultas AS VARCHAR) + ' consultas en la última hora (límite: ' + CAST(@LimiteConsultas AS VARCHAR) + ')';
+        RETURN 0;
+    END
 
     BEGIN TRY
         SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
@@ -116,7 +164,7 @@ BEGIN
     SELECT @fin = GETDATE();
 
     EXEC [dbo].[spco_crear_log_consulta] 
-        @i_lc_nombre_sp = 'spco_consultar_comprobante_sender',
+        @i_lc_nombre_sp = @sp_name,
         @i_lc_hostname  = NULL,
         @i_lc_appname   = 'batch',
         @i_lc_emisor    = @i_co_id_emisor,

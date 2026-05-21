@@ -17,93 +17,214 @@ BEGIN
 END
 GO
 
-CREATE PROCEDURE [dbo].[sphis_consulta_comprobantes_procesos_op_numero_tipo]          
-(     
- @i_MinFechaConsulta date,  
- @i_MaxFechaConsulta date,   
- @i_IdEmisor as int,  
- @i_NumComprobante as varchar (100),  
- @i_TipoComprobante as varchar (5),  
- @i_error as varchar(400) out     
-) 
-WITH RECOMPILE        
-AS 
-BEGIN
-    SET NOCOUNT ON;
-    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
-
-    DECLARE @inicio_proceso DATETIME = GETDATE(),
-            @params NVARCHAR(MAX),
-            @sp_name VARCHAR(200) = 'sphis_consulta_comprobantes_procesos_op_numero_tipo',
-            @error_msg NVARCHAR(MAX),
-            @contador BIGINT = 0;
-
-    -- Log Ejecutivo: Replicación de comando SQL
-    SET @params = 'EXEC [dbo].[' + @sp_name + '] ' +
-                  '@i_MinFechaConsulta = ' + ISNULL('''' + CAST(@i_MinFechaConsulta AS VARCHAR) + '''', 'NULL') + ', ' +
-                  '@i_MaxFechaConsulta = ' + ISNULL('''' + CAST(@i_MaxFechaConsulta AS VARCHAR) + '''', 'NULL') + ', ' +
+CREATE PROCEDURE [dbo].[sphis_consulta_comprobantes_procesos_op_numero_tipo]            
+(       
+ @i_MinFechaConsulta date,    
+ @i_MaxFechaConsulta date,     
+ @i_IdEmisor as int,    
+ @i_NumComprobante as varchar (100),    
+ @i_TipoComprobante as varchar (5),    
+ @i_error as varchar(400) out       
+)   
+WITH RECOMPILE          
+AS   
+BEGIN  
+    SET NOCOUNT ON;  
+    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;  
+  
+    DECLARE @inicio_proceso DATETIME = GETDATE(),  
+            @params NVARCHAR(MAX),  
+            @sp_name VARCHAR(200) = DB_NAME() + '.' + OBJECT_NAME(@@PROCID);  
+  
+    -- Cambio Quirúrgico: Cálculo de meses para poda de particiones  
+    DECLARE @mes_actual TINYINT = MONTH(@i_MaxFechaConsulta),  
+            @mes_anterior TINYINT = MONTH(DATEADD(MONTH, -1, @i_MaxFechaConsulta));  
+  
+    -- Log Ejecutivo: Replicación de comando SQL listo para ejecutar (SSMS)
+    SET @params = 'EXEC [' + DB_NAME() + '].[dbo].[' + OBJECT_NAME(@@PROCID) + '] ' +
+                  '@i_MinFechaConsulta = ' + ISNULL('''' + CONVERT(VARCHAR(10), @i_MinFechaConsulta, 120) + '''', 'NULL') + ', ' +
+                  '@i_MaxFechaConsulta = ' + ISNULL('''' + CONVERT(VARCHAR(10), @i_MaxFechaConsulta, 120) + '''', 'NULL') + ', ' +
                   '@i_IdEmisor = ' + ISNULL(CAST(@i_IdEmisor AS VARCHAR), 'NULL') + ', ' +
                   '@i_NumComprobante = ' + ISNULL('''' + @i_NumComprobante + '''', 'NULL') + ', ' +
                   '@i_TipoComprobante = ' + ISNULL('''' + @i_TipoComprobante + '''', 'NULL');
+  
+    -------------------------------------------------------------------
+    -- CONTROL DE CONSULTAS RECURRENTES (10 por hora, ventana deslizante)
+    -- Aplica para todas las llamadas al SP
+    -------------------------------------------------------------------
+    DECLARE @Consultas int = 0
+    DECLARE @LimiteConsultas int = 10  -- Límite: 10 consultas por hora
 
-    -- Exclusión solicitada: Emisor 517
-    IF (@i_IdEmisor = 517)
+    BEGIN TRY
+        -- Registrar el intento de consulta y obtener la recurrencia acumulada de la última hora
+        EXEC dbo.spco_crear_log_consulta 
+            @i_lc_nombre_sp = @sp_name,  
+            @i_lc_emisor = @i_IdEmisor,  
+            @i_lc_parametros = @params,  
+            @i_lc_origen = 'Intento',  
+            @i_lc_inicio = @inicio_proceso,  
+            @i_lc_fin = @inicio_proceso,
+            @o_recurrencias = @Consultas OUTPUT;
+    END TRY
+    BEGIN CATCH
+        -- Tolerancia a fallos: Si falla el logging, omitimos el control y continuamos con la consulta
+        PRINT '>>> ERROR EN CONTROL DE RECURRENCIAS: ' + ERROR_MESSAGE() + '. Se omite rate limit para evitar bloqueo del servicio.';
+        SET @Consultas = 0;
+    END CATCH
+
+    IF (@Consultas > @LimiteConsultas)
     BEGIN
-        EXEC [dbo].[spco_crear_log_consulta] 
-            @i_lc_nombre_sp = @sp_name,
-            @i_lc_emisor = @i_IdEmisor,
-            @i_lc_parametros = @params,
-            @i_lc_origen = 'EXCLUSION_ID_517',
-            @i_lc_inicio = @inicio_proceso,
-            @i_lc_fin = GETDATE(),
-            @i_lc_error = 'rows:0 (Excluido 517)';
+        BEGIN TRY
+            DECLARE @fin_block DATETIME = GETDATE();
+            -- Registrar el log de bloqueo
+            EXEC dbo.spco_crear_log_consulta 
+                @i_lc_nombre_sp = @sp_name,  
+                @i_lc_emisor = @i_IdEmisor,  
+                @i_lc_parametros = @params,  
+                @i_lc_origen = 'Bloqueado',  
+                @i_lc_inicio = @inicio_proceso,  
+                @i_lc_fin = @fin_block,  
+                @i_lc_error = 'Bloqueado por exceso de consultas';
+        END TRY
+        BEGIN CATCH
+            PRINT '>>> ERROR AL REGISTRAR LOG DE BLOQUEO: ' + ERROR_MESSAGE();
+        END CATCH
+
+        -- Salida temprana: devolver error controlado sin ejecutar la consulta pesada
+        PRINT 'BLOQUEADO: ' + CAST(@Consultas AS VARCHAR) + ' consultas en la última hora (límite: ' + CAST(@LimiteConsultas AS VARCHAR) + ')';
         RETURN 0;
     END
 
-    BEGIN TRY
-        DECLARE @t_Comprobantes AS ComprobanteXML;
+    -- Exclusión solicitada: Emisor 517  
+    IF (@i_IdEmisor = 517)  
+    BEGIN  
+        DECLARE @fin_excl DATETIME = GETDATE();  
+        EXEC [dbo].[spco_crear_log_consulta]   
+            @i_lc_nombre_sp = @sp_name,  
+            @i_lc_emisor = @i_IdEmisor,  
+            @i_lc_parametros = @params,  
+            @i_lc_origen = 'EXCLUSION_ID_517',  
+            @i_lc_inicio = @inicio_proceso,  
+            @i_lc_fin = @fin_excl,  
+            @i_lc_error = 'Consulta omitida por exclusión activa de emisor 517';  
   
-        INSERT INTO @t_Comprobantes ([IdComprobante], [HoraIn], [FechaEmision], [Estatus], [NumComprobante], [CodigoTipoDocumento], DescripcionEstatus, TramaDto)       
-        SELECT [co_id_comprobante], [co_hora_in], [co_fecha_emision], [co_estatus], [co_num_comprobante], [co_codigo_tipo_documento], DescripcionEstatus, co_trama_dto  
-        FROM com_log_comprobante_xml WITH(NOLOCK)   
-        LEFT OUTER JOIN sat_catalogo.dbo.sc_vista_estados_documentos ON co_estatus = CodigoEstatus  
-        WHERE co_id_emisor = @i_IdEmisor AND co_num_comprobante = @i_NumComprobante AND co_codigo_tipo_documento = @i_TipoComprobante  
-        AND EXISTS(SELECT 1 FROM sat_catalogo.dbo.sc_vista_estados_autorizados WHERE CodigoEstatus = co_estatus);
+        PRINT '>>> Exclusión activa para emisor 517. Log registrado, consulta omitida.';  
+        RETURN 0;  
+    END  
   
-        IF (@@ROWCOUNT = 0)  
+    -- Exclusiones históricas/técnicas  
+    IF (@i_IdEmisor = '1734' AND @i_NumComprobante = '0001-001-1000000154') RETURN 0;  
+  
+    BEGIN TRY  
+        PRINT '->[' + @sp_name + ']'     
+        PRINT '@i_MinFechaConsulta: ' + ISNULL(dbo.fn_get_text(@i_MinFechaConsulta), 'NULL')  
+        PRINT '@i_MaxFechaConsulta: ' + ISNULL(dbo.fn_get_text(@i_MaxFechaConsulta), 'NULL')  
+        PRINT '@i_IdEmisor: ' + ISNULL(dbo.fn_get_text(@i_IdEmisor), 'NULL')  
+        PRINT '@i_NumComprobante: ' + ISNULL(dbo.fn_get_text(@i_NumComprobante), 'NULL')  
+        PRINT '@i_TipoComprobante: ' + ISNULL(dbo.fn_get_text(@i_TipoComprobante), 'NULL')  
+  
+        DECLARE @t_Comprobantes AS ComprobanteXML;  
+    
+        INSERT INTO @t_Comprobantes (        
+            [IdComprobante], [HoraIn], [FechaEmision] , [Estatus],     
+            [NumComprobante], [CodigoTipoDocumento], DescripcionEstatus, TramaDto    
+        )         
+        SELECT        
+            [co_id_comprobante], [co_hora_in], [co_fecha_emision], [co_estatus],      
+            [co_num_comprobante], [co_codigo_tipo_documento], DescripcionEstatus, co_trama_dto    
+        FROM com_log_comprobante_xml WITH(NOLOCK)     
+        LEFT OUTER JOIN sat_catalogo.dbo.sc_vista_estados_documentos ON co_estatus = CodigoEstatus    
+        WHERE co_id_emisor = @i_IdEmisor      
+        AND co_mes_emi IN (@mes_actual, @mes_anterior) -- Cambio Quirúrgico: Poda de particiones  
+        AND (co_num_comprobante = @i_NumComprobante)  
+        AND co_codigo_tipo_documento = @i_TipoComprobante    
+        AND EXISTS(SELECT 1 FROM sat_catalogo.dbo.sc_vista_estados_autorizados WHERE CodigoEstatus = co_estatus);  
+    
+        IF (@@ROWCOUNT = 0)    
+        BEGIN    
+            PRINT 'Busca no autorizados';    
+            INSERT INTO @t_Comprobantes (        
+                [IdComprobante], [HoraIn], [FechaEmision] , [Estatus],     
+                [NumComprobante], [CodigoTipoDocumento], DescripcionEstatus    
+            )         
+            SELECT        
+                [co_id_comprobante], [co_hora_in], [co_fecha_emision], [co_estatus],      
+                [co_num_comprobante], [co_codigo_tipo_documento], DescripcionEstatus    
+            FROM com_log_comprobante_xml WITH(NOLOCK)     
+            LEFT OUTER JOIN sat_catalogo.dbo.sc_vista_estados_documentos ON co_estatus = CodigoEstatus    
+            WHERE co_id_emisor = @i_IdEmisor      
+            AND co_mes_emi IN (@mes_actual, @mes_anterior) -- Cambio Quirúrgico: Poda de particiones  
+            AND co_num_comprobante = @i_NumComprobante    
+            AND co_codigo_tipo_documento = @i_TipoComprobante;  
+        END    
+  
+        -- Busca en la BDD Historica si no hay resultados  
+        IF NOT EXISTS(SELECT TOP 1 1 FROM @t_Comprobantes)  
         BEGIN  
-            INSERT INTO @t_Comprobantes ([IdComprobante], [HoraIn], [FechaEmision], [Estatus], [NumComprobante], [CodigoTipoDocumento], DescripcionEstatus)       
-            SELECT [co_id_comprobante], [co_hora_in], [co_fecha_emision], [co_estatus], [co_num_comprobante], [co_codigo_tipo_documento], DescripcionEstatus  
-            FROM com_log_comprobante_xml WITH(NOLOCK)   
-            LEFT OUTER JOIN sat_catalogo.dbo.sc_vista_estados_documentos ON co_estatus = CodigoEstatus  
-            WHERE co_id_emisor = @i_IdEmisor AND co_num_comprobante = @i_NumComprobante AND co_codigo_tipo_documento = @i_TipoComprobante;
-        END  
-
-        -- Retorno de resultados
-        SELECT [IdComprobante], [HoraIn], [FechaEmision], [Estatus], [NumComprobante], [CodigoTipoDocumento], DescripcionEstatus, TramaDto  
-        FROM @t_Comprobantes;
-
-        SELECT @contador = COUNT(1) FROM @t_Comprobantes;    
-        SET @error_msg = 'rows:' + CAST(@contador AS VARCHAR);
-
-    END TRY
-    BEGIN CATCH
-        DECLARE @ErrorMessage NVARCHAR(MAX) = ERROR_MESSAGE();
-        SET @i_error = LEFT(@ErrorMessage, 400);
-        SET @error_msg = 'rows:Error - ' + @ErrorMessage;
-
-        EXEC [master].[dbo].[spct_insertar_alerta_postgres] @severity = 'Error', @process = @sp_name, @issuing = @i_IdEmisor, @message = @ErrorMessage;
-        RAISERROR(@ErrorMessage, 16, 1);
-    END CATCH
-
-    -- Log de Auditoría Final
-    EXEC [dbo].[spco_crear_log_consulta] 
-        @i_lc_nombre_sp = @sp_name,
-        @i_lc_emisor = @i_IdEmisor,
-        @i_lc_parametros = @params,
-        @i_lc_origen = 'BDD',
-        @i_lc_inicio = @inicio_proceso,
-        @i_lc_fin = GETDATE(),
-        @i_lc_error = @error_msg;
-END;
+            PRINT 'NOOO Busca en la BDD Historica';  -- comenta KT may 2026  
+            --INSERT INTO @t_Comprobantes (        
+            --    [IdComprobante], [HoraIn], [FechaEmision] , [Estatus],     
+            --    [NumComprobante], [CodigoTipoDocumento], DescripcionEstatus, TramaDto    
+            --)  
+            --SELECT        
+            --    [co_id_comprobante], [co_hora_in], [co_fecha_emision], [co_estatus],      
+            --    [co_num_comprobante], [co_codigo_tipo_documento], DescripcionEstatus, co_trama_dto      
+            --FROM sat_comprobante_historica.dbo.com_log_comprobante_xml WITH(NOLOCK)     
+            --LEFT OUTER JOIN sat_catalogo.dbo.sc_vista_estados_documentos ON co_estatus = CodigoEstatus    
+            --WHERE co_id_emisor = @i_IdEmisor      
+            --AND (co_num_comprobante = @i_NumComprobante)  
+            --AND co_codigo_tipo_documento = @i_TipoComprobante    
+            --AND EXISTS(SELECT 1 FROM sat_catalogo.dbo.sc_vista_estados_autorizados WHERE CodigoEstatus = co_estatus);  
+            -- La lógica histórica ya suele estar optimizada o no requiere co_mes_emi si no es particionada igual.  
+        END     
+  
+        -- Retorno de resultados  
+        SELECT          
+            [IdComprobante], [HoraIn], [FechaEmision] , [Estatus],     
+            [NumComprobante], [CodigoTipoDocumento] , DescripcionEstatus, TramaDto    
+        FROM @t_Comprobantes;  
+  
+        DECLARE @contador BIGINT = 0;     
+        SELECT @contador = COUNT(1) FROM @t_Comprobantes;      
+          
+        PRINT 'Fin [' + @sp_name + '] tiempo:' + dbo.fn_get_text(DATEDIFF(SECOND, @inicio_proceso, GETDATE())) + '(s):: Result:' + dbo.fn_get_text(@contador) + '(rows)';  
+  
+        -- Log de éxito final  
+        DECLARE @fin_exito DATETIME = GETDATE();  
+        EXEC [dbo].[spco_crear_log_consulta]   
+            @i_lc_nombre_sp = @sp_name,  
+            @i_lc_emisor = @i_IdEmisor,  
+            @i_lc_parametros = @params,  
+            @i_lc_origen = 'BDD',  
+            @i_lc_inicio = @inicio_proceso,  
+            @i_lc_fin = @fin_exito;  
+  
+    END TRY  
+    BEGIN CATCH  
+        DECLARE @ErrorMessage NVARCHAR(MAX) = ERROR_MESSAGE();  
+        SET @i_error = LEFT(@ErrorMessage, 400);  
+  
+        -- Log de error en auditoría  
+        DECLARE @fin_err DATETIME = GETDATE();  
+        EXEC [dbo].[spco_crear_log_consulta]   
+            @i_lc_nombre_sp = @sp_name,  
+            @i_lc_emisor = @i_IdEmisor,  
+            @i_lc_parametros = @params,  
+            @i_lc_origen = 'BDD_ERROR',  
+            @i_lc_inicio = @inicio_proceso,  
+            @i_lc_fin = @fin_err,  
+            @i_lc_error = @ErrorMessage;  
+  
+        -- Enviar alerta a Postgres  
+        EXEC [master].[dbo].[spct_insertar_alerta_postgres]  
+            @severity = 'Error',  
+            @process = @sp_name,  
+            @country = NULL,  
+            @issuing = @i_IdEmisor,  
+            @message = @ErrorMessage,  
+            @extra_info = @params;  
+  
+        RAISERROR(@ErrorMessage, 16, 1);  
+    END CATCH  
+END; 
 GO

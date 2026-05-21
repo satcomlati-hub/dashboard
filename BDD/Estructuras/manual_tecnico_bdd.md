@@ -70,6 +70,7 @@ Esta sección lista los objetos específicos creados para el proceso de auditor�
 | `consulta_tablero_actividad_emisor_2026` | SP | `sat_logging` | Consolidado de actividad con cruce de catálogos para Analytics. |
 | `consulta_tablero_alertas_inactividad_2026` | SP | `sat_logging` | Detección de caída de actividad en emisores recurrentes. |
 | `consulta_tablero_ranking_errores_2026` | SP | `sat_logging` | Top de puntos de emisión con mayores fallos técnicos. |
+| `sc_vista_tiempos_sps` | Vista | `sat_logging` | Vista para analizar el consumo de tiempos de los SPs y sus parámetros en los últimos 2 días. |
 
 ---
 

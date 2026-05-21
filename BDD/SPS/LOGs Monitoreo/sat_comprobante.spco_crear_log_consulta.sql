@@ -1,9 +1,12 @@
-CREATE procedure [dbo].[spco_crear_log_consulta]  
+USE [sat_comprobante]
+GO
+
+ALTER procedure [dbo].[spco_crear_log_consulta]  
 @i_lc_nombre_sp varchar(200) = null,
 @i_lc_hostname varchar(200) =null,
 @i_lc_appname varchar(200) =null,
 @i_lc_emisor int =null,
-@i_lc_parametros nvarchar(max) =null,
+@i_lc_parametros varchar(8000) =null,
 @i_lc_origen varchar(100)= null,
 @i_lc_inicio datetime =null,
 @i_lc_fin datetime =null,
@@ -62,5 +65,4 @@ end
 --spco_crear_log_consulta 'sp_prueba',null,'batch',1,'sdfsfdf','BDD','2023-01-01','2023-01-01',null
 
 end
-
-
+GO

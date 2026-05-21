@@ -49,7 +49,7 @@ Al inicio del procedimiento (después de `SET NOCOUNT ON`), declare las variable
 
 ```sql
     -- VARIABLES LOGGING
-    DECLARE @NombreSP VARCHAR(200) = OBJECT_NAME(@@PROCID);
+    DECLARE @NombreSP VARCHAR(200) = DB_NAME() + '.' + OBJECT_NAME(@@PROCID);
     DECLARE @inicio DATETIME = GETDATE();
     DECLARE @fin DATETIME;
     DECLARE @params VARCHAR(MAX);

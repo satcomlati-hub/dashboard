@@ -32,7 +32,7 @@ AS
 BEGIN                
     SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED                
     DECLARE @com_log_comprobante_xml_aux ComprobanteXML                 
-    DECLARE @i_control int = 0 , @Inicio datetime = getdate(), @NombreSP varchar(200) = OBJECT_NAME(@@PROCID) , @fin datetime = getdate()             
+    DECLARE @i_control int = 0 , @Inicio datetime = getdate(), @NombreSP varchar(200) = DB_NAME() + '.' + OBJECT_NAME(@@PROCID) , @fin datetime = getdate()             
     
     -- Optimización: Obtener los parámetros de ejecución estructurados y listos para ejecutar desde el log
     DECLARE @params VARCHAR(MAX) = 'EXEC [dbo].[' + @NombreSP + '] ' +
