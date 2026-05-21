@@ -17,7 +17,11 @@ async function proxy(
       headers.set(k, v);
     }
   }
-  if (API_TOKEN) headers.set('Authorization', `Bearer ${API_TOKEN}`);
+  // Inyectar token admin solo si el cliente no envió su propio Authorization
+  // (el playground manda el token del agente directamente)
+  if (API_TOKEN && !request.headers.has('authorization')) {
+    headers.set('Authorization', `Bearer ${API_TOKEN}`);
+  }
   headers.set('Content-Type', 'application/json');
 
   const init: RequestInit & { duplex?: string } = { method: request.method, headers };
