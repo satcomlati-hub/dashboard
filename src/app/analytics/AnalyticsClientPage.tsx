@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Database, Webhook, Link2, ExternalLink } from 'lucide-react';
 import Tabs from '@/components/Tabs';
+import SeqMonitor from '@/components/seq/SeqMonitor';
 
 interface AnalyticsClientPageProps {
   isAdmin: boolean;
@@ -277,21 +278,7 @@ export default function AnalyticsClientPage({ isAdmin }: AnalyticsClientPageProp
           </div>
         </div>
       ) : (
-        seqMonitorUrl ? (
-          <div className="w-full bg-[#0a0a0a] border border-neutral-200 dark:border-neutral-800 rounded-xl overflow-hidden shadow-lg" style={{ height: 'calc(100vh - 280px)', minHeight: '650px' }}>
-            <iframe
-              src={seqMonitorUrl}
-              className="w-full h-full border-0"
-              title="Seq Monitor"
-            />
-          </div>
-        ) : (
-          <div className="w-full bg-[#0a0a0a] border border-dashed border-neutral-800 rounded-xl p-12 flex flex-col items-center justify-center text-center">
-            <p className="text-sm text-neutral-400 font-medium">
-              La dirección del servidor de monitoreo de Seq no ha sido configurada en producción.
-            </p>
-          </div>
-        )
+        <SeqMonitor />
       )}
     </>
   );
