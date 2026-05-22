@@ -48,3 +48,10 @@ next-env.d.ts
 # Temporales
 tmp/
 scratch/
+
+# seq_monitor dependencies & local files
+/seq_monitor/node_modules/
+/seq_monitor/connections.json
+/seq_monitor/tasks.json
+/seq_monitor/seq-data/
+/seq_monitor/package-lock.json

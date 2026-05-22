@@ -6,6 +6,7 @@ const TABS = [
   { href: '/projects/agentes', label: 'Agentes', exact: true },
   { href: '/projects/agentes/skills', label: 'Skills', exact: false },
   { href: '/projects/agentes/mcp', label: 'MCP', exact: false },
+  { href: '/projects/agentes/herramientas', label: 'Herramientas', exact: false },
 ];
 
 export default function AgentesNav() {

@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Seq Monitor - Panel de Pruebas</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Chart.js for interactive analytics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-logo">
+        <svg class="icon-logo" viewBox="0 0 24 24" width="24" height="24">
+          <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+          <polyline fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" points="3.27 6.96 12 12.01 20.73 6.96"/>
+          <line fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" x1="12" y1="22.08" x2="12" y2="12"/>
+        </svg>
+        <h1>Seq<span>Monitor</span></h1>
+        <span class="badge-test">Entorno de Pruebas</span>
+      </div>
+      <div class="header-nav">
+        <button id="nav-monitor" class="nav-btn active">Monitor</button>
+        <button id="nav-tasks" class="nav-btn">Tasks</button>
+        <button id="nav-connections" class="nav-btn">Conexiones</button>
+      </div>
+
+      <div class="connection-status-bar">
+        <span class="status-indicator id-status-dot" id="connection-indicator"></span>
+        <span class="status-text" id="connection-status-text">Desconectado</span>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="app-main">
+      
+      <!-- Sidebar / Panel Izquierdo -->
+      <aside class="app-sidebar">
+        <!-- Tarjeta de Conexión -->
+        <section class="sidebar-section card">
+          <h2>Conexión Activa</h2>
+          <form id="connection-form" class="connection-form">
+            <div class="form-group">
+              <label for="connection-select">Selecciona una conexión</label>
+              <select id="connection-select" required>
+                <option value="">-- Selecciona --</option>
+              </select>
+            </div>
+            <button type="submit" id="btn-connect" class="btn btn-primary" disabled>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+              Conectar
+            </button>
+          </form>
+        </section>
+
+        <!-- Queries Guardadas -->
+        <section class="sidebar-section card flex-grow">
+          <div class="section-header-inline">
+            <h2>Queries Guardadas</h2>
+            <button id="btn-add-query" class="btn-icon" title="Guardar consulta actual">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+            </button>
+          </div>
+          <div class="queries-list" id="saved-queries-list">
+            <!-- Cargado dinámicamente -->
+          </div>
+        </section>
+      </aside>
+
+      <!-- Panel Principal -->
+      <section class="content-panel">
+        <!-- Barra de Control de Consultas -->
+        <div class="query-control-panel card">
+          <div class="query-input-row">
+            <div class="filter-input-container">
+              <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" id="query-filter-input" placeholder="Filtro (ej. @Level = 'Error' or App = 'RAG' o propiedades estructuradas)">
+            </div>
+            <div class="count-input-container">
+              <label for="query-count-input">Límite</label>
+              <input type="number" id="query-count-input" value="50" min="1" max="500">
+            </div>
+            <button id="btn-run-query" class="btn btn-accent">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              Ejecutar
+            </button>
+          </div>
+
+          <!-- Controles de Refresco y Live Feed -->
+          <div class="live-control-row">
+            <div class="live-status">
+              <span class="live-pulse" id="live-pulse-dot"></span>
+              <span id="live-status-text">Streaming en tiempo real pausado</span>
+            </div>
+            <div class="control-actions">
+              <div class="toggle-container">
+                <input type="checkbox" id="auto-refresh-toggle">
+                <label for="auto-refresh-toggle">Auto-refrescar</label>
+              </div>
+              <div class="refresh-interval-container">
+                <select id="refresh-interval-select" disabled>
+                  <option value="3000">3s</option>
+                  <option value="5000" selected>5s</option>
+                  <option value="10000">10s</option>
+                  <option value="30000">30s</option>
+                </select>
+              </div>
+              <div class="divider"></div>
+              <button id="btn-toggle-play" class="btn btn-outline" title="Pausar / Reanudar Stream">
+                <svg id="play-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                <svg id="pause-icon" class="hidden" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+                <span>Monitorear</span>
+              </button>
+              <button id="btn-clear-logs" class="btn btn-outline" title="Limpiar logs en pantalla">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                Limpiar
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filtros Locales / Rápidos -->
+        <div class="local-filters-panel card">
+          <div class="filter-level-group">
+            <span class="filter-label">Nivel de Log:</span>
+            <div class="level-chips">
+              <button class="chip active" data-level="Verbose">Verbose</button>
+              <button class="chip active" data-level="Debug">Debug</button>
+              <button class="chip active" data-level="Information">Info</button>
+              <button class="chip active" data-level="Warning">Warning</button>
+              <button class="chip active" data-level="Error">Error</button>
+              <button class="chip active" data-level="Fatal">Fatal</button>
+            </div>
+          </div>
+          <div class="local-search-container">
+            <input type="text" id="local-search-input" placeholder="Filtrar por texto en pantalla...">
+          </div>
+        </div>
+
+        <!-- Panel de Gráficas y Resumen Visual -->
+        <div class="analytics-panel card" id="analytics-panel">
+          <div class="analytics-header">
+            <h3>Frecuencia de Eventos por Nivel</h3>
+            <span class="text-muted" style="font-size: 0.72rem; letter-spacing: 0.5px;">Haz clic en un punto de cualquier nivel para filtrar por nivel e intervalo temporal</span>
+          </div>
+          <div class="chart-wrapper">
+            <canvas id="logs-chart"></canvas>
+          </div>
+        </div>
+
+        <!-- Visor de Logs Principal -->
+        <div class="logs-console-wrapper">
+          <div class="logs-console-header">
+            <span>Visor de Eventos</span>
+            <span class="logs-count-summary" id="logs-counter">Mostrando 0 logs</span>
+          </div>
+          <div class="logs-container" id="logs-stream-container">
+            <!-- Los logs aparecerán aquí de forma dinámica -->
+            <div class="no-logs-msg" id="no-logs-placeholder">
+              <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1"><circle cx="12" cy="12" r="10"></circle><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+              <p>No hay eventos que mostrar. Configura tu conexión y ejecuta una consulta.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Panel de Tareas (Oculto por defecto) -->
+      <section class="tasks-panel" id="tasks-panel" style="display: none; padding: 20px; width: 100%; overflow-y: auto;">
+        <div class="tasks-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+          <h2>Tareas Programadas</h2>
+          <button id="btn-create-task" class="btn btn-accent">Nueva Tarea</button>
+        </div>
+        <div class="tasks-list-container" id="tasks-list-container">
+          <!-- Las tareas se renderizan aquí -->
+        </div>
+      </section>
+
+      <!-- Panel de Conexiones (Oculto por defecto) -->
+      <section class="connections-panel" id="connections-panel" style="display: none; padding: 20px; width: 100%; overflow-y: auto;">
+        <div class="connections-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+          <h2>Gestión de Conexiones</h2>
+          <button id="btn-create-connection" class="btn btn-accent">Nueva Conexión</button>
+        </div>
+        <div class="connections-list-container" id="connections-list-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
+          <!-- Las conexiones se renderizan aquí -->
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Modal para Guardar Query -->
+    <div class="modal" id="modal-save-query">
+      <div class="modal-content card">
+        <h3>Guardar Consulta</h3>
+        <form id="save-query-form">
+          <div class="form-group">
+            <label for="query-name-input">Nombre de la Consulta</label>
+            <input type="text" id="query-name-input" placeholder="Ej. Errores de API" required>
+          </div>
+          <div class="form-group">
+            <label for="query-expr-input">Expresión de Filtro</label>
+            <textarea id="query-expr-input" readonly></textarea>
+          </div>
+          <div class="modal-buttons">
+            <button type="button" id="btn-cancel-modal" class="btn btn-outline">Cancelar</button>
+            <button type="submit" class="btn btn-accent">Guardar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal para Nueva Tarea -->
+    <div class="modal" id="modal-task">
+      <div class="modal-content card" style="max-width: 600px;">
+        <h3 id="task-modal-title">Nueva Tarea</h3>
+        <form id="task-form">
+          <div class="form-group">
+            <label for="task-name-input">Nombre de la Tarea</label>
+            <input type="text" id="task-name-input" placeholder="Ej. Alerta de Errores" required>
+          </div>
+          <div class="form-group">
+            <label for="task-connection-select">Conexión a Seq</label>
+            <select id="task-connection-select" required>
+              <option value="">-- Selecciona una conexión --</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="task-query-input">Filtro de Consulta (Query)</label>
+            <input type="text" id="task-query-input" placeholder="Ej. @Level = 'Error'">
+          </div>
+          <div class="form-group" style="display: flex; gap: 10px;">
+            <div style="flex: 1;">
+              <label for="task-interval-input">Intervalo (segundos)</label>
+              <input type="number" id="task-interval-input" min="5" value="60" required>
+            </div>
+            <div style="flex: 1;">
+              <label for="task-condition-select">Condición (Resultados)</label>
+              <select id="task-condition-select" required>
+                <option value="is_not_empty">No está vacío (> 0 logs)</option>
+                <option value="is_empty">Está vacío (0 logs)</option>
+                <option value="count_greater_than">Cantidad mayor a</option>
+                <option value="count_equal_to">Cantidad igual a</option>
+              </select>
+            </div>
+            <div style="flex: 1;" id="task-condition-value-container" style="display: none;">
+              <label for="task-condition-value">Valor Condición</label>
+              <input type="number" id="task-condition-value" value="0">
+            </div>
+          </div>
+          <div class="form-group" style="display: flex; gap: 10px;">
+            <div style="flex: 1;">
+              <label for="task-action-select">Acción</label>
+              <select id="task-action-select" required>
+                <option value="notification">Notificación en Pantalla</option>
+                <option value="webhook">Llamar Webhook HTTP</option>
+              </select>
+            </div>
+            <div style="flex: 2;" id="task-webhook-container" style="display: none;">
+              <label for="task-webhook-url">URL del Webhook</label>
+              <input type="url" id="task-webhook-url" placeholder="https://...">
+            </div>
+          </div>
+          <div class="modal-buttons">
+            <button type="button" id="btn-cancel-task-modal" class="btn btn-outline">Cancelar</button>
+            <button type="submit" class="btn btn-accent">Guardar Tarea</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal para Nueva Conexión -->
+    <div class="modal" id="modal-connection">
+      <div class="modal-content card" style="max-width: 500px;">
+        <h3 id="connection-modal-title">Nueva Conexión</h3>
+        <form id="connection-form-modal">
+          <div class="form-group">
+            <label for="conn-name-input">Nombre de la Conexión</label>
+            <input type="text" id="conn-name-input" placeholder="Ej. Producción API" required>
+          </div>
+          <div class="form-group">
+            <label for="conn-url-input">URL de Seq</label>
+            <input type="url" id="conn-url-input" placeholder="http://..." required>
+          </div>
+          <div class="form-group">
+            <label for="conn-apikey-input">API Key (Opcional)</label>
+            <input type="password" id="conn-apikey-input" placeholder="Tu API key">
+          </div>
+          <div class="modal-buttons">
+            <button type="button" id="btn-cancel-conn-modal" class="btn btn-outline">Cancelar</button>
+            <button type="submit" class="btn btn-accent">Guardar Conexión</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Toast Notification System -->
+    <div class="toast-container" id="toast-container"></div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="app.js"></script>
+</body>
+</html>
