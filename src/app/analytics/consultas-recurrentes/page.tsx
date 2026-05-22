@@ -70,6 +70,7 @@ export default function ConsultasRecurrentesPage() {
   const [copiedState, setCopiedState] = useState<{ idx: number; type: 'text' | 'json' } | null>(null);
   const [selectedEmisorId, setSelectedEmisorId] = useState<number | null>(null);
   const [modalSP, setModalSP] = useState<string | null>(null);
+  const [modalSortConfig, setModalSortConfig] = useState<{ key: 'nemonico' | 'paisId' | 'ejecuciones' | 'tiempoPromedio' | 'bloqueos' | 'ultimaTrx'; direction: 'asc' | 'desc' } | null>({ key: 'ejecuciones', direction: 'desc' });
 
   const requestSort = (key: keyof SPRecord | 'PaisNombre') => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -80,6 +81,17 @@ export default function ConsultasRecurrentesPage() {
       return;
     }
     setSortConfig({ key, direction });
+  };
+
+  const requestModalSort = (key: 'nemonico' | 'paisId' | 'ejecuciones' | 'tiempoPromedio' | 'bloqueos' | 'ultimaTrx') => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (modalSortConfig && modalSortConfig.key === key && modalSortConfig.direction === 'asc') {
+      direction = 'desc';
+    } else if (modalSortConfig && modalSortConfig.key === key && modalSortConfig.direction === 'desc') {
+      setModalSortConfig(null);
+      return;
+    }
+    setModalSortConfig({ key, direction });
   };
 
   const fetchData = useCallback(async (isRefresh = false) => {
@@ -346,8 +358,55 @@ export default function ConsultasRecurrentesPage() {
         tiempoTotalPct: timePct,
         ultimaTrx: r.UltimaTrxAutorizada
       };
-    }).sort((a, b) => b.ejecuciones - a.ejecuciones); // Ordenado por ejecuciones
+    });
   }, [dataFilteredByExclusions, modalSP]);
+
+  // Ordenamiento de los emisores del modal según la configuración activa
+  const sortedModalEmitters = useMemo(() => {
+    if (!modalEmitters.length) return [];
+    if (!modalSortConfig) return modalEmitters;
+
+    const { key, direction } = modalSortConfig;
+    const sorted = [...modalEmitters];
+
+    sorted.sort((a, b) => {
+      let aVal: any = a[key];
+      let bVal: any = b[key];
+
+      if (key === 'paisId') {
+        aVal = getPaisNombre(a.paisId);
+        bVal = getPaisNombre(b.paisId);
+      } else if (key === 'ultimaTrx') {
+        const getVal = (val: string | null) => {
+          if (!val || val === 'NULL' || val === '---') return 0;
+          const parsed = Date.parse(val);
+          return isNaN(parsed) ? 0 : parsed;
+        };
+        const aTime = getVal(a.ultimaTrx);
+        const bTime = getVal(b.ultimaTrx);
+
+        if (aTime === 0 && bTime !== 0) return 1;
+        if (bTime === 0 && aTime !== 0) return -1;
+
+        return direction === 'asc' ? aTime - bTime : bTime - aTime;
+      }
+
+      if (aVal === null || aVal === undefined) return direction === 'asc' ? 1 : -1;
+      if (bVal === null || bVal === undefined) return direction === 'asc' ? -1 : 1;
+
+      if (typeof aVal === 'string') {
+        return direction === 'asc'
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal);
+      } else {
+        return direction === 'asc'
+          ? (aVal > bVal ? 1 : -1)
+          : (bVal > aVal ? 1 : -1);
+      }
+    });
+
+    return sorted;
+  }, [modalEmitters, modalSortConfig]);
 
   // Datos para la gráfica: dinámicos según el activeSubTab seleccionado
   const chartData = useMemo(() => {
@@ -479,6 +538,22 @@ export default function ConsultasRecurrentesPage() {
       ? <ArrowUp className="w-3.5 h-3.5 ml-1.5 text-[#71BF44] shrink-0 inline-block" />
       : <ArrowDown className="w-3.5 h-3.5 ml-1.5 text-[#71BF44] shrink-0 inline-block" />;
   };
+
+  const renderModalSortIcon = (key: 'nemonico' | 'paisId' | 'ejecuciones' | 'tiempoPromedio' | 'bloqueos' | 'ultimaTrx') => {
+    if (!modalSortConfig || modalSortConfig.key !== key) {
+      return <ArrowUpDown className="w-3 h-3 ml-1 opacity-30 group-hover:opacity-100 transition-opacity shrink-0 inline-block" />;
+    }
+    return modalSortConfig.direction === 'asc' 
+      ? <ArrowUp className="w-3 h-3 ml-1 text-[#71BF44] shrink-0 inline-block" />
+      : <ArrowDown className="w-3 h-3 ml-1 text-[#71BF44] shrink-0 inline-block" />;
+  };
+
+  // Restablecer la ordenación del modal cuando se cambia de SP
+  useEffect(() => {
+    if (modalSP) {
+      setModalSortConfig({ key: 'ejecuciones', direction: 'desc' });
+    }
+  }, [modalSP]);
 
   // Copia el contenido de la fila formateado como texto legible con cabeceras
   const handleCopyText = (r: SPRecord, idx: number) => {
@@ -1269,17 +1344,65 @@ export default function ConsultasRecurrentesPage() {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="text-[9px] font-black text-neutral-400 uppercase tracking-widest border-b border-neutral-100 dark:border-neutral-800 select-none">
-                      <th className="pb-4 pl-2">Emisor / Nemónico</th>
-                      <th className="pb-4 text-center">País</th>
-                      <th className="pb-4 text-right font-black">Ejecuciones (%)</th>
-                      <th className="pb-4 text-right font-black">Promedio (ms)</th>
-                      <th className="pb-4 text-right font-black">Total Bloqueos (%)</th>
-                      <th className="pb-4 pl-4 font-black">Última Trx Autorizada</th>
+                      <th 
+                        onClick={() => requestModalSort('nemonico')} 
+                        className="pb-4 pl-2 cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                      >
+                        <div className="flex items-center group">
+                          Emisor / Nemónico
+                          {renderModalSortIcon('nemonico')}
+                        </div>
+                      </th>
+                      <th 
+                        onClick={() => requestModalSort('paisId')} 
+                        className="pb-4 text-center cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                      >
+                        <div className="flex items-center justify-center group">
+                          País
+                          {renderModalSortIcon('paisId')}
+                        </div>
+                      </th>
+                      <th 
+                        onClick={() => requestModalSort('ejecuciones')} 
+                        className="pb-4 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                      >
+                        <div className="flex items-center justify-end group">
+                          Ejecuciones (%)
+                          {renderModalSortIcon('ejecuciones')}
+                        </div>
+                      </th>
+                      <th 
+                        onClick={() => requestModalSort('tiempoPromedio')} 
+                        className="pb-4 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                      >
+                        <div className="flex items-center justify-end group">
+                          Promedio (ms)
+                          {renderModalSortIcon('tiempoPromedio')}
+                        </div>
+                      </th>
+                      <th 
+                        onClick={() => requestModalSort('bloqueos')} 
+                        className="pb-4 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                      >
+                        <div className="flex items-center justify-end group">
+                          Total Bloqueos (%)
+                          {renderModalSortIcon('bloqueos')}
+                        </div>
+                      </th>
+                      <th 
+                        onClick={() => requestModalSort('ultimaTrx')} 
+                        className="pb-4 pl-4 cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                      >
+                        <div className="flex items-center group">
+                          Última Trx Autorizada
+                          {renderModalSortIcon('ultimaTrx')}
+                        </div>
+                      </th>
                       <th className="pb-4 text-right pr-2 font-black">Acción</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/50">
-                    {modalEmitters.map((em, idx) => {
+                    {sortedModalEmitters.map((em, idx) => {
                       const isFocused = selectedEmisorId === em.id;
                       const hasAlert = em.id && em.id > 0 && em.ejecuciones > 0 && (
                         !em.ultimaTrx || em.ultimaTrx === 'NULL' || em.ultimaTrx === '---' ||
