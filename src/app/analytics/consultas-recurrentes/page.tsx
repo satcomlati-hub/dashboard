@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { 
   ChevronLeft, 
@@ -41,19 +41,35 @@ interface SPEmisorAgrupado {
   nemonico: string;
 }
 
+interface EmitterRecord {
+  IdEmisor: number;
+  Nemonico: string;
+  Estado: string;
+  NombreComercial: string;
+  Identificacion: string;
+  RazonSocial: string;
+  CodigoPais: number;
+  FechaCreacion: string;
+  FechaActualizacion: string;
+  UltimaTrxAutorizada: string | null;
+  HoraUltimaTrx: string | null;
+}
+
 interface SPRecord {
   StoredProcedure: string;
   IdEmisor: number | null;
-  Nemonico: string | null;
-  PaisId: number | null;
   TotalEjecuciones: number;
   TiempoTotal_ms: number;
   TiempoPromedio_ms: number;
   TiempoMaximo_ms: number;
   TiempoMinimo_ms: number;
   TotalBloqueos: number;
-  UltimaTrxAutorizada: string | null;
-  HoraUltimaTrx: string | null;
+  Fecha: string;
+  // Campos enriquecidos opcionales
+  Nemonico?: string | null;
+  PaisId?: number | null;
+  UltimaTrxAutorizada?: string | null;
+  HoraUltimaTrx?: string | null;
   EmisoresAgrupados?: SPEmisorAgrupado[];
 }
 
@@ -66,13 +82,21 @@ export default function ConsultasRecurrentesPage() {
   const [activeSubTab, setActiveSubTab] = useState<'mas-ejecutados' | 'mas-lentos' | 'mas-bloqueados' | 'alertas' | 'todos'>('mas-ejecutados');
   const [excludedSPs, setExcludedSPs] = useState<string[]>([]);
   const [groupBySP, setGroupBySP] = useState(true);
-  const [sortConfig, setSortConfig] = useState<{ key: keyof SPRecord | 'PaisNombre'; direction: 'asc' | 'desc' } | null>(null);
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [copiedState, setCopiedState] = useState<{ idx: number; type: 'text' | 'json' } | null>(null);
   const [selectedEmisorId, setSelectedEmisorId] = useState<number | null>(null);
   const [modalSP, setModalSP] = useState<string | null>(null);
   const [modalSortConfig, setModalSortConfig] = useState<{ key: 'nemonico' | 'paisId' | 'ejecuciones' | 'tiempoPromedio' | 'bloqueos' | 'ultimaTrx'; direction: 'asc' | 'desc' } | null>({ key: 'ejecuciones', direction: 'desc' });
 
-  const requestSort = (key: keyof SPRecord | 'PaisNombre') => {
+  // Estados para optimización en memoria de emisores y comparativa por fecha
+  const [emitters, setEmitters] = useState<Record<number, EmitterRecord>>({});
+  const emittersRef = useRef<Record<number, EmitterRecord>>({});
+  const [selectedDate, setSelectedDate] = useState<string>('TODOS');
+  const [comparisonMode, setComparisonMode] = useState<boolean>(false);
+  const [dateA, setDateA] = useState<string>('');
+  const [dateB, setDateB] = useState<string>('');
+
+  const requestSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc';
     if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
       direction = 'desc';
@@ -99,6 +123,48 @@ export default function ConsultasRecurrentesPage() {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       
+      // 1. Carga optimizada de emisores en memoria
+      let currentEmitters = emittersRef.current;
+      if (isRefresh || Object.keys(currentEmitters).length === 0) {
+        try {
+          const emitRes = await fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=V5&Proceso=consulta_tablero_emisores_2026`);
+          if (emitRes.ok) {
+            const emitJson = await emitRes.json();
+            let rawEmitters: EmitterRecord[] = [];
+            
+            if (Array.isArray(emitJson)) {
+              emitJson.forEach(item => {
+                const p = item.data ? (typeof item.data === 'string' ? JSON.parse(item.data) : item.data) : item;
+                if (Array.isArray(p)) {
+                  rawEmitters = [...rawEmitters, ...p];
+                } else if (p && p.IdEmisor !== undefined) {
+                  rawEmitters.push(p);
+                }
+              });
+            }
+            
+            const dict: Record<number, EmitterRecord> = {};
+            rawEmitters.forEach(em => {
+              const id = Number(em.IdEmisor);
+              if (!isNaN(id)) {
+                dict[id] = {
+                  ...em,
+                  IdEmisor: id,
+                  CodigoPais: Number(em.CodigoPais) || 0
+                };
+              }
+            });
+            
+            emittersRef.current = dict;
+            setEmitters(dict);
+            currentEmitters = dict;
+          }
+        } catch (emitErr) {
+          console.error('Error al cargar catálogo de emisores:', emitErr);
+        }
+      }
+      
+      // 2. Carga de monitoreo de Stored Procedures
       const res = await fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=V5&Proceso=consulta_tablero_monitoreo_sps_2026`);
       if (!res.ok) throw new Error('Error al conectar con SARA');
       
@@ -116,18 +182,29 @@ export default function ConsultasRecurrentesPage() {
         });
       }
       
-      // Normalización de tipos de datos
-      const normalized = records.map(r => ({
-        ...r,
-        TotalEjecuciones: Number(r.TotalEjecuciones) || 0,
-        TiempoTotal_ms: Number(r.TiempoTotal_ms) || 0,
-        TiempoPromedio_ms: Number(r.TiempoPromedio_ms) || 0,
-        TiempoMaximo_ms: Number(r.TiempoMaximo_ms) || 0,
-        TiempoMinimo_ms: Number(r.TiempoMinimo_ms) || 0,
-        TotalBloqueos: Number(r.TotalBloqueos) || 0,
-        IdEmisor: r.IdEmisor !== null ? Number(r.IdEmisor) : null,
-        PaisId: r.PaisId !== null ? Number(r.PaisId) : null
-      }));
+      // Normalización de tipos de datos y cruce con emisores
+      const normalized = records.map(r => {
+        const idEmisorNum = r.IdEmisor !== null ? Number(r.IdEmisor) : null;
+        const em = idEmisorNum !== null ? currentEmitters[idEmisorNum] : null;
+        
+        return {
+          ...r,
+          TotalEjecuciones: Number(r.TotalEjecuciones) || 0,
+          TiempoTotal_ms: Number(r.TiempoTotal_ms) || 0,
+          TiempoPromedio_ms: Number(r.TiempoPromedio_ms) || 0,
+          TiempoMaximo_ms: Number(r.TiempoMaximo_ms) || 0,
+          TiempoMinimo_ms: Number(r.TiempoMinimo_ms) || 0,
+          TotalBloqueos: Number(r.TotalBloqueos) || 0,
+          IdEmisor: idEmisorNum,
+          Fecha: r.Fecha || '',
+          
+          // Enriquecimiento de datos desde la caché en memoria de emisores
+          Nemonico: em ? em.Nemonico : (idEmisorNum ? `ID ${idEmisorNum}` : 'S/N'),
+          PaisId: em ? em.CodigoPais : null,
+          UltimaTrxAutorizada: em ? em.UltimaTrxAutorizada : null,
+          HoraUltimaTrx: em ? em.HoraUltimaTrx : null
+        };
+      });
       
       setData(normalized);
       setError(null);
@@ -148,13 +225,40 @@ export default function ConsultasRecurrentesPage() {
     return data.filter(r => !excludedSPs.some(excluded => r.StoredProcedure.toLowerCase() === excluded.toLowerCase()));
   }, [data, excludedSPs]);
 
+  // Fechas únicas disponibles en el dataset
+  const uniqueDates = useMemo(() => {
+    const dates = new Set<string>();
+    data.forEach(r => {
+      if (r.Fecha) dates.add(r.Fecha);
+    });
+    return Array.from(dates).sort((a, b) => b.localeCompare(a));
+  }, [data]);
+
+  // Efecto para inicializar las fechas de comparación
+  useEffect(() => {
+    if (uniqueDates.length >= 2) {
+      if (!dateA) setDateA(uniqueDates[0]);
+      if (!dateB) setDateB(uniqueDates[1]);
+    } else if (uniqueDates.length === 1) {
+      if (!dateA) setDateA(uniqueDates[0]);
+      if (!dateB) setDateB(uniqueDates[0]);
+    }
+  }, [uniqueDates, dateA, dateB]);
+
+  // Datos filtrados por fecha (solo para modo normal)
+  const dataFilteredByDate = useMemo(() => {
+    if (comparisonMode) return dataFilteredByExclusions;
+    if (selectedDate === 'TODOS') return dataFilteredByExclusions;
+    return dataFilteredByExclusions.filter(r => r.Fecha === selectedDate);
+  }, [dataFilteredByExclusions, selectedDate, comparisonMode]);
+
   // Datos filtrados por emisor focalizado
   const dataFiltered = useMemo(() => {
-    return dataFilteredByExclusions.filter(r => {
+    return dataFilteredByDate.filter(r => {
       if (selectedEmisorId === null) return true;
       return r.IdEmisor === selectedEmisorId;
     });
-  }, [dataFilteredByExclusions, selectedEmisorId]);
+  }, [dataFilteredByDate, selectedEmisorId]);
 
   // Agrupamiento por Stored Procedure (opcional)
   const groupedData = useMemo(() => {
@@ -193,6 +297,7 @@ export default function ConsultasRecurrentesPage() {
           TiempoMaximo_ms: Math.max(current.TiempoMaximo_ms, r.TiempoMaximo_ms),
           TiempoMinimo_ms: Math.min(current.TiempoMinimo_ms, r.TiempoMinimo_ms),
           TotalBloqueos: current.TotalBloqueos + r.TotalBloqueos,
+          Fecha: current.Fecha, // Mantener fecha
           UltimaTrxAutorizada: (current.UltimaTrxAutorizada && r.UltimaTrxAutorizada) 
             ? (new Date(current.UltimaTrxAutorizada) > new Date(r.UltimaTrxAutorizada) ? current.UltimaTrxAutorizada : r.UltimaTrxAutorizada)
             : (current.UltimaTrxAutorizada || r.UltimaTrxAutorizada),
@@ -204,34 +309,42 @@ export default function ConsultasRecurrentesPage() {
     return Array.from(map.values());
   }, [dataFiltered, groupBySP]);
 
-  // KPIs globales calculados
+  // KPIs globales calculados (en modo comparación reflejan Día A y su diferencia contra Día B)
   const kpis = useMemo(() => {
-    const totalConsultas = dataFiltered.reduce((acc, r) => acc + r.TotalEjecuciones, 0);
-    const tiempoTotalSec = dataFiltered.reduce((acc, r) => acc + r.TiempoTotal_ms, 0) / 1000;
-    const totalBloqueos = dataFiltered.reduce((acc, r) => acc + r.TotalBloqueos, 0);
+    const baseList = comparisonMode 
+      ? dataFilteredByExclusions.filter(r => r.Fecha === dateA && (selectedEmisorId === null || r.IdEmisor === selectedEmisorId))
+      : dataFiltered;
+      
+    const listB = comparisonMode
+      ? dataFilteredByExclusions.filter(r => r.Fecha === dateB && (selectedEmisorId === null || r.IdEmisor === selectedEmisorId))
+      : [];
+
+    const totalConsultas = baseList.reduce((acc, r) => acc + r.TotalEjecuciones, 0);
+    const tiempoTotalSec = baseList.reduce((acc, r) => acc + r.TiempoTotal_ms, 0) / 1000;
+    const totalBloqueos = baseList.reduce((acc, r) => acc + r.TotalBloqueos, 0);
     const tasaBloqueo = totalConsultas > 0 ? (totalBloqueos / totalConsultas) * 100 : 0;
+
+    const totalConsultasB = listB.reduce((acc, r) => acc + r.TotalEjecuciones, 0);
+    const tiempoTotalSecB = listB.reduce((acc, r) => acc + r.TiempoTotal_ms, 0) / 1000;
+    const totalBloqueosB = listB.reduce((acc, r) => acc + r.TotalBloqueos, 0);
+    const tasaBloqueoB = totalConsultasB > 0 ? (totalBloqueosB / totalConsultasB) * 100 : 0;
     
     // Alertas de emisores activos pero sin trx autorizadas en las últimas 2 semanas (14 días)
     const thresholdDate = new Date();
     thresholdDate.setDate(thresholdDate.getDate() - 14);
     
-    const alertEmisores = dataFiltered.filter(r => {
-      // Debe tener emisor válido
+    const alertEmisores = baseList.filter(r => {
       if (!r.IdEmisor || r.IdEmisor <= 0) return false;
-      // Debe tener consultas registradas
       if (r.TotalEjecuciones === 0) return false;
       
-      // Si nunca ha tenido transacciones (UltimaTrxAutorizada es NULL o vacío)
       if (!r.UltimaTrxAutorizada || r.UltimaTrxAutorizada === 'NULL' || r.UltimaTrxAutorizada === '---') {
         return true;
       }
       
-      // Si la última trx es más antigua que 14 días
       const trxDate = new Date(r.UltimaTrxAutorizada);
       return !isNaN(trxDate.getTime()) && trxDate < thresholdDate;
     });
 
-    // Agrupar emisores únicos alertados
     const uniqueAlertEmisores = Array.from(new Set(alertEmisores.map(r => r.IdEmisor)));
 
     return {
@@ -239,10 +352,220 @@ export default function ConsultasRecurrentesPage() {
       tiempoTotalSec,
       totalBloqueos,
       tasaBloqueo,
+      totalConsultasB,
+      tiempoTotalSecB,
+      totalBloqueosB,
+      tasaBloqueoB,
       alertasCount: uniqueAlertEmisores.length,
       alertEmisoresList: alertEmisores
     };
-  }, [dataFiltered]);
+  }, [dataFiltered, dataFilteredByExclusions, comparisonMode, dateA, dateB, selectedEmisorId]);
+
+  // Lógica de comparación interdiaria
+  const comparisonRecords = useMemo(() => {
+    if (!comparisonMode) return [];
+
+    const baseList = dataFilteredByExclusions.filter(r => selectedEmisorId === null || r.IdEmisor === selectedEmisorId);
+    const map = new Map<string, {
+      StoredProcedure: string;
+      IdEmisor: number | null;
+      Nemonico: string | null;
+      PaisId: number | null;
+      EmisoresAgrupados: SPEmisorAgrupado[];
+      
+      ejecucionesA: number;
+      tiempoTotalA: number;
+      bloqueosA: number;
+      tiempoMaximoA: number;
+      
+      ejecucionesB: number;
+      tiempoTotalB: number;
+      bloqueosB: number;
+      tiempoMaximoB: number;
+    }>();
+
+    baseList.forEach(r => {
+      if (r.Fecha !== dateA && r.Fecha !== dateB) return;
+
+      const isDateA = r.Fecha === dateA;
+      const key = groupBySP ? r.StoredProcedure : `${r.StoredProcedure}_${r.IdEmisor || 0}`;
+      const current = map.get(key);
+
+      const emisorObj = r.IdEmisor && r.Nemonico ? { id: r.IdEmisor, nemonico: r.Nemonico } : null;
+
+      if (!current) {
+        map.set(key, {
+          StoredProcedure: r.StoredProcedure,
+          IdEmisor: groupBySP ? null : r.IdEmisor,
+          Nemonico: groupBySP ? null : (r.Nemonico ?? null),
+          PaisId: r.PaisId || null,
+          EmisoresAgrupados: emisorObj ? [emisorObj] : [],
+          
+          ejecucionesA: isDateA ? r.TotalEjecuciones : 0,
+          tiempoTotalA: isDateA ? r.TiempoTotal_ms : 0,
+          bloqueosA: isDateA ? r.TotalBloqueos : 0,
+          tiempoMaximoA: isDateA ? r.TiempoMaximo_ms : 0,
+          
+          ejecucionesB: !isDateA ? r.TotalEjecuciones : 0,
+          tiempoTotalB: !isDateA ? r.TiempoTotal_ms : 0,
+          bloqueosB: !isDateA ? r.TotalBloqueos : 0,
+          tiempoMaximoB: !isDateA ? r.TiempoMaximo_ms : 0,
+        });
+      } else {
+        const emisores = [...current.EmisoresAgrupados];
+        if (emisorObj && !emisores.some(e => e.id === emisorObj.id)) {
+          emisores.push(emisorObj);
+        }
+
+        map.set(key, {
+          ...current,
+          PaisId: current.PaisId === r.PaisId ? current.PaisId : null,
+          EmisoresAgrupados: emisores,
+          
+          ejecucionesA: current.ejecucionesA + (isDateA ? r.TotalEjecuciones : 0),
+          tiempoTotalA: current.tiempoTotalA + (isDateA ? r.TiempoTotal_ms : 0),
+          bloqueosA: current.bloqueosA + (isDateA ? r.TotalBloqueos : 0),
+          tiempoMaximoA: isDateA ? Math.max(current.tiempoMaximoA, r.TiempoMaximo_ms) : current.tiempoMaximoA,
+          
+          ejecucionesB: current.ejecucionesB + (!isDateA ? r.TotalEjecuciones : 0),
+          tiempoTotalB: current.tiempoTotalB + (!isDateA ? r.TiempoTotal_ms : 0),
+          bloqueosB: current.bloqueosB + (!isDateA ? r.TotalBloqueos : 0),
+          tiempoMaximoB: !isDateA ? Math.max(current.tiempoMaximoB, r.TiempoMaximo_ms) : current.tiempoMaximoB,
+        });
+      }
+    });
+
+    return Array.from(map.values()).map(item => {
+      const promedioA = item.ejecucionesA > 0 ? Math.round(item.tiempoTotalA / item.ejecucionesA) : 0;
+      const promedioB = item.ejecucionesB > 0 ? Math.round(item.tiempoTotalB / item.ejecucionesB) : 0;
+
+      const deltaEjecuciones = item.ejecucionesA - item.ejecucionesB;
+      const deltaEjecucionesPct = item.ejecucionesB > 0 ? (deltaEjecuciones / item.ejecucionesB) * 100 : (item.ejecucionesA > 0 ? 100 : 0);
+
+      const deltaPromedio = promedioA - promedioB;
+      const deltaPromedioPct = promedioB > 0 ? (deltaPromedio / promedioB) * 100 : (promedioA > 0 ? 100 : 0);
+
+      const deltaBloqueos = item.bloqueosA - item.bloqueosB;
+      const deltaBloqueosPct = item.bloqueosB > 0 ? (deltaBloqueos / item.bloqueosB) * 100 : (item.bloqueosA > 0 ? 100 : 0);
+
+      return {
+        ...item,
+        promedioA,
+        promedioB,
+        deltaEjecuciones,
+        deltaEjecucionesPct,
+        deltaPromedio,
+        deltaPromedioPct,
+        deltaBloqueos,
+        deltaBloqueosPct
+      };
+    });
+  }, [comparisonMode, dataFilteredByExclusions, selectedEmisorId, groupBySP, dateA, dateB]);
+
+  // Filtrado y ordenado para registros comparativos
+  const filteredComparisonRecords = useMemo(() => {
+    return comparisonRecords.filter(r => {
+      const matchSearch = !searchTerm || 
+        r.StoredProcedure?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.Nemonico?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (r.IdEmisor && String(r.IdEmisor).includes(searchTerm)) ||
+        (r.EmisoresAgrupados && r.EmisoresAgrupados.some(e => e.nemonico.toLowerCase().includes(searchTerm.toLowerCase()) || String(e.id).includes(searchTerm)));
+      return matchSearch;
+    });
+  }, [comparisonRecords, searchTerm]);
+
+  const sortedComparisonRecords = useMemo(() => {
+    const records = [...filteredComparisonRecords];
+    if (!sortConfig) return records;
+
+    const { key, direction } = sortConfig;
+
+    records.sort((a, b) => {
+      let aVal: any;
+      let bVal: any;
+
+      if (key === 'PaisNombre') {
+        aVal = getPaisNombre(a.PaisId);
+        bVal = getPaisNombre(b.PaisId);
+      } else if (key === 'Nemonico' && groupBySP) {
+        aVal = (a.EmisoresAgrupados || []).map(e => e.nemonico).join(', ');
+        bVal = (b.EmisoresAgrupados || []).map(e => e.nemonico).join(', ');
+      } else {
+        aVal = (a as any)[key];
+        bVal = (b as any)[key];
+      }
+
+      if (aVal === null || aVal === undefined) return direction === 'asc' ? 1 : -1;
+      if (bVal === null || bVal === undefined) return direction === 'asc' ? -1 : 1;
+
+      if (typeof aVal === 'string') {
+        return direction === 'asc' 
+          ? aVal.localeCompare(bVal) 
+          : bVal.localeCompare(aVal);
+      } else {
+        return direction === 'asc' 
+          ? (aVal > bVal ? 1 : -1) 
+          : (bVal > aVal ? 1 : -1);
+      }
+    });
+
+    return records;
+  }, [filteredComparisonRecords, sortConfig, groupBySP]);
+
+  const baseActiveComparisonRecords = useMemo(() => {
+    if (!comparisonMode) return [];
+    
+    switch (activeSubTab) {
+      case 'mas-ejecutados':
+        return [...filteredComparisonRecords].sort((a, b) => b.ejecucionesA - a.ejecucionesA).slice(0, 50);
+      case 'mas-lentos':
+        return [...filteredComparisonRecords].sort((a, b) => b.promedioA - a.promedioA).slice(0, 50);
+      case 'mas-bloqueados':
+        return [...filteredComparisonRecords].sort((a, b) => b.bloqueosA - a.bloqueosA).slice(0, 50);
+      case 'alertas':
+        return [];
+      default:
+        return filteredComparisonRecords;
+    }
+  }, [comparisonMode, activeSubTab, filteredComparisonRecords]);
+
+  const activeComparisonRecords = useMemo(() => {
+    const records = [...baseActiveComparisonRecords];
+    if (!sortConfig) return records;
+
+    const { key, direction } = sortConfig;
+
+    records.sort((a, b) => {
+      let aVal: any;
+      let bVal: any;
+
+      if (key === 'PaisNombre') {
+        aVal = getPaisNombre(a.PaisId);
+        bVal = getPaisNombre(b.PaisId);
+      } else if (key === 'Nemonico' && groupBySP) {
+        aVal = (a.EmisoresAgrupados || []).map(e => e.nemonico).join(', ');
+        bVal = (b.EmisoresAgrupados || []).map(e => e.nemonico).join(', ');
+      } else {
+        aVal = (a as any)[key];
+        bVal = (b as any)[key];
+      }
+
+      if (aVal === null || aVal === undefined) return direction === 'asc' ? 1 : -1;
+      if (bVal === null || bVal === undefined) return direction === 'asc' ? -1 : 1;
+
+      if (typeof aVal === 'string') {
+        return direction === 'asc' 
+          ? aVal.localeCompare(bVal) 
+          : bVal.localeCompare(aVal);
+      } else {
+        return direction === 'asc' 
+          ? (aVal > bVal ? 1 : -1) 
+          : (bVal > aVal ? 1 : -1);
+      }
+    });
+
+    return records;
+  }, [baseActiveComparisonRecords, sortConfig, groupBySP]);
 
   // Filtrado de registros para las tablas
   const filteredData = useMemo(() => {
@@ -377,7 +700,7 @@ export default function ConsultasRecurrentesPage() {
         aVal = getPaisNombre(a.paisId);
         bVal = getPaisNombre(b.paisId);
       } else if (key === 'ultimaTrx') {
-        const getVal = (val: string | null) => {
+        const getVal = (val: string | null | undefined) => {
           if (!val || val === 'NULL' || val === '---') return 0;
           const parsed = Date.parse(val);
           return isNaN(parsed) ? 0 : parsed;
@@ -410,6 +733,40 @@ export default function ConsultasRecurrentesPage() {
 
   // Datos para la gráfica: dinámicos según el activeSubTab seleccionado
   const chartData = useMemo(() => {
+    if (comparisonMode) {
+      return baseActiveComparisonRecords.slice(0, 7).map(item => {
+        let valA = 0;
+        let valB = 0;
+        let metricName = '';
+
+        if (activeSubTab === 'mas-ejecutados' || activeSubTab === 'todos') {
+          valA = item.ejecucionesA;
+          valB = item.ejecucionesB;
+          metricName = 'Ejecuciones';
+        } else if (activeSubTab === 'mas-bloqueados') {
+          valA = item.bloqueosA;
+          valB = item.bloqueosB;
+          metricName = 'Bloqueos';
+        } else {
+          valA = item.promedioA;
+          valB = item.promedioB;
+          metricName = 'Promedio (ms)';
+        }
+
+        const nameLabel = item.StoredProcedure.length > 25 
+          ? item.StoredProcedure.substring(0, 22) + '...' 
+          : item.StoredProcedure;
+
+        return {
+          name: nameLabel,
+          fullName: item.StoredProcedure,
+          valueA: valA,
+          valueB: valB,
+          metricName: metricName
+        };
+      });
+    }
+
     // Si la pestaña es alertas, graficamos sobre los emisores con alertas. De lo contrario, usamos dataFiltered
     const baseData = activeSubTab === 'alertas' ? emisoresConAlertas : dataFiltered;
     
@@ -446,10 +803,10 @@ export default function ConsultasRecurrentesPage() {
         value: item.value,
         metricName: metricName
       }));
-  }, [dataFiltered, activeSubTab, emisoresConAlertas]);
+  }, [comparisonMode, baseActiveComparisonRecords, activeSubTab, dataFiltered, emisoresConAlertas]);
 
   // Helper para mapear IDs de País a Nombre
-  const getPaisNombre = (paisId: number | null) => {
+  const getPaisNombre = (paisId: number | null | undefined) => {
     if (!paisId) return 'N/A';
     const PAIS_MAP: Record<number, string> = {
       593: 'Ecuador',
@@ -496,7 +853,7 @@ export default function ConsultasRecurrentesPage() {
         aVal = (a.EmisoresAgrupados || []).map(e => e.nemonico).join(', ');
         bVal = (b.EmisoresAgrupados || []).map(e => e.nemonico).join(', ');
       } else if (key === 'UltimaTrxAutorizada') {
-        const getVal = (val: string | null) => {
+        const getVal = (val: string | null | undefined) => {
           if (!val || val === 'NULL' || val === '---') return 0;
           const parsed = Date.parse(val);
           return isNaN(parsed) ? 0 : parsed;
@@ -530,7 +887,7 @@ export default function ConsultasRecurrentesPage() {
     return records;
   }, [baseActiveRecords, sortConfig, groupBySP]);
     
-  const renderSortIcon = (key: keyof SPRecord | 'PaisNombre') => {
+  const renderSortIcon = (key: string) => {
     if (!sortConfig || sortConfig.key !== key) {
       return <ArrowUpDown className="w-3.5 h-3.5 ml-1.5 opacity-30 group-hover:opacity-100 transition-opacity shrink-0 inline-block" />;
     }
@@ -587,6 +944,55 @@ export default function ConsultasRecurrentesPage() {
 
   // Copia el objeto de la fila en formato JSON estructurado
   const handleCopyJson = (r: SPRecord, idx: number) => {
+    const jsonStr = JSON.stringify(r, null, 2);
+    navigator.clipboard.writeText(jsonStr).then(() => {
+      setCopiedState({ idx, type: 'json' });
+      setTimeout(() => setCopiedState(null), 2000);
+    });
+  };
+
+  // Copia el contenido de la fila comparativa formateado como texto legible con cabeceras
+  const handleCopyComparisonText = (r: any, idx: number) => {
+    const emisoresText = groupBySP 
+      ? (r.EmisoresAgrupados && r.EmisoresAgrupados.length > 0 ? r.EmisoresAgrupados.map((e: any) => `${e.nemonico} (ID: ${e.id})`).join(', ') : 'Sin emisores')
+      : `${r.Nemonico || 'S/N'} (ID: ${r.IdEmisor || 'N/A'})`;
+      
+    const paisText = groupBySP && !r.PaisId ? 'Múltiples' : getPaisNombre(r.PaisId);
+    
+    const deltaEjSign = r.deltaEjecuciones > 0 ? '+' : '';
+    const deltaPrSign = r.deltaPromedio > 0 ? '+' : '';
+    const deltaBlSign = r.deltaBloqueos > 0 ? '+' : '';
+
+    const text = [
+      `--- DETALLE COMPARATIVO DE CONSULTA RECURRENTE ---`,
+      `Procedimiento Almacenado (SP): ${r.StoredProcedure}`,
+      `Emisor / Nemónico: ${emisoresText}`,
+      `País: ${paisText}`,
+      `--------------------------------------`,
+      `Fecha A (Reciente): ${dateA} | Fecha B (Anterior): ${dateB}`,
+      `--------------------------------------`,
+      `Ejecuciones Día A: ${r.ejecucionesA.toLocaleString()}`,
+      `Ejecuciones Día B: ${r.ejecucionesB.toLocaleString()}`,
+      `Delta Ejecuciones: ${deltaEjSign}${r.deltaEjecuciones.toLocaleString()} (${deltaEjSign}${r.deltaEjecucionesPct.toFixed(1)}%)`,
+      `--------------------------------------`,
+      `Promedio Día A: ${r.promedioA.toLocaleString()} ms`,
+      `Promedio Día B: ${r.promedioB.toLocaleString()} ms`,
+      `Delta Promedio: ${deltaPrSign}${r.deltaPromedio.toLocaleString()} ms (${deltaPrSign}${r.deltaPromedioPct.toFixed(1)}%)`,
+      `--------------------------------------`,
+      `Bloqueos Día A: ${r.bloqueosA.toLocaleString()}`,
+      `Bloqueos Día B: ${r.bloqueosB.toLocaleString()}`,
+      `Delta Bloqueos: ${deltaBlSign}${r.deltaBloqueos.toLocaleString()} (${deltaBlSign}${r.deltaBloqueosPct.toFixed(1)}%)`,
+      `--------------------------------------`
+    ].join('\n');
+
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedState({ idx, type: 'text' });
+      setTimeout(() => setCopiedState(null), 2000);
+    });
+  };
+
+  // Copia el objeto comparativo en formato JSON estructurado
+  const handleCopyComparisonJson = (r: any, idx: number) => {
     const jsonStr = JSON.stringify(r, null, 2);
     navigator.clipboard.writeText(jsonStr).then(() => {
       setCopiedState({ idx, type: 'json' });
@@ -684,7 +1090,22 @@ export default function ConsultasRecurrentesPage() {
           <h3 className="text-4xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">
             {loading ? '...' : kpis.totalConsultas.toLocaleString()}
           </h3>
-          <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mt-4">Consultas registradas</p>
+          <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mt-4">
+            {loading ? '...' : !comparisonMode ? (
+              'Consultas registradas'
+            ) : (
+              (() => {
+                const deltaEj = kpis.totalConsultas - kpis.totalConsultasB;
+                const pctEj = kpis.totalConsultasB > 0 ? (deltaEj / kpis.totalConsultasB) * 100 : 0;
+                const sign = deltaEj > 0 ? '+' : '';
+                return (
+                  <span className={deltaEj > 0 ? 'text-[#71BF44]' : deltaEj < 0 ? 'text-red-500' : 'text-neutral-400'}>
+                    {sign}{deltaEj.toLocaleString()} ({sign}{pctEj.toFixed(1)}%) vs Día B
+                  </span>
+                );
+              })()
+            )}
+          </p>
         </div>
 
         <div className="bg-white dark:bg-[#111] border border-neutral-100 dark:border-neutral-800 rounded-[32px] p-6 shadow-sm">
@@ -695,7 +1116,22 @@ export default function ConsultasRecurrentesPage() {
           <h3 className="text-4xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">
             {loading ? '...' : `${kpis.tiempoTotalSec.toFixed(2)}s`}
           </h3>
-          <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mt-4">Tiempo CPU total consumido</p>
+          <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mt-4">
+            {loading ? '...' : !comparisonMode ? (
+              'Tiempo CPU total consumido'
+            ) : (
+              (() => {
+                const deltaTi = kpis.tiempoTotalSec - kpis.tiempoTotalSecB;
+                const pctTi = kpis.tiempoTotalSecB > 0 ? (deltaTi / kpis.tiempoTotalSecB) * 100 : 0;
+                const sign = deltaTi > 0 ? '+' : '';
+                return (
+                  <span className={deltaTi < 0 ? 'text-[#71BF44]' : deltaTi > 0 ? 'text-red-500' : 'text-neutral-400'}>
+                    {sign}{deltaTi.toFixed(2)}s ({sign}{pctTi.toFixed(1)}%) vs Día B
+                  </span>
+                );
+              })()
+            )}
+          </p>
         </div>
 
         <div className="bg-white dark:bg-[#111] border border-neutral-100 dark:border-neutral-800 rounded-[32px] p-6 shadow-sm">
@@ -707,7 +1143,20 @@ export default function ConsultasRecurrentesPage() {
             {loading ? '...' : kpis.totalBloqueos.toLocaleString()}
           </h3>
           <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mt-4">
-            {loading ? '...' : `Tasa de bloqueo: ${kpis.tasaBloqueo.toFixed(2)}%`}
+            {loading ? '...' : !comparisonMode ? (
+              `Tasa de bloqueo: ${kpis.tasaBloqueo.toFixed(2)}%`
+            ) : (
+              (() => {
+                const deltaBl = kpis.totalBloqueos - kpis.totalBloqueosB;
+                const pctBl = kpis.totalBloqueosB > 0 ? (deltaBl / kpis.totalBloqueosB) * 100 : 0;
+                const sign = deltaBl > 0 ? '+' : '';
+                return (
+                  <span className={deltaBl < 0 ? 'text-[#71BF44]' : deltaBl > 0 ? 'text-red-500' : 'text-neutral-400'}>
+                    {sign}{deltaBl.toLocaleString()} ({sign}{pctBl.toFixed(1)}%) vs Día B
+                  </span>
+                );
+              })()
+            )}
           </p>
         </div>
 
@@ -732,13 +1181,21 @@ export default function ConsultasRecurrentesPage() {
           <div className="flex items-center gap-2 mb-6">
             <BarChart3 className="w-5 h-5 text-[#71BF44]" />
             <h3 className="text-lg font-bold text-neutral-900 dark:text-white">
-              {activeSubTab === 'mas-ejecutados' || activeSubTab === 'todos' 
-                ? 'Top 7 SPs más Ejecutados' 
-                : activeSubTab === 'mas-bloqueados' 
-                  ? 'Top 7 SPs más Bloqueados' 
-                  : activeSubTab === 'alertas'
-                    ? 'Top 7 SPs de Emisores Alertados (Latencia)'
-                    : 'Top 7 SPs con mayor Latencia (Promedio)'}
+              {!comparisonMode ? (
+                activeSubTab === 'mas-ejecutados' || activeSubTab === 'todos' 
+                  ? 'Top 7 SPs más Ejecutados' 
+                  : activeSubTab === 'mas-bloqueados' 
+                    ? 'Top 7 SPs más Bloqueados' 
+                    : activeSubTab === 'alertas'
+                      ? 'Top 7 SPs de Emisores Alertados (Latencia)'
+                      : 'Top 7 SPs con mayor Latencia (Promedio)'
+              ) : (
+                activeSubTab === 'mas-ejecutados' || activeSubTab === 'todos'
+                  ? `Comparativa: Ejecuciones por SP (${dateA} vs ${dateB})`
+                  : activeSubTab === 'mas-bloqueados'
+                    ? `Comparativa: Bloqueos por SP (${dateA} vs ${dateB})`
+                    : `Comparativa: Latencia Promedio por SP (${dateA} vs ${dateB})`
+              )}
             </h3>
           </div>
           
@@ -749,7 +1206,7 @@ export default function ConsultasRecurrentesPage() {
               </div>
             ) : chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 20, right: 30, left: 10, bottom: 20 }}>
+                <BarChart data={chartData as any} margin={{ top: 20, right: 30, left: 10, bottom: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" className="dark:stroke-neutral-800/40" />
                   <XAxis 
                     dataKey="name" 
@@ -776,26 +1233,61 @@ export default function ConsultasRecurrentesPage() {
                     itemStyle={{ color: '#71BF44', fontSize: 11 }}
                     formatter={(value: any, name: any, props: any) => {
                       const metric = props.payload.metricName || 'Valor';
+                      const suffix = metric === 'Promedio (ms)' ? ' ms' : '';
+                      
+                      if (name.includes('Día A') || name.includes('Día B')) {
+                        return [`${value.toLocaleString()}${suffix}`, `${metric} (${name})`];
+                      }
+                      
                       if (metric === 'Promedio (ms)') {
                         return [`${value.toLocaleString()} ms`, 'Latencia Promedio'];
                       }
                       return [value.toLocaleString(), metric];
                     }}
                   />
-                  <Bar 
-                    dataKey="value" 
-                    radius={[8, 8, 0, 0]}
-                    onClick={(entry: any) => {
-                      if (entry && entry.fullName) {
-                        setSearchTerm(entry.fullName);
-                      }
-                    }}
-                    className="cursor-pointer"
-                  >
-                    {chartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={index === 0 ? '#ef4444' : index < 3 ? '#f97316' : '#71BF44'} />
-                    ))}
-                  </Bar>
+                  {comparisonMode ? (
+                    <>
+                      <Bar 
+                        dataKey="valueA" 
+                        name={`Día A: ${dateA}`}
+                        fill="#71BF44"
+                        radius={[8, 8, 0, 0]}
+                        onClick={(entry: any) => {
+                          if (entry && entry.fullName) {
+                            setSearchTerm(entry.fullName);
+                          }
+                        }}
+                        className="cursor-pointer"
+                      />
+                      <Bar 
+                        dataKey="valueB" 
+                        name={`Día B: ${dateB}`}
+                        fill="#3b82f6"
+                        radius={[8, 8, 0, 0]}
+                        onClick={(entry: any) => {
+                          if (entry && entry.fullName) {
+                            setSearchTerm(entry.fullName);
+                          }
+                        }}
+                        className="cursor-pointer"
+                      />
+                    </>
+                  ) : (
+                    <Bar 
+                      dataKey="value" 
+                      radius={[8, 8, 0, 0]}
+                      onClick={(entry: any) => {
+                        if (entry && entry.fullName) {
+                          setSearchTerm(entry.fullName);
+                        }
+                      }}
+                      className="cursor-pointer"
+                    >
+                      {chartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={index === 0 ? '#ef4444' : index < 3 ? '#f97316' : '#71BF44'} />
+                      ))}
+                    </Bar>
+                  )}
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -903,42 +1395,123 @@ export default function ConsultasRecurrentesPage() {
       <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[40px] overflow-hidden shadow-xl">
         {/* Barra superior */}
         <div className="p-8 border-b border-neutral-100 dark:border-neutral-800 flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-neutral-50/20 dark:bg-neutral-800/10">
-          {/* Sub tabs internas */}
-          <div className="flex flex-wrap gap-2 border-b border-neutral-200/50 dark:border-neutral-800/50 lg:border-none pb-4 lg:pb-0">
+          <div className="flex flex-wrap gap-3 border-b border-neutral-200/50 dark:border-neutral-800/50 lg:border-none pb-4 lg:pb-0 items-center">
+            {/* Toggle de Modo Comparación */}
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-white dark:bg-[#151515] border border-neutral-200/60 dark:border-neutral-800/50 rounded-2xl shadow-sm">
+              <span className="text-[9px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest">Comparar Días:</span>
+              <button
+                onClick={() => {
+                  const nextMode = !comparisonMode;
+                  setComparisonMode(nextMode);
+                  setSortConfig(null);
+                  if (nextMode && activeSubTab === 'alertas') {
+                    setActiveSubTab('mas-ejecutados');
+                  }
+                }}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${comparisonMode ? 'bg-[#71BF44]' : 'bg-neutral-200 dark:bg-neutral-700'}`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${comparisonMode ? 'translate-x-5' : 'translate-x-0'}`}
+                />
+              </button>
+            </div>
+
+            {/* Sub tabs (renderizadas en ambos modos) */}
             <button
               onClick={() => { setActiveSubTab('mas-ejecutados'); setSortConfig(null); }}
-              className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${activeSubTab === 'mas-ejecutados' ? 'bg-[#71BF44] text-white border-[#71BF44] shadow-lg shadow-[#71BF44]/20' : 'bg-white dark:bg-neutral-800 text-neutral-400 border-neutral-100 dark:border-neutral-700 hover:border-neutral-300'}`}
+              className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${activeSubTab === 'mas-ejecutados' ? 'bg-[#71BF44] text-white border-[#71BF44] shadow-lg shadow-[#71BF44]/20' : 'bg-white dark:bg-neutral-850 text-neutral-400 border-neutral-100 dark:border-neutral-800 hover:border-neutral-300'}`}
             >
               Más Ejecutados
             </button>
             <button
               onClick={() => { setActiveSubTab('mas-lentos'); setSortConfig(null); }}
-              className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${activeSubTab === 'mas-lentos' ? 'bg-[#71BF44] text-white border-[#71BF44] shadow-lg shadow-[#71BF44]/20' : 'bg-white dark:bg-neutral-800 text-neutral-400 border-neutral-100 dark:border-neutral-700 hover:border-neutral-300'}`}
+              className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${activeSubTab === 'mas-lentos' ? 'bg-[#71BF44] text-white border-[#71BF44] shadow-lg shadow-[#71BF44]/20' : 'bg-white dark:bg-neutral-850 text-neutral-400 border-neutral-100 dark:border-neutral-800 hover:border-neutral-300'}`}
             >
               Más Lentos (Promedio)
             </button>
             <button
               onClick={() => { setActiveSubTab('mas-bloqueados'); setSortConfig(null); }}
-              className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${activeSubTab === 'mas-bloqueados' ? 'bg-[#71BF44] text-white border-[#71BF44] shadow-lg shadow-[#71BF44]/20' : 'bg-white dark:bg-neutral-800 text-neutral-400 border-neutral-100 dark:border-neutral-700 hover:border-neutral-300'}`}
+              className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${activeSubTab === 'mas-bloqueados' ? 'bg-[#71BF44] text-white border-[#71BF44] shadow-lg shadow-[#71BF44]/20' : 'bg-white dark:bg-neutral-850 text-neutral-400 border-neutral-100 dark:border-neutral-800 hover:border-neutral-300'}`}
             >
               Más Bloqueados
             </button>
-            <button
-              onClick={() => { setActiveSubTab('alertas'); setSortConfig(null); }}
-              className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${activeSubTab === 'alertas' ? 'bg-red-600 text-white border-red-600 shadow-lg shadow-red-600/20' : 'bg-white dark:bg-neutral-800 text-red-500 border-red-100 dark:border-red-500/20 hover:border-red-300'}`}
-            >
-              <AlertCircle className="w-3.5 h-3.5" />
-              Sin Transacciones ({kpis.alertasCount})
-            </button>
+            {!comparisonMode && (
+              <button
+                onClick={() => { setActiveSubTab('alertas'); setSortConfig(null); }}
+                className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${activeSubTab === 'alertas' ? 'bg-red-600 text-white border-red-600 shadow-lg shadow-red-600/20' : 'bg-white dark:bg-neutral-850 text-red-500 border-red-100 dark:border-red-500/20 hover:border-red-300'}`}
+              >
+                <AlertCircle className="w-3.5 h-3.5" />
+                Sin Transacciones ({kpis.alertasCount})
+              </button>
+            )}
             <button
               onClick={() => { setActiveSubTab('todos'); setSortConfig(null); }}
-              className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${activeSubTab === 'todos' ? 'bg-neutral-900 text-white border-neutral-900 dark:bg-white dark:text-neutral-900' : 'bg-white dark:bg-neutral-800 text-neutral-400 border-neutral-100 dark:border-neutral-700 hover:border-neutral-300'}`}
+              className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${activeSubTab === 'todos' ? 'bg-neutral-900 text-white border-neutral-900 dark:bg-white dark:text-neutral-900' : 'bg-white dark:bg-neutral-850 text-neutral-400 border-neutral-100 dark:border-neutral-800 hover:border-neutral-300'}`}
             >
               Todos
             </button>
 
+            {/* Selectores de fecha según el modo */}
+            {!comparisonMode ? (
+              <div className="flex items-center gap-3 px-4 py-2.5 bg-white dark:bg-neutral-850 border border-neutral-200/60 dark:border-neutral-800/60 rounded-2xl shadow-sm">
+                <span className="text-[9px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest">Fecha:</span>
+                <select
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="bg-transparent border-none text-[10px] font-black text-neutral-700 dark:text-neutral-200 outline-none cursor-pointer max-w-[120px] truncate"
+                >
+                  <option value="TODOS" className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white">TODOS LOS DÍAS</option>
+                  {uniqueDates.map(d => (
+                    <option key={d} value={d} className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white">
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 flex-wrap animate-fadeIn">
+                {/* Selector Día A */}
+                <div className="flex items-center gap-3 px-4 py-2.5 bg-white dark:bg-neutral-850 border border-neutral-200/60 dark:border-neutral-800/60 rounded-2xl shadow-sm">
+                  <span className="text-[9px] font-black text-[#71BF44] uppercase tracking-widest">Día A (Reciente):</span>
+                  <select
+                    value={dateA}
+                    onChange={(e) => setDateA(e.target.value)}
+                    className="bg-transparent border-none text-[10px] font-black text-neutral-700 dark:text-neutral-200 outline-none cursor-pointer"
+                  >
+                    {uniqueDates.map(d => (
+                      <option key={d} value={d} className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white">
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <span className="text-xs font-black text-neutral-400">vs</span>
+
+                {/* Selector Día B */}
+                <div className="flex items-center gap-3 px-4 py-2.5 bg-white dark:bg-neutral-850 border border-neutral-200/60 dark:border-neutral-800/60 rounded-2xl shadow-sm">
+                  <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Día B (Anterior):</span>
+                  <select
+                    value={dateB}
+                    onChange={(e) => setDateB(e.target.value)}
+                    className="bg-transparent border-none text-[10px] font-black text-neutral-700 dark:text-neutral-200 outline-none cursor-pointer"
+                  >
+                    {uniqueDates.map(d => (
+                      <option key={d} value={d} className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white">
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <span className="px-3 py-1 bg-blue-500/10 border border-blue-500/20 text-[9px] font-black text-blue-500 rounded-full uppercase tracking-wider select-none">
+                  Vista Comparativa
+                </span>
+              </div>
+            )}
+
             {/* Switch de Agrupamiento por Stored Procedure */}
-            <div className="flex items-center gap-3 px-4 py-2.5 bg-white dark:bg-neutral-850 border border-neutral-200/60 dark:border-neutral-850 rounded-2xl ml-2 shadow-sm">
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-white dark:bg-neutral-850 border border-neutral-200/60 dark:border-neutral-800/60 rounded-2xl shadow-sm">
               <span className="text-[9px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest">Agrupar SPs:</span>
               <button
                 onClick={() => setGroupBySP(!groupBySP)}
@@ -951,7 +1524,7 @@ export default function ConsultasRecurrentesPage() {
             </div>
 
             {/* Selector de Emisor */}
-            <div className="flex items-center gap-3 px-4 py-2.5 bg-white dark:bg-neutral-850 border border-neutral-200/60 dark:border-neutral-850 rounded-2xl ml-2 shadow-sm">
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-white dark:bg-neutral-850 border border-neutral-200/60 dark:border-neutral-800/60 rounded-2xl shadow-sm">
               <span className="text-[9px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest">Emisor:</span>
               <select
                 value={selectedEmisorId || ''}
@@ -1001,314 +1574,670 @@ export default function ConsultasRecurrentesPage() {
             <div className="text-center py-20 text-neutral-400 text-xs font-black uppercase tracking-widest">
               Cargando registros...
             </div>
-          ) : activeRecords.length > 0 ? (
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.12em] border-b border-neutral-100 dark:border-neutral-800 select-none">
-                  <th 
-                    onClick={() => requestSort('StoredProcedure')} 
-                    className="px-8 py-5 cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
-                  >
-                    <div className="flex items-center group">
-                      Procedimiento Almacenado (SP)
-                      {renderSortIcon('StoredProcedure')}
-                    </div>
-                  </th>
-                  <th 
-                    onClick={() => requestSort('Nemonico')} 
-                    className="px-6 py-5 text-center cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
-                  >
-                    <div className="flex items-center justify-center group">
-                      Emisor / Nemónico
-                      {renderSortIcon('Nemonico')}
-                    </div>
-                  </th>
-                  <th 
-                    onClick={() => requestSort('PaisNombre')} 
-                    className="px-6 py-5 text-center cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
-                  >
-                    <div className="flex items-center justify-center group">
-                      País
-                      {renderSortIcon('PaisNombre')}
-                    </div>
-                  </th>
-                  <th 
-                    onClick={() => requestSort('TotalEjecuciones')} 
-                    className="px-6 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
-                  >
-                    <div className="flex items-center justify-end group">
-                      Ejecuciones
-                      {renderSortIcon('TotalEjecuciones')}
-                    </div>
-                  </th>
-                  <th 
-                    onClick={() => requestSort('TiempoPromedio_ms')} 
-                    className="px-6 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
-                  >
-                    <div className="flex items-center justify-end group">
-                      Promedio (ms)
-                      {renderSortIcon('TiempoPromedio_ms')}
-                    </div>
-                  </th>
-                  <th 
-                    onClick={() => requestSort('TiempoMaximo_ms')} 
-                    className="px-6 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
-                  >
-                    <div className="flex items-center justify-end group">
-                      Máximo (ms)
-                      {renderSortIcon('TiempoMaximo_ms')}
-                    </div>
-                  </th>
-                  <th 
-                    onClick={() => requestSort('TotalBloqueos')} 
-                    className="px-6 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
-                  >
-                    <div className="flex items-center justify-end group">
-                      Total Bloqueos
-                      {renderSortIcon('TotalBloqueos')}
-                    </div>
-                  </th>
-                  <th 
-                    onClick={() => requestSort('UltimaTrxAutorizada')} 
-                    className="px-8 py-5 cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
-                  >
-                    <div className="flex items-center group">
-                      Última Trx Autorizada
-                      {renderSortIcon('UltimaTrxAutorizada')}
-                    </div>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/50">
-                {activeRecords.map((r, idx) => {
-                  const hasAlert = r.IdEmisor && r.IdEmisor > 0 && r.TotalEjecuciones > 0 && (
-                    !r.UltimaTrxAutorizada || r.UltimaTrxAutorizada === 'NULL' || r.UltimaTrxAutorizada === '---' ||
-                    (new Date(r.UltimaTrxAutorizada) < new Date(new Date().setDate(new Date().getDate() - 14)))
-                  );
-
-                  return (
-                    <tr 
-                      key={idx} 
-                      className={`group hover:bg-neutral-50/50 dark:hover:bg-white/[0.01] transition-colors ${hasAlert ? 'bg-red-500/[0.02]' : ''}`}
+          ) : !comparisonMode ? (
+            activeRecords.length > 0 ? (
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.12em] border-b border-neutral-100 dark:border-neutral-800 select-none">
+                    <th 
+                      onClick={() => requestSort('StoredProcedure')} 
+                      className="px-8 py-5 cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
                     >
-                      <td className="px-8 py-5 font-bold text-neutral-800 dark:text-neutral-200 text-xs break-all">
-                        <div className="flex items-center gap-3">
-                          <button 
-                            onClick={() => {
-                              if (!excludedSPs.includes(r.StoredProcedure)) {
-                                setExcludedSPs([...excludedSPs, r.StoredProcedure]);
-                              }
-                            }}
-                            className="p-1.5 text-neutral-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 transition-all cursor-pointer shrink-0"
-                            title="Excluir de análisis"
-                          >
-                            <EyeOff className="w-3.5 h-3.5" />
-                          </button>
+                      <div className="flex items-center group">
+                        Procedimiento Almacenado (SP)
+                        {renderSortIcon('StoredProcedure')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => requestSort('Nemonico')} 
+                      className="px-6 py-5 text-center cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                    >
+                      <div className="flex items-center justify-center group">
+                        Emisor / Nemónico
+                        {renderSortIcon('Nemonico')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => requestSort('PaisNombre')} 
+                      className="px-6 py-5 text-center cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                    >
+                      <div className="flex items-center justify-center group">
+                        País
+                        {renderSortIcon('PaisNombre')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => requestSort('TotalEjecuciones')} 
+                      className="px-6 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                    >
+                      <div className="flex items-center justify-end group">
+                        Ejecuciones
+                        {renderSortIcon('TotalEjecuciones')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => requestSort('TiempoPromedio_ms')} 
+                      className="px-6 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                    >
+                      <div className="flex items-center justify-end group">
+                        Promedio (ms)
+                        {renderSortIcon('TiempoPromedio_ms')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => requestSort('TiempoMaximo_ms')} 
+                      className="px-6 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                    >
+                      <div className="flex items-center justify-end group">
+                        Máximo (ms)
+                        {renderSortIcon('TiempoMaximo_ms')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => requestSort('TotalBloqueos')} 
+                      className="px-6 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                    >
+                      <div className="flex items-center justify-end group">
+                        Total Bloqueos
+                        {renderSortIcon('TotalBloqueos')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => requestSort('UltimaTrxAutorizada')} 
+                      className="px-8 py-5 cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                    >
+                      <div className="flex items-center group">
+                        Última Trx Autorizada
+                        {renderSortIcon('UltimaTrxAutorizada')}
+                      </div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/50">
+                  {activeRecords.map((r, idx) => {
+                    const hasAlert = r.IdEmisor && r.IdEmisor > 0 && r.TotalEjecuciones > 0 && (
+                      !r.UltimaTrxAutorizada || r.UltimaTrxAutorizada === 'NULL' || r.UltimaTrxAutorizada === '---' ||
+                      (new Date(r.UltimaTrxAutorizada) < new Date(new Date().setDate(new Date().getDate() - 14)))
+                    );
 
-                          <button
-                            onClick={() => setSearchTerm(r.StoredProcedure)}
-                            className="p-1.5 text-neutral-400 hover:text-[#71BF44] hover:bg-[#71BF44]/10 rounded-lg transition-all cursor-pointer shrink-0"
-                            title="Filtrar por este SP"
-                          >
-                            <Search className="w-3.5 h-3.5" />
-                          </button>
+                    return (
+                      <tr 
+                        key={idx} 
+                        className={`group hover:bg-neutral-50/50 dark:hover:bg-white/[0.01] transition-colors ${hasAlert ? 'bg-red-500/[0.02]' : ''}`}
+                      >
+                        <td className="px-8 py-5 font-bold text-neutral-850 dark:text-neutral-200 text-xs break-all">
+                          <div className="flex items-center gap-3">
+                            <button 
+                              onClick={() => {
+                                if (!excludedSPs.includes(r.StoredProcedure)) {
+                                  setExcludedSPs([...excludedSPs, r.StoredProcedure]);
+                                }
+                              }}
+                              className="p-1.5 text-neutral-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 transition-all cursor-pointer shrink-0"
+                              title="Excluir de análisis"
+                            >
+                              <EyeOff className="w-3.5 h-3.5" />
+                            </button>
 
-                          <button
-                            onClick={() => handleCopyText(r, idx)}
-                            className={`p-1.5 rounded-lg transition-all cursor-pointer shrink-0 ${
-                              copiedState?.idx === idx && copiedState?.type === 'text'
-                                ? 'text-green-500 bg-green-50 dark:bg-green-950/20'
-                                : 'text-neutral-400 hover:text-[#71BF44] hover:bg-neutral-100 dark:hover:bg-neutral-800'
-                            }`}
-                            title="Copiar fila (texto con cabeceras)"
-                          >
-                            {copiedState?.idx === idx && copiedState?.type === 'text' ? (
-                              <Check className="w-3.5 h-3.5" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
+                            <button
+                              onClick={() => setSearchTerm(r.StoredProcedure)}
+                              className="p-1.5 text-neutral-400 hover:text-[#71BF44] hover:bg-[#71BF44]/10 rounded-lg transition-all cursor-pointer shrink-0"
+                              title="Filtrar por este SP"
+                            >
+                              <Search className="w-3.5 h-3.5" />
+                            </button>
 
-                          <button
-                            onClick={() => handleCopyJson(r, idx)}
-                            className={`p-1.5 rounded-lg transition-all cursor-pointer shrink-0 ${
-                              copiedState?.idx === idx && copiedState?.type === 'json'
-                                ? 'text-green-500 bg-green-50 dark:bg-green-950/20'
-                                : 'text-neutral-400 hover:text-[#71BF44] hover:bg-neutral-100 dark:hover:bg-neutral-800'
-                            }`}
-                            title="Copiar objeto (JSON)"
-                          >
-                            {copiedState?.idx === idx && copiedState?.type === 'json' ? (
-                              <Check className="w-3.5 h-3.5" />
-                            ) : (
-                              <Braces className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-
-                          <span className="text-[10px] text-neutral-400 shrink-0">#{idx + 1}</span>
-                          <button
-                            onClick={() => setSearchTerm(r.StoredProcedure)}
-                            className="text-left text-neutral-800 dark:text-neutral-200 hover:text-[#71BF44] dark:hover:text-[#71BF44] transition-colors font-bold break-all line-clamp-2 cursor-pointer font-sans"
-                            title={`Filtrar por ${r.StoredProcedure}`}
-                          >
-                            {r.StoredProcedure}
-                          </button>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 text-center">
-                        {groupBySP ? (
-                          r.EmisoresAgrupados && r.EmisoresAgrupados.length > 0 ? (
-                            <div className="flex flex-col items-center gap-1.5">
-                              {r.EmisoresAgrupados.length > 3 ? (
-                                <button
-                                  onClick={() => setModalSP(r.StoredProcedure)}
-                                  className="px-3.5 py-2 bg-[#71BF44]/10 hover:bg-[#71BF44]/20 border border-[#71BF44]/30 rounded-xl text-[10px] font-black text-[#71BF44] uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer hover:scale-105 shadow-sm active:scale-95"
-                                  title="Ver desglose detallado de emisores"
-                                >
-                                  <span>{r.EmisoresAgrupados.length} Emisores</span>
-                                  <span className="text-[10px]">🔍</span>
-                                </button>
+                            <button
+                              onClick={() => handleCopyText(r, idx)}
+                              className={`p-1.5 rounded-lg transition-all cursor-pointer shrink-0 ${
+                                copiedState?.idx === idx && copiedState?.type === 'text'
+                                  ? 'text-green-500 bg-green-50 dark:bg-green-950/20'
+                                  : 'text-neutral-400 hover:text-[#71BF44] hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                              }`}
+                              title="Copiar fila (texto con cabeceras)"
+                            >
+                              {copiedState?.idx === idx && copiedState?.type === 'text' ? (
+                                <Check className="w-3.5 h-3.5" />
                               ) : (
-                                <>
-                                  <span className="text-[10px] font-black text-[#71BF44] bg-[#71BF44]/10 border border-[#71BF44]/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider select-none">
-                                    {r.EmisoresAgrupados.length} {r.EmisoresAgrupados.length === 1 ? 'Emisor' : 'Emisores'}
-                                  </span>
-                                  <div className="flex flex-wrap gap-1 justify-center max-w-[200px]">
-                                    {r.EmisoresAgrupados.map(e => {
-                                      const isFocused = selectedEmisorId === e.id;
-                                      return (
-                                        <button
-                                          key={e.id}
-                                          onClick={() => setSelectedEmisorId(isFocused ? null : e.id)}
-                                          className={`text-[9px] font-black px-2 py-0.5 rounded-lg border transition-all cursor-pointer ${
-                                            isFocused
-                                              ? 'bg-[#71BF44] text-white border-[#71BF44] shadow-sm'
-                                              : 'text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 hover:text-[#71BF44] hover:bg-[#71BF44]/10 dark:hover:bg-[#71BF44]/10 hover:border-[#71BF44]/30'
-                                          }`}
-                                          title={isFocused ? `Quitar filtro de ${e.nemonico}` : `Ver comportamiento de ${e.nemonico}`}
-                                        >
-                                          {e.nemonico}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </>
+                                <Copy className="w-3.5 h-3.5" />
                               )}
-                            </div>
-                          ) : (
-                            <span className="text-[10px] text-neutral-400 italic">Sin emisores</span>
-                          )
-                        ) : r.IdEmisor && r.IdEmisor > 0 ? (
-                          <button
-                            onClick={() => setSelectedEmisorId(selectedEmisorId === r.IdEmisor ? null : r.IdEmisor)}
-                            className={`inline-flex flex-col items-center p-2 rounded-xl border transition-all cursor-pointer ${
-                              selectedEmisorId === r.IdEmisor
-                                ? 'bg-[#71BF44]/15 border-[#71BF44] text-[#71BF44]'
-                                : 'border-transparent hover:bg-[#71BF44]/10 hover:border-[#71BF44]/20'
-                            }`}
-                            title={selectedEmisorId === r.IdEmisor ? `Quitar filtro de ${r.Nemonico || 'S/N'}` : `Ver comportamiento de ${r.Nemonico || 'S/N'}`}
-                          >
-                            <span className={`text-xs font-black leading-none mb-1 transition-colors ${
-                              selectedEmisorId === r.IdEmisor ? 'text-[#71BF44]' : 'text-neutral-800 dark:text-neutral-100'
-                            }`}>
-                              {r.Nemonico || 'S/N'}
-                            </span>
-                            <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">
-                              ID: {r.IdEmisor}
-                            </span>
-                          </button>
-                        ) : (
-                          <span className="text-[10px] text-neutral-400 italic">Global / Sistema</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-5 text-center">
-                        <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">
-                          {groupBySP && !r.PaisId ? (
-                            <span className="text-neutral-400 italic">Múltiples</span>
-                          ) : (
-                            getPaisNombre(r.PaisId)
-                          )}
-                        </span>
-                      </td>
-                      <td className="px-6 py-5 text-right font-black text-neutral-900 dark:text-white">
-                        {r.TotalEjecuciones.toLocaleString()}
-                      </td>
-                      <td className="px-6 py-5 text-right">
-                        <span className={`text-xs font-black px-2.5 py-1 rounded-lg ${r.TiempoPromedio_ms > 5000 ? 'bg-red-500/10 text-red-500 border border-red-500/20' : r.TiempoPromedio_ms > 1000 ? 'bg-orange-400/10 text-orange-500 border border-orange-400/20' : 'text-neutral-700 dark:text-neutral-300'}`}>
-                          {r.TiempoPromedio_ms.toLocaleString()} ms
-                        </span>
-                      </td>
-                      <td className="px-6 py-5 text-right text-xs font-bold text-neutral-500">
-                        {r.TiempoMaximo_ms.toLocaleString()} ms
-                      </td>
-                      <td className="px-6 py-5 text-right font-bold">
-                        <div className="flex flex-col items-end">
-                          <span className={r.TotalBloqueos > 0 ? 'text-red-500' : 'text-neutral-300 opacity-40'}>
-                            {r.TotalBloqueos.toLocaleString()}
-                          </span>
-                          {r.TotalBloqueos > 0 && r.TotalEjecuciones > 0 && (
-                            <span className="text-[9px] text-red-400/80 font-bold mt-0.5" title="Porcentaje de comprobantes bloqueados sobre el total de consultas">
-                              {((r.TotalBloqueos / r.TotalEjecuciones) * 100).toFixed(1)}%
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-8 py-5">
-                        {hasAlert ? (
-                          <div className="relative group/alert cursor-help flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/20 rounded-xl max-w-fit select-none">
-                            <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                            <div className="flex flex-col">
-                              <span className="text-[9px] font-black text-red-500 uppercase tracking-tighter leading-none mb-0.5">
-                                Activo sin Autorizaciones
-                              </span>
-                              <span className="text-[8px] text-red-400 font-bold leading-none">
-                                Última: {r.UltimaTrxAutorizada && r.UltimaTrxAutorizada !== 'NULL' && r.UltimaTrxAutorizada !== '---' ? r.UltimaTrxAutorizada.split(' ')[0] : 'Ninguna'}
-                              </span>
-                            </div>
+                            </button>
 
-                            {/* Tooltip Ampliado al posarse encima */}
-                            <div className="absolute bottom-full right-0 mb-2.5 w-80 p-4 bg-neutral-900 dark:bg-neutral-950 text-white rounded-2xl shadow-2xl border border-neutral-800 dark:border-neutral-800/80 text-[10px] leading-relaxed hidden group-hover/alert:block z-50 pointer-events-none transition-all">
-                              <div className="font-black text-red-500 dark:text-red-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                                <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Alerta de Inactividad Transaccional
-                              </div>
-                              <p className="text-neutral-300 font-semibold mb-2 normal-case leading-normal">
-                                {r.UltimaTrxAutorizada && r.UltimaTrxAutorizada !== 'NULL' && r.UltimaTrxAutorizada !== '---' 
-                                  ? `El emisor está registrando consultas en la base de datos pero no ha autorizado transacciones exitosas desde el ${r.UltimaTrxAutorizada.split(' ')[0]} a las ${r.UltimaTrxAutorizada.split(' ')[1] || ''} (hace más de 14 días).`
-                                  : 'El emisor registra consultas recurrentes en los últimos 2 días pero no cuenta con ningún registro histórico de transacciones autorizadas en el sistema.'}
-                              </p>
-                              <div className="border-t border-neutral-850 dark:border-neutral-800 pt-2 text-[9px] text-neutral-500 font-bold uppercase tracking-wider flex justify-between">
-                                <span>Emisor: {r.Nemonico || 'S/N'}</span>
-                                <span>ID: {r.IdEmisor || 'N/A'}</span>
-                              </div>
-                              {/* Triangulito del tooltip en la esquina derecha para alinearlo al badge */}
-                              <div className="absolute top-full right-6 border-4 border-transparent border-t-neutral-900 dark:border-t-neutral-950"></div>
-                            </div>
+                            <button
+                              onClick={() => handleCopyJson(r, idx)}
+                              className={`p-1.5 rounded-lg transition-all cursor-pointer shrink-0 ${
+                                copiedState?.idx === idx && copiedState?.type === 'json'
+                                  ? 'text-green-500 bg-green-50 dark:bg-green-950/20'
+                                  : 'text-neutral-400 hover:text-[#71BF44] hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                              }`}
+                              title="Copiar objeto (JSON)"
+                            >
+                              {copiedState?.idx === idx && copiedState?.type === 'json' ? (
+                                <Check className="w-3.5 h-3.5" />
+                              ) : (
+                                <Braces className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+
+                            <span className="text-[10px] text-neutral-400 shrink-0">#{idx + 1}</span>
+                            <button
+                              onClick={() => setSearchTerm(r.StoredProcedure)}
+                              className="text-left text-neutral-800 dark:text-neutral-200 hover:text-[#71BF44] dark:hover:text-[#71BF44] transition-colors font-bold break-all line-clamp-2 cursor-pointer font-sans"
+                              title={`Filtrar por ${r.StoredProcedure}`}
+                            >
+                              {r.StoredProcedure}
+                            </button>
                           </div>
-                        ) : r.UltimaTrxAutorizada && r.UltimaTrxAutorizada !== 'NULL' && r.UltimaTrxAutorizada !== '---' ? (
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="w-3.5 h-3.5 text-[#71BF44] shrink-0" />
-                            <div className="flex flex-col">
-                              <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300 leading-none">
-                                {r.UltimaTrxAutorizada.split(' ')[0]}
+                        </td>
+                        <td className="px-6 py-5 text-center">
+                          {groupBySP ? (
+                            r.EmisoresAgrupados && r.EmisoresAgrupados.length > 0 ? (
+                              <div className="flex flex-col items-center gap-1.5">
+                                {r.EmisoresAgrupados.length > 3 ? (
+                                  <button
+                                    onClick={() => setModalSP(r.StoredProcedure)}
+                                    className="px-3.5 py-2 bg-[#71BF44]/10 hover:bg-[#71BF44]/20 border border-[#71BF44]/30 rounded-xl text-[10px] font-black text-[#71BF44] uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer hover:scale-105 shadow-sm active:scale-95"
+                                    title="Ver desglose detallado de emisores"
+                                  >
+                                    <span>{r.EmisoresAgrupados.length} Emisores</span>
+                                    <span className="text-[10px]">🔍</span>
+                                  </button>
+                                ) : (
+                                  <>
+                                    <span className="text-[10px] font-black text-[#71BF44] bg-[#71BF44]/10 border border-[#71BF44]/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider select-none">
+                                      {r.EmisoresAgrupados.length} {r.EmisoresAgrupados.length === 1 ? 'Emisor' : 'Emisores'}
+                                    </span>
+                                    <div className="flex flex-wrap gap-1 justify-center max-w-[200px]">
+                                      {r.EmisoresAgrupados.map(e => {
+                                        const isFocused = selectedEmisorId === e.id;
+                                        return (
+                                          <button
+                                            key={e.id}
+                                            onClick={() => setSelectedEmisorId(isFocused ? null : e.id)}
+                                            className={`text-[9px] font-black px-2 py-0.5 rounded-lg border transition-all cursor-pointer ${
+                                              isFocused
+                                                ? 'bg-[#71BF44] text-white border-[#71BF44] shadow-sm'
+                                                : 'text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 hover:text-[#71BF44] hover:bg-[#71BF44]/10 dark:hover:bg-[#71BF44]/10 hover:border-[#71BF44]/30'
+                                            }`}
+                                            title={isFocused ? `Quitar filtro de ${e.nemonico}` : `Ver comportamiento de ${e.nemonico}`}
+                                          >
+                                            {e.nemonico}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-neutral-400 italic">Sin emisores</span>
+                            )
+                          ) : r.IdEmisor && r.IdEmisor > 0 ? (
+                            <button
+                              onClick={() => setSelectedEmisorId(selectedEmisorId === r.IdEmisor ? null : r.IdEmisor)}
+                              className={`inline-flex flex-col items-center p-2 rounded-xl border transition-all cursor-pointer ${
+                                selectedEmisorId === r.IdEmisor
+                                  ? 'bg-[#71BF44]/15 border-[#71BF44] text-[#71BF44]'
+                                  : 'border-transparent hover:bg-[#71BF44]/10 hover:border-[#71BF44]/20'
+                              }`}
+                              title={selectedEmisorId === r.IdEmisor ? `Quitar filtro de ${r.Nemonico || 'S/N'}` : `Ver comportamiento de ${r.Nemonico || 'S/N'}`}
+                            >
+                              <span className={`text-xs font-black leading-none mb-1 transition-colors ${
+                                selectedEmisorId === r.IdEmisor ? 'text-[#71BF44]' : 'text-neutral-800 dark:text-neutral-100'
+                              }`}>
+                                {r.Nemonico || 'S/N'}
                               </span>
-                              <span className="text-[9px] text-neutral-400 font-medium leading-none mt-0.5">
-                                {r.UltimaTrxAutorizada.split(' ')[1] || ''}
+                              <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">
+                                ID: {r.IdEmisor}
                               </span>
-                            </div>
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-neutral-400 italic">Global / Sistema</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-5 text-center">
+                          <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                            {groupBySP && !r.PaisId ? (
+                              <span className="text-neutral-400 italic">Múltiples</span>
+                            ) : (
+                              getPaisNombre(r.PaisId)
+                            )}
+                          </span>
+                        </td>
+                        <td className="px-6 py-5 text-right font-black text-neutral-900 dark:text-white">
+                          {r.TotalEjecuciones.toLocaleString()}
+                        </td>
+                        <td className="px-6 py-5 text-right">
+                          <span className={`text-xs font-black px-2.5 py-1 rounded-lg ${r.TiempoPromedio_ms > 5000 ? 'bg-red-500/10 text-red-500 border border-red-500/20' : r.TiempoPromedio_ms > 1000 ? 'bg-orange-400/10 text-orange-500 border border-orange-400/20' : 'text-neutral-700 dark:text-neutral-300'}`}>
+                            {r.TiempoPromedio_ms.toLocaleString()} ms
+                          </span>
+                        </td>
+                        <td className="px-6 py-5 text-right text-xs font-bold text-neutral-500">
+                          {r.TiempoMaximo_ms.toLocaleString()} ms
+                        </td>
+                        <td className="px-6 py-5 text-right font-bold">
+                          <div className="flex flex-col items-end">
+                            <span className={r.TotalBloqueos > 0 ? 'text-red-500' : 'text-neutral-300 opacity-40'}>
+                              {r.TotalBloqueos.toLocaleString()}
+                            </span>
+                            {r.TotalBloqueos > 0 && r.TotalEjecuciones > 0 && (
+                              <span className="text-[9px] text-red-400/80 font-bold mt-0.5" title="Porcentaje de comprobantes bloqueados sobre el total de consultas">
+                                {((r.TotalBloqueos / r.TotalEjecuciones) * 100).toFixed(1)}%
+                              </span>
+                            )}
                           </div>
-                        ) : (
-                          <span className="text-[10px] text-neutral-400 italic">Sin registros trx</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        </td>
+                        <td className="px-8 py-5">
+                          {hasAlert ? (
+                            <div className="relative group/alert cursor-help flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/20 rounded-xl max-w-fit select-none">
+                              <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                              <div className="flex flex-col">
+                                <span className="text-[9px] font-black text-red-500 uppercase tracking-tighter leading-none mb-0.5">
+                                  Activo sin Autorizaciones
+                                </span>
+                                <span className="text-[8px] text-red-400 font-bold leading-none">
+                                  Última: {r.UltimaTrxAutorizada && r.UltimaTrxAutorizada !== 'NULL' && r.UltimaTrxAutorizada !== '---' ? r.UltimaTrxAutorizada.split(' ')[0] : 'Ninguna'}
+                                </span>
+                              </div>
+
+                              {/* Tooltip Ampliado al posarse encima */}
+                              <div className="absolute bottom-full right-0 mb-2.5 w-80 p-4 bg-neutral-900 dark:bg-neutral-950 text-white rounded-2xl shadow-2xl border border-neutral-800 dark:border-neutral-800/80 text-[10px] leading-relaxed hidden group-hover/alert:block z-50 pointer-events-none transition-all">
+                                <div className="font-black text-red-500 dark:text-red-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Alerta de Inactividad Transaccional
+                                </div>
+                                <p className="text-neutral-300 font-semibold mb-2 normal-case leading-normal">
+                                  {r.UltimaTrxAutorizada && r.UltimaTrxAutorizada !== 'NULL' && r.UltimaTrxAutorizada !== '---' 
+                                    ? `El emisor está registrando consultas en la base de datos pero no ha autorizado transacciones exitosas desde el ${r.UltimaTrxAutorizada.split(' ')[0]} a las ${r.UltimaTrxAutorizada.split(' ')[1] || ''} (hace más de 14 días).`
+                                    : 'El emisor registra consultas recurrentes en los últimos 2 días pero no cuenta con ningún registro histórico de transacciones autorizadas en el sistema.'}
+                                </p>
+                                <div className="border-t border-neutral-850 dark:border-neutral-800 pt-2 text-[9px] text-neutral-500 font-bold uppercase tracking-wider flex justify-between">
+                                  <span>Emisor: {r.Nemonico || 'S/N'}</span>
+                                  <span>ID: {r.IdEmisor || 'N/A'}</span>
+                                </div>
+                                {/* Triangulito del tooltip en la esquina derecha para alinearlo al badge */}
+                                <div className="absolute top-full right-6 border-4 border-transparent border-t-neutral-900 dark:border-t-neutral-950"></div>
+                              </div>
+                            </div>
+                          ) : r.UltimaTrxAutorizada && r.UltimaTrxAutorizada !== 'NULL' && r.UltimaTrxAutorizada !== '---' ? (
+                            <div className="flex items-center gap-2">
+                              <CheckCircle className="w-3.5 h-3.5 text-[#71BF44] shrink-0" />
+                              <div className="flex flex-col">
+                                <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300 leading-none">
+                                  {r.UltimaTrxAutorizada.split(' ')[0]}
+                                </span>
+                                <span className="text-[9px] text-neutral-400 font-medium leading-none mt-0.5">
+                                  {r.UltimaTrxAutorizada.split(' ')[1] || ''}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-neutral-400 italic">Sin registros trx</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <div className="text-center py-20 text-neutral-400 text-xs font-bold">
+                No se encontraron procedimientos almacenados que coincidan con la búsqueda.
+              </div>
+            )
           ) : (
-            <div className="text-center py-20 text-neutral-400 text-xs font-bold">
-              No se encontraron procedimientos almacenados que coincidan con la búsqueda.
-            </div>
+            activeComparisonRecords.length > 0 ? (
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.12em] border-b border-neutral-100 dark:border-neutral-800 select-none">
+                    <th 
+                      onClick={() => requestSort('StoredProcedure')} 
+                      className="px-6 py-5 cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors animate-fadeIn"
+                    >
+                      <div className="flex items-center group">
+                        Procedimiento Almacenado (SP)
+                        {renderSortIcon('StoredProcedure')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => requestSort('Nemonico')} 
+                      className="px-4 py-5 text-center cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                    >
+                      <div className="flex items-center justify-center group">
+                        Emisor / Nemónico
+                        {renderSortIcon('Nemonico')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => requestSort('PaisNombre')} 
+                      className="px-4 py-5 text-center cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                    >
+                      <div className="flex items-center justify-center group">
+                        País
+                        {renderSortIcon('PaisNombre')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => requestSort('ejecucionesA')} 
+                      className="px-4 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                      title={`Ejecuciones registradas en el Día A (${dateA})`}
+                    >
+                      <div className="flex items-center justify-end group">
+                        Ejec. Día A
+                        {renderSortIcon('ejecucionesA')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => requestSort('ejecucionesB')} 
+                      className="px-4 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                      title={`Ejecuciones registradas en el Día B (${dateB})`}
+                    >
+                      <div className="flex items-center justify-end group">
+                        Ejec. Día B
+                        {renderSortIcon('ejecucionesB')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => requestSort('deltaEjecuciones')} 
+                      className="px-4 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                      title="Diferencia de ejecuciones entre Día A y Día B"
+                    >
+                      <div className="flex items-center justify-end group">
+                        Δ Ejecuciones
+                        {renderSortIcon('deltaEjecuciones')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => requestSort('promedioA')} 
+                      className="px-4 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                      title={`Latencia promedio registrada en el Día A (${dateA})`}
+                    >
+                      <div className="flex items-center justify-end group">
+                        Prom. A
+                        {renderSortIcon('promedioA')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => requestSort('promedioB')} 
+                      className="px-4 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                      title={`Latencia promedio registrada en el Día B (${dateB})`}
+                    >
+                      <div className="flex items-center justify-end group">
+                        Prom. B
+                        {renderSortIcon('promedioB')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => requestSort('deltaPromedio')} 
+                      className="px-4 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                      title="Diferencia de latencia promedio entre Día A y Día B"
+                    >
+                      <div className="flex items-center justify-end group">
+                        Δ Promedio
+                        {renderSortIcon('deltaPromedio')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => requestSort('bloqueosA')} 
+                      className="px-4 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                      title={`Bloqueos registrados en el Día A (${dateA})`}
+                    >
+                      <div className="flex items-center justify-end group">
+                        Bloq. A
+                        {renderSortIcon('bloqueosA')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => requestSort('bloqueosB')} 
+                      className="px-4 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                      title={`Bloqueos registrados en el Día B (${dateB})`}
+                    >
+                      <div className="flex items-center justify-end group">
+                        Bloq. B
+                        {renderSortIcon('bloqueosB')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => requestSort('deltaBloqueos')} 
+                      className="px-6 py-5 text-right cursor-pointer hover:text-neutral-600 dark:hover:text-white transition-colors"
+                      title="Diferencia de bloqueos entre Día A y Día B"
+                    >
+                      <div className="flex items-center justify-end group">
+                        Δ Bloqueos
+                        {renderSortIcon('deltaBloqueos')}
+                      </div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/50">
+                  {activeComparisonRecords.map((r, idx) => {
+                    const deltaEjSign = r.deltaEjecuciones > 0 ? '+' : '';
+                    const deltaPrSign = r.deltaPromedio > 0 ? '+' : '';
+                    const deltaBlSign = r.deltaBloqueos > 0 ? '+' : '';
+
+                    const deltaEjColor = r.deltaEjecuciones > 0 
+                      ? 'text-[#71BF44]' 
+                      : r.deltaEjecuciones < 0 
+                        ? 'text-red-500' 
+                        : 'text-neutral-400';
+                        
+                    const deltaPrColor = r.deltaPromedio < 0 
+                      ? 'text-[#71BF44]' 
+                      : r.deltaPromedio > 0 
+                        ? 'text-red-500' 
+                        : 'text-neutral-400';
+                        
+                    const deltaBlColor = r.deltaBloqueos < 0 
+                      ? 'text-[#71BF44]' 
+                      : r.deltaBloqueos > 0 
+                        ? 'text-red-500' 
+                        : 'text-neutral-400';
+
+                    return (
+                      <tr 
+                        key={idx} 
+                        className="group hover:bg-neutral-50/50 dark:hover:bg-white/[0.01] transition-colors"
+                      >
+                        <td className="px-6 py-5 font-bold text-neutral-800 dark:text-neutral-200 text-xs break-all">
+                          <div className="flex items-center gap-2">
+                            <button 
+                              onClick={() => {
+                                if (!excludedSPs.includes(r.StoredProcedure)) {
+                                  setExcludedSPs([...excludedSPs, r.StoredProcedure]);
+                                }
+                              }}
+                              className="p-1.5 text-neutral-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 transition-all cursor-pointer shrink-0"
+                              title="Excluir de análisis"
+                            >
+                              <EyeOff className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              onClick={() => setSearchTerm(r.StoredProcedure)}
+                              className="p-1.5 text-neutral-400 hover:text-[#71BF44] hover:bg-[#71BF44]/10 rounded-lg transition-all cursor-pointer shrink-0"
+                              title="Filtrar por este SP"
+                            >
+                              <Search className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              onClick={() => handleCopyComparisonText(r, idx)}
+                              className={`p-1.5 rounded-lg transition-all cursor-pointer shrink-0 ${
+                                copiedState?.idx === idx && copiedState?.type === 'text'
+                                  ? 'text-green-500 bg-green-50 dark:bg-green-950/20'
+                                  : 'text-neutral-400 hover:text-[#71BF44] hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                              }`}
+                              title="Copiar fila (texto con cabeceras)"
+                            >
+                              {copiedState?.idx === idx && copiedState?.type === 'text' ? (
+                                <Check className="w-3.5 h-3.5" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+
+                            <button
+                              onClick={() => handleCopyComparisonJson(r, idx)}
+                              className={`p-1.5 rounded-lg transition-all cursor-pointer shrink-0 ${
+                                copiedState?.idx === idx && copiedState?.type === 'json'
+                                  ? 'text-green-500 bg-green-50 dark:bg-green-950/20'
+                                  : 'text-neutral-400 hover:text-[#71BF44] hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                              }`}
+                              title="Copiar objeto (JSON)"
+                            >
+                              {copiedState?.idx === idx && copiedState?.type === 'json' ? (
+                                <Check className="w-3.5 h-3.5" />
+                              ) : (
+                                <Braces className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+
+                            <span className="text-[10px] text-neutral-400 shrink-0">#{idx + 1}</span>
+                            <button
+                              onClick={() => setSearchTerm(r.StoredProcedure)}
+                              className="text-left text-neutral-800 dark:text-neutral-200 hover:text-[#71BF44] dark:hover:text-[#71BF44] transition-colors font-bold break-all line-clamp-2 cursor-pointer font-sans"
+                              title={`Filtrar por ${r.StoredProcedure}`}
+                            >
+                              {r.StoredProcedure}
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-4 py-5 text-center">
+                          {groupBySP ? (
+                            r.EmisoresAgrupados && r.EmisoresAgrupados.length > 0 ? (
+                              <div className="flex flex-col items-center gap-1.5">
+                                {r.EmisoresAgrupados.length > 3 ? (
+                                  <button
+                                    onClick={() => setModalSP(r.StoredProcedure)}
+                                    className="px-3.5 py-2 bg-[#71BF44]/10 hover:bg-[#71BF44]/20 border border-[#71BF44]/30 rounded-xl text-[10px] font-black text-[#71BF44] uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer hover:scale-105 shadow-sm active:scale-95"
+                                    title="Ver desglose detallado de emisores"
+                                  >
+                                    <span>{r.EmisoresAgrupados.length} Emisores</span>
+                                    <span className="text-[10px]">🔍</span>
+                                  </button>
+                                ) : (
+                                  <>
+                                    <span className="text-[10px] font-black text-[#71BF44] bg-[#71BF44]/10 border border-[#71BF44]/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider select-none">
+                                      {r.EmisoresAgrupados.length} {r.EmisoresAgrupados.length === 1 ? 'Emisor' : 'Emisores'}
+                                    </span>
+                                    <div className="flex flex-wrap gap-1 justify-center max-w-[200px]">
+                                      {r.EmisoresAgrupados.map((e: any) => {
+                                        const isFocused = selectedEmisorId === e.id;
+                                        return (
+                                          <button
+                                            key={e.id}
+                                            onClick={() => setSelectedEmisorId(isFocused ? null : e.id)}
+                                            className={`text-[9px] font-black px-2 py-0.5 rounded-lg border transition-all cursor-pointer ${
+                                              isFocused
+                                                ? 'bg-[#71BF44] text-white border-[#71BF44] shadow-sm'
+                                                : 'text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 hover:text-[#71BF44] hover:bg-[#71BF44]/10 dark:hover:bg-[#71BF44]/10 hover:border-[#71BF44]/30'
+                                            }`}
+                                            title={isFocused ? `Quitar filtro de ${e.nemonico}` : `Ver comportamiento de ${e.nemonico}`}
+                                          >
+                                            {e.nemonico}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-neutral-400 italic">Sin emisores</span>
+                            )
+                          ) : r.IdEmisor && r.IdEmisor > 0 ? (
+                            <button
+                              onClick={() => setSelectedEmisorId(selectedEmisorId === r.IdEmisor ? null : r.IdEmisor)}
+                              className={`inline-flex flex-col items-center p-2 rounded-xl border transition-all cursor-pointer ${
+                                selectedEmisorId === r.IdEmisor
+                                  ? 'bg-[#71BF44]/15 border-[#71BF44] text-[#71BF44]'
+                                  : 'border-transparent hover:bg-[#71BF44]/10 hover:border-[#71BF44]/20'
+                              }`}
+                              title={selectedEmisorId === r.IdEmisor ? `Quitar filtro de ${r.Nemonico || 'S/N'}` : `Ver comportamiento de ${r.Nemonico || 'S/N'}`}
+                            >
+                              <span className={`text-xs font-black leading-none mb-1 transition-colors ${
+                                selectedEmisorId === r.IdEmisor ? 'text-[#71BF44]' : 'text-neutral-800 dark:text-neutral-100'
+                              }`}>
+                                {r.Nemonico || 'S/N'}
+                              </span>
+                              <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">
+                                ID: {r.IdEmisor}
+                              </span>
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-neutral-400 italic">Global / Sistema</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-5 text-center">
+                          <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                            {groupBySP && !r.PaisId ? (
+                              <span className="text-neutral-400 italic">Múltiples</span>
+                            ) : (
+                              getPaisNombre(r.PaisId)
+                            )}
+                          </span>
+                        </td>
+                        <td className="px-4 py-5 text-right font-bold text-neutral-900 dark:text-white">
+                          {r.ejecucionesA.toLocaleString()}
+                        </td>
+                        <td className="px-4 py-5 text-right font-medium text-neutral-500">
+                          {r.ejecucionesB.toLocaleString()}
+                        </td>
+                        <td className="px-4 py-5 text-right font-black">
+                          <div className={`flex flex-col items-end ${deltaEjColor}`}>
+                            <span className="text-xs">
+                              {deltaEjSign}{r.deltaEjecuciones.toLocaleString()}
+                            </span>
+                            <span className="text-[9px] font-bold opacity-80">
+                              {deltaEjSign}{r.deltaEjecucionesPct.toFixed(1)}%
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-5 text-right font-bold text-neutral-900 dark:text-white">
+                          {r.promedioA.toLocaleString()} ms
+                        </td>
+                        <td className="px-4 py-5 text-right font-medium text-neutral-500">
+                          {r.promedioB.toLocaleString()} ms
+                        </td>
+                        <td className="px-4 py-5 text-right font-black">
+                          <div className={`flex flex-col items-end ${deltaPrColor}`}>
+                            <span className="text-xs">
+                              {deltaPrSign}{r.deltaPromedio.toLocaleString()} ms
+                            </span>
+                            <span className="text-[9px] font-bold opacity-80">
+                              {deltaPrSign}{r.deltaPromedioPct.toFixed(1)}%
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-5 text-right font-bold text-neutral-900 dark:text-white">
+                          <span className={r.bloqueosA > 0 ? 'text-red-500 font-black' : 'text-neutral-400 opacity-60'}>
+                            {r.bloqueosA.toLocaleString()}
+                          </span>
+                        </td>
+                        <td className="px-4 py-5 text-right font-medium text-neutral-500">
+                          <span className={r.bloqueosB > 0 ? 'text-neutral-500 font-bold' : 'text-neutral-400 opacity-30'}>
+                            {r.bloqueosB.toLocaleString()}
+                          </span>
+                        </td>
+                        <td className="px-6 py-5 text-right font-black">
+                          <div className={`flex flex-col items-end ${deltaBlColor}`}>
+                            <span className="text-xs">
+                              {deltaBlSign}{r.deltaBloqueos.toLocaleString()}
+                            </span>
+                            <span className="text-[9px] font-bold opacity-80">
+                              {deltaBlSign}{r.deltaBloqueosPct.toFixed(1)}%
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <div className="text-center py-20 text-neutral-400 text-xs font-bold">
+                No se encontraron registros comparativos que coincidan con la búsqueda.
+              </div>
+            )
           )}
         </div>
       </div>
