@@ -36,6 +36,11 @@ import {
   Cell
 } from 'recharts';
 
+interface SPEmisorAgrupado {
+  id: number;
+  nemonico: string;
+}
+
 interface SPRecord {
   StoredProcedure: string;
   IdEmisor: number | null;
@@ -49,7 +54,7 @@ interface SPRecord {
   TotalBloqueos: number;
   UltimaTrxAutorizada: string | null;
   HoraUltimaTrx: string | null;
-  EmisoresAgrupados?: string[];
+  EmisoresAgrupados?: SPEmisorAgrupado[];
 }
 
 export default function ConsultasRecurrentesPage() {
@@ -63,6 +68,7 @@ export default function ConsultasRecurrentesPage() {
   const [groupBySP, setGroupBySP] = useState(true);
   const [sortConfig, setSortConfig] = useState<{ key: keyof SPRecord | 'PaisNombre'; direction: 'asc' | 'desc' } | null>(null);
   const [copiedState, setCopiedState] = useState<{ idx: number; type: 'text' | 'json' } | null>(null);
+  const [selectedEmisorId, setSelectedEmisorId] = useState<number | null>(null);
 
   const requestSort = (key: keyof SPRecord | 'PaisNombre') => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -129,30 +135,38 @@ export default function ConsultasRecurrentesPage() {
     return data.filter(r => !excludedSPs.some(excluded => r.StoredProcedure.toLowerCase() === excluded.toLowerCase()));
   }, [data, excludedSPs]);
 
+  // Datos filtrados por emisor focalizado
+  const dataFiltered = useMemo(() => {
+    return dataFilteredByExclusions.filter(r => {
+      if (selectedEmisorId === null) return true;
+      return r.IdEmisor === selectedEmisorId;
+    });
+  }, [dataFilteredByExclusions, selectedEmisorId]);
+
   // Agrupamiento por Stored Procedure (opcional)
   const groupedData = useMemo(() => {
-    if (!groupBySP) return dataFilteredByExclusions;
+    if (!groupBySP) return dataFiltered;
     
     const map = new Map<string, SPRecord>();
-    dataFilteredByExclusions.forEach(r => {
+    dataFiltered.forEach(r => {
       const key = r.StoredProcedure;
       const current = map.get(key);
-      const nemonicoActual = r.Nemonico || (r.IdEmisor ? `ID ${r.IdEmisor}` : null);
+      const emisorObj = r.IdEmisor && r.Nemonico ? { id: r.IdEmisor, nemonico: r.Nemonico } : null;
       
       if (!current) {
         map.set(key, {
           ...r,
           IdEmisor: null,
           Nemonico: null,
-          EmisoresAgrupados: nemonicoActual ? [nemonicoActual] : []
+          EmisoresAgrupados: emisorObj ? [emisorObj] : []
         });
       } else {
         const totalEj = current.TotalEjecuciones + r.TotalEjecuciones;
         const tiempoTotal = current.TiempoTotal_ms + r.TiempoTotal_ms;
         
         const emisores = [...(current.EmisoresAgrupados || [])];
-        if (nemonicoActual && !emisores.includes(nemonicoActual)) {
-          emisores.push(nemonicoActual);
+        if (emisorObj && !emisores.some(e => e.id === emisorObj.id)) {
+          emisores.push(emisorObj);
         }
         
         map.set(key, {
@@ -175,20 +189,20 @@ export default function ConsultasRecurrentesPage() {
       }
     });
     return Array.from(map.values());
-  }, [dataFilteredByExclusions, groupBySP]);
+  }, [dataFiltered, groupBySP]);
 
   // KPIs globales calculados
   const kpis = useMemo(() => {
-    const totalConsultas = dataFilteredByExclusions.reduce((acc, r) => acc + r.TotalEjecuciones, 0);
-    const tiempoTotalSec = dataFilteredByExclusions.reduce((acc, r) => acc + r.TiempoTotal_ms, 0) / 1000;
-    const totalBloqueos = dataFilteredByExclusions.reduce((acc, r) => acc + r.TotalBloqueos, 0);
+    const totalConsultas = dataFiltered.reduce((acc, r) => acc + r.TotalEjecuciones, 0);
+    const tiempoTotalSec = dataFiltered.reduce((acc, r) => acc + r.TiempoTotal_ms, 0) / 1000;
+    const totalBloqueos = dataFiltered.reduce((acc, r) => acc + r.TotalBloqueos, 0);
     const tasaBloqueo = totalConsultas > 0 ? (totalBloqueos / totalConsultas) * 100 : 0;
     
     // Alertas de emisores activos pero sin trx autorizadas en las últimas 2 semanas (14 días)
     const thresholdDate = new Date();
     thresholdDate.setDate(thresholdDate.getDate() - 14);
     
-    const alertEmisores = dataFilteredByExclusions.filter(r => {
+    const alertEmisores = dataFiltered.filter(r => {
       // Debe tener emisor válido
       if (!r.IdEmisor || r.IdEmisor <= 0) return false;
       // Debe tener consultas registradas
@@ -215,7 +229,7 @@ export default function ConsultasRecurrentesPage() {
       alertasCount: uniqueAlertEmisores.length,
       alertEmisoresList: alertEmisores
     };
-  }, [dataFilteredByExclusions]);
+  }, [dataFiltered]);
 
   // Filtrado de registros para las tablas
   const filteredData = useMemo(() => {
@@ -224,7 +238,7 @@ export default function ConsultasRecurrentesPage() {
         r.StoredProcedure?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         r.Nemonico?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (r.IdEmisor && String(r.IdEmisor).includes(searchTerm)) ||
-        (r.EmisoresAgrupados && r.EmisoresAgrupados.some(e => e.toLowerCase().includes(searchTerm.toLowerCase())));
+        (r.EmisoresAgrupados && r.EmisoresAgrupados.some(e => e.nemonico.toLowerCase().includes(searchTerm.toLowerCase()) || String(e.id).includes(searchTerm)));
       return matchSearch;
     });
   }, [groupedData, searchTerm]);
@@ -254,7 +268,7 @@ export default function ConsultasRecurrentesPage() {
       r.Nemonico?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (r.IdEmisor && String(r.IdEmisor).includes(searchTerm));
 
-    return dataFilteredByExclusions.filter(r => {
+    return dataFiltered.filter(r => {
       if (!r.IdEmisor || r.IdEmisor <= 0) return false;
       if (r.TotalEjecuciones === 0) return false;
       if (!matchSearch(r)) return false;
@@ -266,7 +280,20 @@ export default function ConsultasRecurrentesPage() {
       const trxDate = new Date(r.UltimaTrxAutorizada);
       return !isNaN(trxDate.getTime()) && trxDate < thresholdDate;
     }).sort((a, b) => b.TotalEjecuciones - a.TotalEjecuciones);
-  }, [dataFilteredByExclusions, searchTerm]);
+  }, [dataFiltered, searchTerm]);
+
+  // Obtener emisores únicos de la base de datos completa con exclusiones
+  const uniqueEmitters = useMemo(() => {
+    const map = new Map<number, string>();
+    dataFilteredByExclusions.forEach(r => {
+      if (r.IdEmisor && r.IdEmisor > 0) {
+        map.set(r.IdEmisor, r.Nemonico || `Emisor ${r.IdEmisor}`);
+      }
+    });
+    return Array.from(map.entries())
+      .map(([id, nemonico]) => ({ id, nemonico }))
+      .sort((a, b) => a.nemonico.localeCompare(b.nemonico));
+  }, [dataFilteredByExclusions]);
 
   // Top Emisores con Más Consultas (para una métrica secundaria)
   const topEmisoresConsultas = useMemo(() => {
@@ -289,8 +316,8 @@ export default function ConsultasRecurrentesPage() {
 
   // Datos para la gráfica: dinámicos según el activeSubTab seleccionado
   const chartData = useMemo(() => {
-    // Si la pestaña es alertas, graficamos sobre los emisores con alertas. De lo contrario, usamos dataFilteredByExclusions
-    const baseData = activeSubTab === 'alertas' ? emisoresConAlertas : dataFilteredByExclusions;
+    // Si la pestaña es alertas, graficamos sobre los emisores con alertas. De lo contrario, usamos dataFiltered
+    const baseData = activeSubTab === 'alertas' ? emisoresConAlertas : dataFiltered;
     
     const spMap = new Map<string, { sp: string; value: number }>();
     
@@ -325,7 +352,7 @@ export default function ConsultasRecurrentesPage() {
         value: item.value,
         metricName: metricName
       }));
-  }, [dataFilteredByExclusions, activeSubTab, emisoresConAlertas]);
+  }, [dataFiltered, activeSubTab, emisoresConAlertas]);
 
   // Helper para mapear IDs de País a Nombre
   const getPaisNombre = (paisId: number | null) => {
@@ -372,8 +399,8 @@ export default function ConsultasRecurrentesPage() {
         aVal = getPaisNombre(a.PaisId);
         bVal = getPaisNombre(b.PaisId);
       } else if (key === 'Nemonico' && groupBySP) {
-        aVal = (a.EmisoresAgrupados || []).join(', ');
-        bVal = (b.EmisoresAgrupados || []).join(', ');
+        aVal = (a.EmisoresAgrupados || []).map(e => e.nemonico).join(', ');
+        bVal = (b.EmisoresAgrupados || []).map(e => e.nemonico).join(', ');
       } else {
         aVal = a[key as keyof SPRecord];
         bVal = b[key as keyof SPRecord];
@@ -408,7 +435,7 @@ export default function ConsultasRecurrentesPage() {
   // Copia el contenido de la fila formateado como texto legible con cabeceras
   const handleCopyText = (r: SPRecord, idx: number) => {
     const emisoresText = groupBySP 
-      ? (r.EmisoresAgrupados && r.EmisoresAgrupados.length > 0 ? r.EmisoresAgrupados.join(', ') : 'Sin emisores')
+      ? (r.EmisoresAgrupados && r.EmisoresAgrupados.length > 0 ? r.EmisoresAgrupados.map(e => `${e.nemonico} (ID: ${e.id})`).join(', ') : 'Sin emisores')
       : `${r.Nemonico || 'S/N'} (ID: ${r.IdEmisor || 'N/A'})`;
       
     const paisText = groupBySP && !r.PaisId ? 'Múltiples' : getPaisNombre(r.PaisId);
@@ -669,31 +696,49 @@ export default function ConsultasRecurrentesPage() {
                 Cargando emisores...
               </div>
             ) : topEmisoresConsultas.length > 0 ? (
-              topEmisoresConsultas.slice(0, 5).map((em, idx) => (
-                <div key={em.id} className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-neutral-900/50 rounded-2xl border border-neutral-100 dark:border-neutral-800/30 group hover:border-[#71BF44]/20 transition-all">
-                  <div className="flex items-center gap-3">
-                    <span className="w-6 h-6 rounded-lg bg-neutral-200 dark:bg-neutral-800 flex items-center justify-center text-xs font-black text-neutral-500">
-                      #{idx + 1}
-                    </span>
-                    <div>
-                      <h4 className="text-xs font-black text-neutral-800 dark:text-white uppercase leading-none mb-1">
-                        {em.nemonico}
-                      </h4>
-                      <p className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">
-                        ID Emisor: {em.id}
-                      </p>
+              topEmisoresConsultas.slice(0, 5).map((em, idx) => {
+                const isSelected = selectedEmisorId === em.id;
+                return (
+                  <button
+                    key={em.id}
+                    onClick={() => setSelectedEmisorId(isSelected ? null : em.id)}
+                    className={`w-full flex items-center justify-between p-3 rounded-2xl border transition-all text-left cursor-pointer group ${
+                      isSelected 
+                        ? 'bg-[#71BF44]/10 border-[#71BF44] ring-1 ring-[#71BF44]' 
+                        : 'bg-neutral-50 dark:bg-neutral-900/50 border-neutral-100 dark:border-neutral-800/30 hover:border-[#71BF44]/40 hover:bg-[#71BF44]/5'
+                    }`}
+                    title={isSelected ? "Quitar filtro de emisor" : `Analizar emisor ${em.nemonico}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-black transition-colors ${
+                        isSelected ? 'bg-[#71BF44] text-white' : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-500'
+                      }`}>
+                        #{idx + 1}
+                      </span>
+                      <div>
+                        <h4 className={`text-xs font-black uppercase leading-none mb-1 transition-colors ${
+                          isSelected ? 'text-[#71BF44]' : 'text-neutral-800 dark:text-white'
+                        }`}>
+                          {em.nemonico}
+                        </h4>
+                        <p className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">
+                          ID Emisor: {em.id}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-sm font-black text-neutral-950 dark:text-white block">
-                      {em.count.toLocaleString()}
-                    </span>
-                    <span className="text-[8px] font-black text-red-500 uppercase tracking-widest">
-                      {em.bloqueos.toLocaleString()} Bloqueos
-                    </span>
-                  </div>
-                </div>
-              ))
+                    <div className="text-right">
+                      <span className={`text-sm font-black block transition-colors ${
+                        isSelected ? 'text-[#71BF44]' : 'text-neutral-950 dark:text-white'
+                      }`}>
+                        {em.count.toLocaleString()}
+                      </span>
+                      <span className="text-[8px] font-black text-red-500 uppercase tracking-widest">
+                        {em.bloqueos.toLocaleString()} Bloqueos
+                      </span>
+                    </div>
+                  </button>
+                );
+              })
             ) : (
               <div className="h-full flex items-center justify-center text-neutral-400 text-xs font-bold py-10">
                 Sin datos de emisores
@@ -702,6 +747,34 @@ export default function ConsultasRecurrentesPage() {
           </div>
         </div>
       </div>
+
+      {/* Indicador de Filtro Focado por Emisor */}
+      {selectedEmisorId !== null && (
+        <div className="mb-6 p-5 bg-[#71BF44]/10 border border-[#71BF44]/30 dark:border-[#71BF44]/20 rounded-3xl flex items-center justify-between shadow-sm animate-fadeIn">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-[#71BF44]/20 rounded-2xl flex items-center justify-center ring-1 ring-[#71BF44]/30">
+              <Building2 className="w-5 h-5 text-[#71BF44]" />
+            </div>
+            <div>
+              <h4 className="text-xs font-black text-neutral-900 dark:text-white uppercase tracking-wider mb-0.5">
+                Modo Foco Emisor Activo
+              </h4>
+              <p className="text-[10px] text-neutral-500 dark:text-neutral-400 font-bold uppercase">
+                Visualizando ejecuciones, latencias y bloqueos del emisor:{" "}
+                <span className="text-[#71BF44] font-black bg-[#71BF44]/10 border border-[#71BF44]/25 px-2 py-0.5 rounded-lg">
+                  {uniqueEmitters.find(e => e.id === selectedEmisorId)?.nemonico || `Emisor ${selectedEmisorId}`} (ID: {selectedEmisorId})
+                </span>
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setSelectedEmisorId(null)}
+            className="px-5 py-2.5 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded-2xl text-[9px] font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all cursor-pointer shadow-md"
+          >
+            Quitar Filtro
+          </button>
+        </div>
+      )}
 
       {/* Buscador y Navegación de Tablas */}
       <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[40px] overflow-hidden shadow-xl">
@@ -752,6 +825,26 @@ export default function ConsultasRecurrentesPage() {
                   className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${groupBySP ? 'translate-x-5' : 'translate-x-0'}`}
                 />
               </button>
+            </div>
+
+            {/* Selector de Emisor */}
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-white dark:bg-neutral-850 border border-neutral-200/60 dark:border-neutral-850 rounded-2xl ml-2 shadow-sm">
+              <span className="text-[9px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest">Emisor:</span>
+              <select
+                value={selectedEmisorId || ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedEmisorId(val ? Number(val) : null);
+                }}
+                className="bg-transparent border-none text-[10px] font-black text-neutral-700 dark:text-neutral-200 outline-none cursor-pointer max-w-[120px] truncate"
+              >
+                <option value="" className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white">TODOS</option>
+                {uniqueEmitters.map(e => (
+                  <option key={e.id} value={e.id} className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white">
+                    {e.nemonico}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -928,26 +1021,52 @@ export default function ConsultasRecurrentesPage() {
                       <td className="px-6 py-5 text-center">
                         {groupBySP ? (
                           r.EmisoresAgrupados && r.EmisoresAgrupados.length > 0 ? (
-                            <div className="flex flex-col items-center gap-1">
-                              <span className="text-[10px] font-black text-[#71BF44] bg-[#71BF44]/10 border border-[#71BF44]/20 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            <div className="flex flex-col items-center gap-1.5">
+                              <span className="text-[10px] font-black text-[#71BF44] bg-[#71BF44]/10 border border-[#71BF44]/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider select-none">
                                 {r.EmisoresAgrupados.length} {r.EmisoresAgrupados.length === 1 ? 'Emisor' : 'Emisores'}
                               </span>
-                              <span className="text-[9px] text-neutral-400 font-bold max-w-[120px] truncate block" title={r.EmisoresAgrupados.join(', ')}>
-                                {r.EmisoresAgrupados.join(', ')}
-                              </span>
+                              <div className="flex flex-wrap gap-1 justify-center max-w-[200px]">
+                                {r.EmisoresAgrupados.map(e => {
+                                  const isFocused = selectedEmisorId === e.id;
+                                  return (
+                                    <button
+                                      key={e.id}
+                                      onClick={() => setSelectedEmisorId(isFocused ? null : e.id)}
+                                      className={`text-[9px] font-black px-2 py-0.5 rounded-lg border transition-all cursor-pointer ${
+                                        isFocused
+                                          ? 'bg-[#71BF44] text-white border-[#71BF44] shadow-sm'
+                                          : 'text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 hover:text-[#71BF44] hover:bg-[#71BF44]/10 dark:hover:bg-[#71BF44]/10 hover:border-[#71BF44]/30'
+                                      }`}
+                                      title={isFocused ? `Quitar filtro de ${e.nemonico}` : `Ver comportamiento de ${e.nemonico}`}
+                                    >
+                                      {e.nemonico}
+                                    </button>
+                                  );
+                                })}
+                              </div>
                             </div>
                           ) : (
                             <span className="text-[10px] text-neutral-400 italic">Sin emisores</span>
                           )
                         ) : r.IdEmisor && r.IdEmisor > 0 ? (
-                          <div className="inline-flex flex-col items-center">
-                            <span className="text-xs font-black text-neutral-800 dark:text-neutral-100 leading-none mb-1">
+                          <button
+                            onClick={() => setSelectedEmisorId(selectedEmisorId === r.IdEmisor ? null : r.IdEmisor)}
+                            className={`inline-flex flex-col items-center p-2 rounded-xl border transition-all cursor-pointer ${
+                              selectedEmisorId === r.IdEmisor
+                                ? 'bg-[#71BF44]/15 border-[#71BF44] text-[#71BF44]'
+                                : 'border-transparent hover:bg-[#71BF44]/10 hover:border-[#71BF44]/20'
+                            }`}
+                            title={selectedEmisorId === r.IdEmisor ? `Quitar filtro de ${r.Nemonico || 'S/N'}` : `Ver comportamiento de ${r.Nemonico || 'S/N'}`}
+                          >
+                            <span className={`text-xs font-black leading-none mb-1 transition-colors ${
+                              selectedEmisorId === r.IdEmisor ? 'text-[#71BF44]' : 'text-neutral-800 dark:text-neutral-100'
+                            }`}>
                               {r.Nemonico || 'S/N'}
                             </span>
                             <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">
                               ID: {r.IdEmisor}
                             </span>
-                          </div>
+                          </button>
                         ) : (
                           <span className="text-[10px] text-neutral-400 italic">Global / Sistema</span>
                         )}
