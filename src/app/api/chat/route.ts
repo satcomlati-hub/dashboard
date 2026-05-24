@@ -14,7 +14,14 @@ export const maxDuration = 60;
 const DEFAULT_AGENT_URL =
   'https://sara.mysatcomla.com/agentes/v1/agents/ab68c7cf-e593-4219-8240-a4d93171f5e7/invoke';
 
-const AGENT_URL = process.env.SARA_V6_AGENT_URL || DEFAULT_AGENT_URL;
+// Si en producción la env var aún apunta a /invoke/stream (deploys viejos),
+// la normalizamos a /invoke porque el flujo nuevo espera JSON, no SSE.
+function normalizeAgentUrl(raw: string | undefined): string {
+  const url = raw || DEFAULT_AGENT_URL;
+  return url.replace(/\/invoke\/stream(?:\/)?$/, '/invoke');
+}
+
+const AGENT_URL = normalizeAgentUrl(process.env.SARA_V6_AGENT_URL);
 const AGENT_TOKEN = process.env.SARA_V6_AGENT_TOKEN || '';
 const LEGACY_WEBHOOK = process.env.SARA_WEBHOOK_URL || '';
 
@@ -135,13 +142,16 @@ export async function POST(request: Request) {
       body: JSON.stringify(body),
     });
 
-    if (!upstream.ok || !upstream.body) {
+    if (!upstream.ok) {
       const errBody = await upstream.text().catch(() => '');
       console.error(
-        `Agent V6 error ${upstream.status}: ${errBody.slice(0, 300)}`,
+        `Agent V6 error ${upstream.status} (url=${AGENT_URL}): ${errBody.slice(0, 400)}`,
       );
       return NextResponse.json(
-        { error: 'Error comunicando con SARA V6' },
+        {
+          error: `Error comunicando con SARA V6 (HTTP ${upstream.status})`,
+          detail: errBody.slice(0, 400),
+        },
         { status: upstream.status || 500 },
       );
     }
@@ -157,7 +167,19 @@ export async function POST(request: Request) {
       error?: unknown;
     };
 
-    const upstreamJson = (await upstream.json()) as InvokeResponse;
+    let upstreamJson: InvokeResponse;
+    try {
+      upstreamJson = (await upstream.json()) as InvokeResponse;
+    } catch (err) {
+      console.error(`Agent V6 JSON parse failed (url=${AGENT_URL}):`, err);
+      return NextResponse.json(
+        {
+          error: 'Respuesta del agente no es JSON válido',
+          hint: 'Si AGENT_URL termina en /invoke/stream debe ser /invoke',
+        },
+        { status: 502 },
+      );
+    }
     const fullText = (upstreamJson.response ?? '').toString();
 
     const stream = new ReadableStream<Uint8Array>({
