@@ -8,8 +8,11 @@ export const maxDuration = 60;
 //   SARA_V6_AGENT_URL    = base URL del endpoint /invoke/stream
 //   SARA_V6_AGENT_TOKEN  = Bearer token (de ag_api_keys)
 //   SARA_WEBHOOK_URL     = fallback al webhook n8n viejo (opcional)
+// Usamos el endpoint /invoke (no /stream) porque hace post-procesamiento
+// de la respuesta (cierra links rotos, restaura URLs truncadas). El streaming
+// real se simula del lado servidor con chunks de 80 chars.
 const DEFAULT_AGENT_URL =
-  'https://sara.mysatcomla.com/agentes/v1/agents/ab68c7cf-e593-4219-8240-a4d93171f5e7/invoke/stream';
+  'https://sara.mysatcomla.com/agentes/v1/agents/ab68c7cf-e593-4219-8240-a4d93171f5e7/invoke';
 
 const AGENT_URL = process.env.SARA_V6_AGENT_URL || DEFAULT_AGENT_URL;
 const AGENT_TOKEN = process.env.SARA_V6_AGENT_TOKEN || '';
@@ -143,70 +146,46 @@ export async function POST(request: Request) {
       );
     }
 
-    // Convertir SSE Antigravity → NDJSON del formato del frontend.
-    // Formato upstream:
-    //   data: <chunk>\n\n            ← texto plano del modelo
-    //   event: error\ndata: <msg>\n\n
-    //   event: done\ndata: {json}\n\n
+    // Upstream es endpoint /invoke (no /stream): la respuesta viene como JSON
+    // completo y ya post-procesado por el backend (links rotos arreglados,
+    // URLs truncadas restauradas, fuentes ordenadas). Hacemos "fake streaming"
+    // troceando el texto en chunks de ~80 chars para mantener UX.
+    type InvokeResponse = {
+      response?: string;
+      run_id?: string;
+      duration_ms?: number;
+      error?: unknown;
+    };
+
+    const upstreamJson = (await upstream.json()) as InvokeResponse;
+    const fullText = (upstreamJson.response ?? '').toString();
+
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
-        const reader = upstream.body!.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let fullText = '';
-
-        const emit = (chunk: string) => {
-          fullText += chunk;
-          controller.enqueue(ndjsonItem(chunk));
-        };
-
-        const processBlock = (block: string) => {
-          // Un bloque SSE puede contener varias líneas "field: value"
-          const lines = block.split('\n');
-          let event: string | null = null;
-          let data = '';
-          for (const line of lines) {
-            if (line.startsWith('event:')) {
-              event = line.slice(6).trim();
-            } else if (line.startsWith('data:')) {
-              // Concatenar líneas data: respetando que upstream las
-              // separa con \n cuando son multi-línea.
-              const piece = line.slice(5).startsWith(' ')
-                ? line.slice(6)
-                : line.slice(5);
-              data += (data ? '\n' : '') + piece;
-            }
-          }
-          if (!data) return;
-
-          if (event === 'error') {
-            controller.enqueue(ndjsonError(data));
+        try {
+          if (!fullText) {
+            controller.enqueue(ndjsonError('Respuesta vacía del agente'));
+            controller.close();
             return;
           }
-          if (event === 'done') {
-            return; // metadata final, no se muestra
-          }
-          // Evento default = mensaje del agente
-          emit(data);
-        };
 
-        try {
-          for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const blocks = buffer.split('\n\n');
-            buffer = blocks.pop() ?? '';
-            for (const block of blocks) {
-              if (block.trim()) processBlock(block);
+          const CHUNK_SIZE = 80;
+          let i = 0;
+          while (i < fullText.length) {
+            let end = Math.min(i + CHUNK_SIZE, fullText.length);
+            // ajustar al siguiente whitespace o salto si no estamos al final
+            if (end < fullText.length) {
+              const lookahead = fullText.slice(end, end + 40);
+              const nextBreak = lookahead.search(/[\s\n]/);
+              if (nextBreak > 0) end += nextBreak;
             }
+            const chunk = fullText.slice(i, end);
+            controller.enqueue(ndjsonItem(chunk));
+            i = end;
+            await new Promise((r) => setTimeout(r, 18));
           }
-          if (buffer.trim()) processBlock(buffer);
 
-          // Marker de imágenes — SOLO como fallback si el agente no las
-          // insertó inline con ![](url). Si ya las puso inline, ReactMarkdown
-          // las renderiza dentro del flujo del texto y NO queremos duplicarlas
-          // como thumbnails al final.
+          // Marker de imágenes — fallback si el agente NO las puso inline
           const hasInlineImages = /!\[[^\]]*\]\(https?:\/\/[^)]+\)/.test(fullText);
           if (!hasInlineImages) {
             const imgs = extractRagImages(fullText);
@@ -219,11 +198,6 @@ export async function POST(request: Request) {
             ndjsonError(`Error de streaming: ${String(err).slice(0, 200)}`),
           );
         } finally {
-          try {
-            reader.releaseLock();
-          } catch {
-            /* ignore */
-          }
           controller.close();
         }
       },
