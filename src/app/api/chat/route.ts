@@ -94,11 +94,17 @@ export async function POST(request: Request) {
       );
     }
 
-    // Construir prompt con metadata del usuario + url de imagen si la hay
+    // Construir prompt con metadata del usuario + url de imagen si la hay.
+    // El prefix `[USUARIO ACTUAL: ...]` lo lee el agente para personalizar la
+    // respuesta (usar nombre, saludar la primera vez del hilo, etc.).
     const parts: string[] = [];
     if (userName || userEmail) {
-      const who = [userName, userEmail].filter(Boolean).join(' / ');
-      parts.push(`[Usuario: ${who}]`);
+      const firstName = (userName || '').trim().split(/\s+/)[0] || '';
+      const meta: string[] = [];
+      if (firstName) meta.push(`nombre_corto=${firstName}`);
+      if (userName) meta.push(`nombre_completo=${userName}`);
+      if (userEmail) meta.push(`email=${userEmail}`);
+      parts.push(`[USUARIO ACTUAL: ${meta.join(' | ')}]`);
     }
     if (imageUrl) {
       parts.push(
