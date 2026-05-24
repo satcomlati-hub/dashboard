@@ -94,9 +94,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Construir prompt con metadata del usuario + url de imagen si la hay.
-    // El prefix `[USUARIO ACTUAL: ...]` lo lee el agente para personalizar la
-    // respuesta (usar nombre, saludar la primera vez del hilo, etc.).
+    // Construir prompt con metadata del usuario.
+    // La URL de imagen NO va en el texto: se pasa en `image_urls` para que
+    // el backend la descargue y la inyecte como adjunto multimodal al modelo.
     const parts: string[] = [];
     if (userName || userEmail) {
       const firstName = (userName || '').trim().split(/\s+/)[0] || '';
@@ -106,19 +106,22 @@ export async function POST(request: Request) {
       if (userEmail) meta.push(`email=${userEmail}`);
       parts.push(`[USUARIO ACTUAL: ${meta.join(' | ')}]`);
     }
-    if (imageUrl) {
-      parts.push(
-        `[El usuario adjuntó una imagen. URL pública: ${imageUrl}. ` +
-          `Si la pregunta se refiere a su contenido visual, indícale que actualmente solo puedo describir capturas que ya están en el RAG.]`,
-      );
-    }
-    if (query) parts.push(query);
+    // Si el usuario solo subió imagen sin texto, generar un prompt por defecto.
+    const userQuery = query.trim() || (imageUrl ? 'Describe lo que ves en esta imagen y, si reconoces algo de los manuales SARA, complementa.' : '');
+    if (userQuery) parts.push(userQuery);
     const prompt = parts.join('\n\n');
 
-    const body = {
+    const body: {
+      prompt: string;
+      conversation_id?: string;
+      image_urls?: string[];
+    } = {
       prompt,
       conversation_id: sessionId || undefined,
     };
+    if (imageUrl) {
+      body.image_urls = [imageUrl];
+    }
 
     const upstream = await fetch(AGENT_URL, {
       method: 'POST',
