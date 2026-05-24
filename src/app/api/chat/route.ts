@@ -194,12 +194,16 @@ export async function POST(request: Request) {
           }
           if (buffer.trim()) processBlock(buffer);
 
-          // Marker de imágenes que el frontend interpreta para mostrar
-          // miniaturas debajo del mensaje. Toma todas las URLs Supabase
-          // Storage del bucket rag-images mencionadas por el agente.
-          const imgs = extractRagImages(fullText);
-          if (imgs.length > 0) {
-            controller.enqueue(ndjsonItem(`[[IMGS]]:${imgs.join('|')}`));
+          // Marker de imágenes — SOLO como fallback si el agente no las
+          // insertó inline con ![](url). Si ya las puso inline, ReactMarkdown
+          // las renderiza dentro del flujo del texto y NO queremos duplicarlas
+          // como thumbnails al final.
+          const hasInlineImages = /!\[[^\]]*\]\(https?:\/\/[^)]+\)/.test(fullText);
+          if (!hasInlineImages) {
+            const imgs = extractRagImages(fullText);
+            if (imgs.length > 0) {
+              controller.enqueue(ndjsonItem(`[[IMGS]]:${imgs.join('|')}`));
+            }
           }
         } catch (err) {
           controller.enqueue(
