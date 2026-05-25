@@ -117,6 +117,7 @@ const LEVEL_TEXT_CLASSES: { [key: string]: string } = {
 export default function SeqMonitor() {
   const [activeTab, setActiveTab] = useState<'monitor' | 'tasks' | 'connections'>('monitor');
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [showChart, setShowChart] = useState(true);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -207,8 +208,57 @@ export default function SeqMonitor() {
     }, 4000);
   };
 
+  // Alternar visibilidad de gráfica analítica
+  const toggleShowChart = () => {
+    const nextVal = !showChart;
+    setShowChart(nextVal);
+    localStorage.setItem('seq_monitor_show_chart', String(nextVal));
+    showToast(nextVal ? 'Gráfico analítico visible' : 'Gráfico analítico oculto', 'info');
+  };
+
+  // Descargar log en formato archivo .json
+  const handleDownloadLog = (log: SeqLog) => {
+    const propertiesData: { [key: string]: any } = {};
+    if (log.Properties) {
+      log.Properties.forEach(p => {
+        propertiesData[p.Name] = p.Value;
+      });
+    }
+    if (log.Exception) {
+      propertiesData['@Exception'] = log.Exception;
+    }
+    if (log.MessageTemplate && log.RenderedMessage !== log.MessageTemplate) {
+      propertiesData['@MessageTemplate'] = log.MessageTemplate;
+    }
+
+    const rawLog = {
+      Id: log.Id,
+      Timestamp: log.Timestamp,
+      Level: log.Level || 'Information',
+      MessageTemplate: log.MessageTemplate,
+      RenderedMessage: log.RenderedMessage,
+      Properties: propertiesData
+    };
+
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(rawLog, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    const fileName = `${log.Id || 'log'}.json`;
+    downloadAnchor.setAttribute("download", fileName);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    showToast(`Archivo ${fileName} descargado`, 'success');
+  };
+
   // Cargar Ajustes y Datos al inicio
   useEffect(() => {
+    // Cargar visualización de gráfico de localStorage
+    const savedShowChart = localStorage.getItem('seq_monitor_show_chart');
+    if (savedShowChart !== null) {
+      setShowChart(savedShowChart === 'true');
+    }
+
     // Cargar queries guardadas de localStorage
     const saved = localStorage.getItem('seq_monitor_queries');
     if (saved) {
@@ -442,13 +492,54 @@ export default function SeqMonitor() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        showToast(`Error de Seq: ${errorData.error || 'Servidor inalcanzable'}`, 'error');
+        showToast(`Error de Seq: ${errorData.error || errorData.details || 'Servidor inalcanzable'}`, 'error');
         if (isStreaming) stopStreaming();
         return;
       }
 
       const data = await response.json();
-      const fetchedLogs = Array.isArray(data) ? data : (data.Events || []);
+      let fetchedLogs: SeqLog[] = [];
+
+      if (data && data.Columns && Array.isArray(data.Rows)) {
+        // Es un resultado de consulta SQL agregada/dataset de Seq
+        fetchedLogs = data.Rows.map((row: any[], rowIndex: number) => {
+          const properties = data.Columns.map((colName: string, colIndex: number) => ({
+            Name: colName,
+            Value: row[colIndex]
+          }));
+
+          // Determinar si hay un timestamp en las columnas
+          let timestamp = new Date().toISOString();
+          const tsColIndex = data.Columns.findIndex((col: string) => col.toLowerCase() === '@timestamp' || col.toLowerCase() === 'time');
+          if (tsColIndex !== -1 && row[tsColIndex]) {
+            timestamp = row[tsColIndex];
+          }
+
+          // Buscar si hay columna de nivel de log
+          let level = 'Information';
+          const lvlColIndex = data.Columns.findIndex((col: string) => col.toLowerCase() === '@level' || col.toLowerCase() === 'level');
+          if (lvlColIndex !== -1 && row[lvlColIndex]) {
+            level = row[lvlColIndex];
+          }
+
+          // Crear mensaje renderizado descriptivo
+          const renderedMessage = data.Columns
+            .map((colName: string, colIndex: number) => {
+              const val = row[colIndex];
+              return `${colName}: ${typeof val === 'object' ? JSON.stringify(val) : String(val)}`;
+            }).join(' | ');
+
+          return {
+            Id: `sql-row-${rowIndex}-${Date.now()}`,
+            Timestamp: timestamp,
+            Level: level,
+            RenderedMessage: renderedMessage,
+            Properties: properties
+          };
+        });
+      } else {
+        fetchedLogs = Array.isArray(data) ? data : (data.Events || []);
+      }
 
       setLogs(prevLogs => {
         if (!isAutoRefresh) return fetchedLogs;
@@ -1118,79 +1209,92 @@ export default function SeqMonitor() {
                   </div>
                 </div>
 
-                <div className="relative max-w-xs w-full">
-                  <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-neutral-400 dark:text-neutral-500" />
-                  <input
-                    type="text"
-                    placeholder="Filtrar por texto en consola..."
-                    value={localSearchQuery}
-                    onChange={(e) => setLocalSearchQuery(e.target.value)}
-                    className="w-full bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44]"
-                  />
+                <div className="flex items-center gap-2 select-none w-full lg:w-auto justify-between lg:justify-end">
+                  <button
+                    onClick={toggleShowChart}
+                    className="flex items-center gap-1.5 px-3 py-1.5 border border-neutral-250 dark:border-neutral-800 bg-neutral-55 dark:bg-[#181818] hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-xs font-bold text-neutral-600 dark:text-neutral-400 transition-colors"
+                    title={showChart ? "Ocultar panel de gráfico" : "Mostrar panel de gráfico"}
+                  >
+                    <Activity className={`w-3.5 h-3.5 ${showChart ? 'text-[#71BF44]' : 'text-neutral-400'}`} />
+                    {showChart ? 'Ocultar Gráfica' : 'Mostrar Gráfica'}
+                  </button>
+
+                  <div className="relative max-w-xs w-full">
+                    <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-neutral-400 dark:text-neutral-500" />
+                    <input
+                      type="text"
+                      placeholder="Filtrar por texto en consola..."
+                      value={localSearchQuery}
+                      onChange={(e) => setLocalSearchQuery(e.target.value)}
+                      className="w-full bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44]"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Gráfico Analítico de Eventos */}
-              <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-3 flex flex-col">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-xs font-bold text-neutral-900 dark:text-white">Frecuencia de Eventos por Nivel</h4>
-                  <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                    Haz clic en un punto de la gráfica para filtrar temporalmente en Seq
-                  </span>
-                </div>
-                <div className="h-28 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart
-                      data={chartData}
-                      onClick={handleChartClick}
-                      margin={{ top: 5, right: 10, left: -25, bottom: 0 }}
-                    >
-                      <XAxis
-                        dataKey="timeLabel"
-                        tick={{ fill: '#666', fontSize: 8 }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <YAxis
-                        tick={{ fill: '#666', fontSize: 8 }}
-                        axisLine={false}
-                        tickLine={false}
-                        allowDecimals={false}
-                      />
-                      <RechartsTooltip
-                        contentStyle={{
-                          backgroundColor: isDarkMode ? '#131313' : '#ffffff',
-                          borderColor: isDarkMode ? '#222' : '#e5e5e5',
-                          borderRadius: '8px',
-                          fontSize: '11px',
-                          color: isDarkMode ? '#fff' : '#333'
-                        }}
-                        labelStyle={{ color: isDarkMode ? '#fff' : '#000', fontWeight: 'bold' }}
-                      />
-                      <Legend
-                        verticalAlign="top"
-                        align="right"
-                        iconSize={6}
-                        iconType="circle"
-                        wrapperStyle={{ fontSize: '9px', paddingBottom: '10px' }}
-                        onClick={(props: any) => handleLevelClick(props.dataKey)}
-                      />
-                      {LOG_LEVELS.map(lvl => (
-                        <Area
-                          key={lvl}
-                          type="monotone"
-                          dataKey={lvl}
-                          stroke={LEVEL_COLORS[lvl]}
-                          fill={`${LEVEL_COLORS[lvl]}05`}
-                          strokeWidth={1.5}
-                          dot={{ r: 1.5, strokeWidth: 0.5 }}
-                          activeDot={{ r: 3 }}
+              {/* Gráfico Analítico de Eventos (Opcional) */}
+              {showChart && (
+                <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-3 flex flex-col">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-xs font-bold text-neutral-900 dark:text-white">Frecuencia de Eventos por Nivel</h4>
+                    <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                      Haz clic en un punto de la gráfica para filtrar temporalmente en Seq
+                    </span>
+                  </div>
+                  <div className="h-28 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart
+                        data={chartData}
+                        onClick={handleChartClick}
+                        margin={{ top: 5, right: 10, left: -25, bottom: 0 }}
+                      >
+                        <XAxis
+                          dataKey="timeLabel"
+                          tick={{ fill: '#666', fontSize: 8 }}
+                          axisLine={false}
+                          tickLine={false}
                         />
-                      ))}
-                    </AreaChart>
-                  </ResponsiveContainer>
+                        <YAxis
+                          tick={{ fill: '#666', fontSize: 8 }}
+                          axisLine={false}
+                          tickLine={false}
+                          allowDecimals={false}
+                        />
+                        <RechartsTooltip
+                          contentStyle={{
+                            backgroundColor: isDarkMode ? '#131313' : '#ffffff',
+                            borderColor: isDarkMode ? '#222' : '#e5e5e5',
+                            borderRadius: '8px',
+                            fontSize: '11px',
+                            color: isDarkMode ? '#fff' : '#333'
+                          }}
+                          labelStyle={{ color: isDarkMode ? '#fff' : '#000', fontWeight: 'bold' }}
+                        />
+                        <Legend
+                          verticalAlign="top"
+                          align="right"
+                          iconSize={6}
+                          iconType="circle"
+                          wrapperStyle={{ fontSize: '9px', paddingBottom: '10px' }}
+                          onClick={(props: any) => handleLevelClick(props.dataKey)}
+                        />
+                        {LOG_LEVELS.map(lvl => (
+                          <Area
+                            key={lvl}
+                            type="monotone"
+                            dataKey={lvl}
+                            stroke={LEVEL_COLORS[lvl]}
+                            fill={`${LEVEL_COLORS[lvl]}05`}
+                            strokeWidth={1.5}
+                            dot={{ r: 1.5, strokeWidth: 0.5 }}
+                            activeDot={{ r: 3 }}
+                          />
+                        ))}
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Visor de Eventos (Consola) */}
               <div className="flex-1 flex flex-col border border-neutral-200 dark:border-neutral-800 bg-[#0d0d0d] rounded-xl overflow-hidden min-h-0">
@@ -1279,7 +1383,27 @@ export default function SeqMonitor() {
                               )}
 
                               <div>
-                                <h5 className="text-[10px] text-[#71BF44] font-bold uppercase tracking-wider mb-1">Propiedades Estructuradas Interactivas</h5>
+                                <div className="flex items-center justify-between mb-2">
+                                  <h5 className="text-[10px] text-[#71BF44] font-bold uppercase tracking-wider">Propiedades Estructuradas Interactivas</h5>
+                                  <div className="flex items-center gap-2 select-none">
+                                    <button
+                                      onClick={() => handleCopyLog(log)}
+                                      className="flex items-center gap-1 text-[10px] font-bold bg-[#181818] border border-neutral-850 hover:bg-neutral-800 text-neutral-300 hover:text-white px-2 py-1 rounded transition-colors"
+                                      title="Copiar log completo (JSON)"
+                                    >
+                                      <Copy className="w-3 h-3" />
+                                      Copiar JSON
+                                    </button>
+                                    <button
+                                      onClick={() => handleDownloadLog(log)}
+                                      className="flex items-center gap-1 text-[10px] font-bold bg-[#181818] border border-neutral-850 hover:bg-neutral-800 text-neutral-300 hover:text-white px-2 py-1 rounded transition-colors"
+                                      title="Descargar log como archivo .json"
+                                    >
+                                      <FileText className="w-3 h-3 text-[#71BF44]" />
+                                      Descargar JSON
+                                    </button>
+                                  </div>
+                                </div>
                                 <div className="bg-[#181818] border border-neutral-850 rounded-lg overflow-hidden max-w-full">
                                   <table className="w-full text-left border-collapse">
                                     <thead>
@@ -1293,7 +1417,7 @@ export default function SeqMonitor() {
                                       {log.Properties && log.Properties.map(p => (
                                         <tr key={p.Name} className="hover:bg-[#181818]/45 transition-colors">
                                           <td className="p-2 font-semibold text-[#71BF44] break-all">{p.Name}</td>
-                                          <td className="p-2 text-neutral-350 break-all">{typeof p.Value === 'object' ? JSON.stringify(p.Value) : String(p.Value)}</td>
+                                          <td className="p-2 text-neutral-100 break-all">{typeof p.Value === 'object' ? JSON.stringify(p.Value) : String(p.Value)}</td>
                                           <td className="p-2 text-right whitespace-nowrap space-x-1.5 select-none">
                                             <button
                                               onClick={() => handleSearchProperty(p.Name, p.Value)}
@@ -1315,7 +1439,7 @@ export default function SeqMonitor() {
                                       {log.Exception && (
                                         <tr className="hover:bg-[#181818]/45 transition-colors">
                                           <td className="p-2 font-semibold text-red-400 break-all">@Exception</td>
-                                          <td className="p-2 text-neutral-350 break-all font-mono whitespace-pre-wrap">{log.Exception}</td>
+                                          <td className="p-2 text-neutral-100 break-all font-mono whitespace-pre-wrap">{log.Exception}</td>
                                           <td className="p-2 text-right whitespace-nowrap space-x-1.5 select-none">
                                             <button
                                               onClick={() => handleSearchProperty('@Exception', log.Exception)}
@@ -1335,15 +1459,6 @@ export default function SeqMonitor() {
                                     </tbody>
                                   </table>
                                 </div>
-
-                                <details className="mt-2 group">
-                                  <summary className="text-[10px] text-neutral-500 hover:text-neutral-350 cursor-pointer select-none font-bold uppercase transition-colors">
-                                    Ver JSON Original Completo
-                                  </summary>
-                                  <div className="bg-[#181818] border border-neutral-850 p-3 rounded font-mono overflow-x-auto max-h-64 mt-1">
-                                    {renderHighlightedJson(log.Properties || [], log.Exception, log.MessageTemplate)}
-                                  </div>
-                                </details>
                               </div>
                             </div>
                           )}

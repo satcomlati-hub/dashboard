@@ -21,12 +21,18 @@ export async function GET(request: Request) {
     }
 
     // Construir la URL final de Seq
-    // Seq usa el endpoint /api/events para consultar eventos
-    const targetUrl = new URL('/api/events', seqUrl);
-    if (filter) targetUrl.searchParams.append('filter', filter);
-    if (count) targetUrl.searchParams.append('count', count);
-    if (render) targetUrl.searchParams.append('render', render);
-    if (afterId) targetUrl.searchParams.append('afterId', afterId);
+    // Seq usa el endpoint /api/events para consultar eventos, y /api/data para consultas SQL (select ...)
+    const isSqlQuery = filter && filter.trim().toLowerCase().startsWith('select ');
+    const targetUrl = new URL(isSqlQuery ? '/api/data' : '/api/events', seqUrl);
+    
+    if (isSqlQuery) {
+      targetUrl.searchParams.append('q', filter);
+    } else {
+      if (filter) targetUrl.searchParams.append('filter', filter);
+      if (count) targetUrl.searchParams.append('count', count);
+      if (render) targetUrl.searchParams.append('render', render);
+      if (afterId) targetUrl.searchParams.append('afterId', afterId);
+    }
 
     const headers: HeadersInit = {
       'Accept': 'application/json'
