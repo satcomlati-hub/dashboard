@@ -925,12 +925,17 @@ export default function SeqMonitor() {
     const distinctPattern = /distinct\s*\(?\s*([a-zA-Z0-9_@]+)\s*\)?/i;
     const match = clean.match(distinctPattern);
     if (match) {
-      return match[1];
+      clean = match[1];
+    } else {
+      // Si no coincide con el patrón anterior, limpiamos todos los paréntesis y palabras clave
+      clean = clean.replace(/distinct/gi, '').trim();
+      clean = clean.replace(/[()]/g, '').trim();
     }
     
-    // Si no coincide con el patrón anterior, limpiamos todos los paréntesis y palabras clave
-    clean = clean.replace(/distinct/gi, '').trim();
-    clean = clean.replace(/[()]/g, '').trim();
+    // Convertir a minúsculas si no empieza por @ (para normalizar propiedades como _CLIENTE o CLIENTE a minúsculas)
+    if (!clean.startsWith('@')) {
+      clean = clean.toLowerCase();
+    }
     
     return clean;
   };
@@ -1325,7 +1330,11 @@ export default function SeqMonitor() {
                       type="text"
                       placeholder="Filtro (ej: @Level = 'Error' or App = 'RAG' o propiedades estructuradas)"
                       value={currentFilter}
-                                         onKeyDown={(e) => {
+                      onChange={(e) => {
+                        setCurrentFilter(e.target.value);
+                        stateRef.current.currentFilter = e.target.value;
+                      }}
+                      onKeyDown={(e) => {
                         if (e.key === 'Enter') handleExecuteQuery();
                       }}
                       className="w-full bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg pl-9 pr-3 py-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44]"
@@ -1620,17 +1629,34 @@ export default function SeqMonitor() {
                         <tbody className="divide-y divide-neutral-900">
                           {rawSqlResult.rows.map((row, rowIndex) => (
                             <tr key={rowIndex} className="hover:bg-[#1e1e1e]/40 transition-colors border-b border-neutral-900">
-                              {row.map((cell, cellIndex) => (
-                                <td key={cellIndex} className="p-2 border-r border-neutral-900 break-all select-all">
-                                  {cell === null || cell === undefined ? (
-                                    <span className="text-red-400 italic">null</span>
-                                  ) : typeof cell === 'object' ? (
-                                    JSON.stringify(cell)
-                                  ) : (
-                                    String(cell)
-                                  )}
-                                </td>
-                              ))}
+                              {row.map((cell, cellIndex) => {
+                                const columnName = rawSqlResult.columns[cellIndex];
+                                const isActionable = cell !== null && cell !== undefined && columnName;
+                                return (
+                                  <td key={cellIndex} className="p-2 border-r border-neutral-900 break-all select-all group relative">
+                                    <div className="flex items-center justify-between gap-2 min-w-0">
+                                      <span className="truncate flex-1">
+                                        {cell === null || cell === undefined ? (
+                                          <span className="text-red-400 italic">null</span>
+                                        ) : typeof cell === 'object' ? (
+                                          JSON.stringify(cell)
+                                        ) : (
+                                          String(cell)
+                                        )}
+                                      </span>
+                                      {isActionable && (
+                                        <button
+                                          onClick={() => handleSearchProperty(columnName, cell)}
+                                          className="opacity-0 group-hover:opacity-100 bg-[#71BF44]/20 hover:bg-[#71BF44]/40 text-[#71BF44] dark:text-[#8ae65c] text-[9px] font-bold px-1.5 py-0.5 rounded transition-all shrink-0 select-none cursor-pointer"
+                                          title={`Filtrar por ${cleanPropertyName(columnName)} = '${cell}'`}
+                                        >
+                                          Filtrar
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                );
+                              })}
                             </tr>
                           ))}
                         </tbody>
