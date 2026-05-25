@@ -711,8 +711,36 @@ export default function SeqMonitor() {
     });
   };
 
+  // Limpiar nombres de propiedades de funciones SQL agregadas (como distinct)
+  const cleanPropertyName = (name: string): string => {
+    let clean = name.trim();
+    
+    // Quitar comillas si las hay
+    if (clean.startsWith('"') && clean.endsWith('"')) {
+      clean = clean.substring(1, clean.length - 1).trim();
+    }
+    if (clean.startsWith("'") && clean.endsWith("'")) {
+      clean = clean.substring(1, clean.length - 1).trim();
+    }
+
+    // Quitar cualquier "distinct" al inicio o dentro, con o sin paréntesis o espacios
+    // Ej: "distinct _ambiente", "distinct(_ambiente)", "(distinct _ambiente)", "(distinct(_ambiente))"
+    const distinctPattern = /distinct\s*\(?\s*([a-zA-Z0-9_@]+)\s*\)?/i;
+    const match = clean.match(distinctPattern);
+    if (match) {
+      return match[1];
+    }
+    
+    // Si no coincide con el patrón anterior, limpiamos todos los paréntesis y palabras clave
+    clean = clean.replace(/distinct/gi, '').trim();
+    clean = clean.replace(/[()]/g, '').trim();
+    
+    return clean;
+  };
+
   // Buscar eventos por una propiedad de forma acumulativa
   const handleSearchProperty = (name: string, value: any) => {
+    const cleanName = cleanPropertyName(name);
     let formattedValue = '';
     if (value === null || value === undefined) {
       formattedValue = 'null';
@@ -725,17 +753,27 @@ export default function SeqMonitor() {
       formattedValue = `'${stringValue.replace(/'/g, "\\'")}'`;
     }
 
-    const cond = `${name} = ${formattedValue}`;
+    const cond = `${cleanName} = ${formattedValue}`;
     let newFilter = '';
 
     if (!currentFilter || currentFilter === '*' || currentFilter.trim() === '') {
-      newFilter = `has(${name}) and ${cond}`;
+      newFilter = `has(${cleanName}) and ${cond}`;
     } else {
-      if (currentFilter.includes(cond)) {
-        showToast(`El filtro ya contiene la condición: ${cond}`, 'info');
-        return;
+      // Limpiar filtros SQL anteriores en la query acumulativa si el filtro anterior era una consulta SQL de datos
+      let filterBase = currentFilter;
+      if (filterBase.trim().toLowerCase().startsWith('select ')) {
+        filterBase = '';
       }
-      newFilter = `${currentFilter} and ${cond}`;
+
+      if (filterBase === '') {
+        newFilter = `has(${cleanName}) and ${cond}`;
+      } else {
+        if (filterBase.includes(cond)) {
+          showToast(`El filtro ya contiene la condición: ${cond}`, 'info');
+          return;
+        }
+        newFilter = `${filterBase} and ${cond}`;
+      }
     }
 
     setCurrentFilter(newFilter);
@@ -751,9 +789,10 @@ export default function SeqMonitor() {
 
   // Buscar otros valores distintos para una propiedad (select distinct)
   const handleSearchOthers = (name: string) => {
-    const newFilter = `select distinct(${name}) from stream`;
+    const cleanName = cleanPropertyName(name);
+    const newFilter = `select distinct(${cleanName}) from stream`;
     setCurrentFilter(newFilter);
-    showToast(`Buscando valores distintos de: ${name}`, 'success');
+    showToast(`Buscando valores distintos de: ${cleanName}`, 'success');
 
     if (connectionStatus === 'connected') {
       setTimeout(() => {
@@ -1355,7 +1394,7 @@ export default function SeqMonitor() {
                               </span>
                             )}
                             
-                            <span className="text-neutral-200 break-all line-clamp-1 group-hover:line-clamp-none flex-1">
+                            <span className={`text-neutral-200 break-all flex-1 ${isExpanded ? 'line-clamp-none' : 'line-clamp-1'}`}>
                               {message}
                             </span>
 
