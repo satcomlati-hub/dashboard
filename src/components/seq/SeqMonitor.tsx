@@ -28,6 +28,8 @@ import {
 import {
   AreaChart,
   Area,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip as RechartsTooltip,
@@ -182,6 +184,10 @@ export default function SeqMonitor() {
 
   // Logs expandidos
   const [expandedLogIds, setExpandedLogIds] = useState<Set<string>>(new Set());
+
+  // Resultados SQL y modo de visualización de grids/gráficas
+  const [rawSqlResult, setRawSqlResult] = useState<{ columns: string[], rows: any[][] } | null>(null);
+  const [sqlViewMode, setSqlViewMode] = useState<'grid' | 'chart' | 'logs'>('grid');
 
   // Refs para temporizadores y streaming
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -502,6 +508,11 @@ export default function SeqMonitor() {
 
       if (data && data.Columns && Array.isArray(data.Rows)) {
         // Es un resultado de consulta SQL agregada/dataset de Seq
+        setRawSqlResult({ columns: data.Columns, rows: data.Rows });
+        if (!isAutoRefresh) {
+          setSqlViewMode('grid');
+        }
+
         fetchedLogs = data.Rows.map((row: any[], rowIndex: number) => {
           const properties = data.Columns.map((colName: string, colIndex: number) => ({
             Name: colName,
@@ -538,6 +549,7 @@ export default function SeqMonitor() {
           };
         });
       } else {
+        setRawSqlResult(null);
         fetchedLogs = Array.isArray(data) ? data : (data.Events || []);
       }
 
@@ -642,6 +654,7 @@ export default function SeqMonitor() {
     setLocalSearchQuery('');
     setActiveLevels(new Set(LOG_LEVELS));
     setLogs([]);
+    setRawSqlResult(null);
     showToast('Consola e inputs restablecidos', 'info');
   };
 
@@ -699,6 +712,190 @@ export default function SeqMonitor() {
     navigator.clipboard.writeText(JSON.stringify(rawLog, null, 2))
       .then(() => showToast('Log copiado al portapapeles', 'success'))
       .catch(err => showToast(`Error al copiar: ${err.message}`, 'error'));
+  };
+
+  // Si la consulta SQL no especifica un filtro de tiempo, añadir por defecto 3 horas atrás
+  const addDefaultTimeFilter = (query: string): string => {
+    const trimmed = query.trim();
+    if (!trimmed.toLowerCase().startsWith('select ')) {
+      return query;
+    }
+
+    // Verificar si ya tiene filtro de tiempo (ej: @timestamp o la palabra clave "time" que no sea la función time(1h) en group by)
+    const hasTimeFilter = /@timestamp/i.test(trimmed) || /\btime\b(?!\s*\()/i.test(trimmed);
+    if (hasTimeFilter) {
+      return query;
+    }
+
+    // Buscar si tiene la palabra clave WHERE
+    const whereMatch = trimmed.match(/\bwhere\b/i);
+    if (whereMatch) {
+      // Si tiene WHERE, insertamos el filtro de tiempo justo después del WHERE
+      const index = whereMatch.index! + whereMatch[0].length;
+      const before = trimmed.substring(0, index);
+      const after = trimmed.substring(index);
+      return `${before} @Timestamp >= Now() - 3h and${after}`;
+    } else {
+      // Si no tiene WHERE, lo insertamos después del FROM <tabla>
+      const fromMatch = trimmed.match(/\bfrom\s+([a-zA-Z0-9_"`'@.-]+)/i);
+      if (fromMatch) {
+        const index = fromMatch.index! + fromMatch[0].length;
+        const before = trimmed.substring(0, index);
+        const after = trimmed.substring(index);
+        return `${before} where @Timestamp >= Now() - 3h${after}`;
+      }
+    }
+
+    return query;
+  };
+
+  // Modifica el script si es necesario agregando el filtro de tiempo de 3 horas por defecto y ejecuta
+  const handleExecuteQuery = () => {
+    let queryToRun = currentFilter;
+    if (queryToRun && queryToRun.trim().toLowerCase().startsWith('select ')) {
+      const modifiedQuery = addDefaultTimeFilter(queryToRun);
+      if (modifiedQuery !== queryToRun) {
+        queryToRun = modifiedQuery;
+        setCurrentFilter(modifiedQuery);
+        stateRef.current.currentFilter = modifiedQuery;
+      }
+    }
+    fetchLogs(false);
+  };
+
+  // Parsear el resultado de la consulta SQL para consumo del LineChart de Recharts
+  const parseSqlChartData = (columns: string[], rows: any[][]) => {
+    const timeIndex = columns.findIndex(c => c.toLowerCase() === 'time' || c.toLowerCase() === '@timestamp');
+    const xAxisIndex = timeIndex !== -1 ? timeIndex : 0;
+    
+    const numericIndices: number[] = [];
+    const categoryIndices: number[] = [];
+    
+    columns.forEach((col, idx) => {
+      if (idx === xAxisIndex) return;
+      
+      let isNumeric = true;
+      let hasValues = false;
+      for (let r = 0; r < Math.min(rows.length, 10); r++) {
+        const val = rows[r][idx];
+        if (val !== null && val !== undefined && val !== '') {
+          hasValues = true;
+          if (isNaN(Number(val))) {
+            isNumeric = false;
+            break;
+          }
+        }
+      }
+      
+      if (isNumeric && hasValues) {
+        numericIndices.push(idx);
+      } else {
+        categoryIndices.push(idx);
+      }
+    });
+
+    const chartDataMap: { [key: string]: any } = {};
+    const seriesSet = new Set<string>();
+    
+    rows.forEach(row => {
+      const xVal = row[xAxisIndex];
+      let timeLabel = String(xVal);
+      
+      const parsedDate = Date.parse(xVal);
+      if (!isNaN(parsedDate)) {
+        const date = new Date(parsedDate);
+        timeLabel = date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+      }
+      
+      if (!chartDataMap[xVal]) {
+        chartDataMap[xVal] = {
+          xAxisVal: xVal,
+          timeLabel: timeLabel
+        };
+      }
+      
+      if (categoryIndices.length > 0) {
+        categoryIndices.forEach(catIdx => {
+          const catVal = String(row[catIdx] ?? 'null');
+          numericIndices.forEach(numIdx => {
+            const seriesName = numericIndices.length > 1 
+              ? `${catVal} (${columns[numIdx]})`
+              : catVal;
+            
+            chartDataMap[xVal][seriesName] = Number(row[numIdx] ?? 0);
+            seriesSet.add(seriesName);
+          });
+        });
+      } else {
+        numericIndices.forEach(numIdx => {
+          const seriesName = columns[numIdx];
+          chartDataMap[xVal][seriesName] = Number(row[numIdx] ?? 0);
+          seriesSet.add(seriesName);
+        });
+      }
+    });
+    
+    const chartData = Object.values(chartDataMap).sort((a, b) => {
+      const timeA = Date.parse(a.xAxisVal);
+      const timeB = Date.parse(b.xAxisVal);
+      if (!isNaN(timeA) && !isNaN(timeB)) {
+        return timeA - timeB;
+      }
+      return String(a.xAxisVal).localeCompare(String(b.xAxisVal));
+    });
+    
+    return {
+      chartData,
+      seriesList: Array.from(seriesSet)
+    };
+  };
+
+  // Descargar el resultado de la consulta actual en formato JSON
+  const handleDownloadSqlJson = () => {
+    if (!rawSqlResult) return;
+    const dataObjects = rawSqlResult.rows.map(row => {
+      const obj: { [key: string]: any } = {};
+      rawSqlResult.columns.forEach((col, i) => {
+        obj[col] = row[i];
+      });
+      return obj;
+    });
+
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dataObjects, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    const fileName = `resultado_consulta_${Date.now()}.json`;
+    downloadAnchor.setAttribute("download", fileName);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    showToast(`Archivo ${fileName} descargado`, 'success');
+  };
+
+  // Descargar el resultado de la consulta actual en formato CSV
+  const handleDownloadSqlCsv = () => {
+    if (!rawSqlResult) return;
+    
+    // Generar cabecera y filas en formato CSV
+    const headers = rawSqlResult.columns.map(col => `"${col.replace(/"/g, '""')}"`).join(',');
+    const rowsCsv = rawSqlResult.rows.map(row => {
+      return row.map(cell => {
+        if (cell === null || cell === undefined) return '';
+        const cellStr = typeof cell === 'object' ? JSON.stringify(cell) : String(cell);
+        return `"${cellStr.replace(/"/g, '""')}"`;
+      }).join(',');
+    });
+
+    const csvContent = [headers, ...rowsCsv].join('\n');
+    const dataStr = "data:text/csv;charset=utf-8," + encodeURIComponent(csvContent);
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    const fileName = `resultado_consulta_${Date.now()}.csv`;
+    downloadAnchor.setAttribute("download", fileName);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    showToast(`Archivo ${fileName} descargado`, 'success');
   };
 
   // Expandir / colapsar log
@@ -1128,16 +1325,15 @@ export default function SeqMonitor() {
                       type="text"
                       placeholder="Filtro (ej: @Level = 'Error' or App = 'RAG' o propiedades estructuradas)"
                       value={currentFilter}
-                      onChange={(e) => setCurrentFilter(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') fetchLogs(false);
+                                         onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleExecuteQuery();
                       }}
                       className="w-full bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg pl-9 pr-3 py-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44]"
                     />
                   </div>
                   
                   <div className="flex items-center gap-2">
-                    <label className="text-[10px] text-neutral-500 dark:text-neutral-400 font-bold uppercase tracking-wider">Límite</label>
+                    <label className="text-[10px] text-neutral-550 dark:text-neutral-400 font-bold uppercase tracking-wider">Límite</label>
                     <input
                       type="number"
                       value={limit}
@@ -1149,7 +1345,7 @@ export default function SeqMonitor() {
                       className="w-16 bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg px-2 py-2 text-xs text-neutral-900 dark:text-white text-center focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44]"
                     />
                     <button
-                      onClick={() => fetchLogs(false)}
+                      onClick={handleExecuteQuery}
                       className="bg-[#71BF44] hover:bg-[#71BF44]/90 text-white dark:text-[#131313] text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-colors shrink-0"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
@@ -1335,177 +1531,346 @@ export default function SeqMonitor() {
                 </div>
               )}
 
-              {/* Visor de Eventos (Consola) */}
+              {/* Visor de Eventos (Consola / Grid / Gráficas) */}
               <div className="flex-1 flex flex-col border border-neutral-200 dark:border-neutral-800 bg-[#0d0d0d] rounded-xl overflow-hidden min-h-0">
-                <div className="bg-neutral-100 dark:bg-[#181818] border-b border-neutral-200 dark:border-neutral-850 px-4 py-2 flex items-center justify-between text-xs font-bold text-neutral-600 dark:text-neutral-400">
-                  <span>Visor de Eventos</span>
-                  <span className="text-[10px] bg-neutral-200 dark:bg-neutral-850 text-neutral-600 dark:text-neutral-400 px-2 py-0.5 rounded-full font-semibold">
-                    Mostrando {filteredLogs.length} de {logs.length} logs
-                  </span>
-                </div>
-                
-                <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1 font-mono text-xs">
-                  {filteredLogs.length === 0 ? (
-                    <div className="flex-1 flex flex-col items-center justify-center text-center p-8 gap-2 text-neutral-500">
-                      <FileText className="w-8 h-8 opacity-40" />
-                      <p className="text-xs">No hay eventos que mostrar. Configura tu conexión y ejecuta una consulta.</p>
-                    </div>
-                  ) : (
-                    filteredLogs.map((log, index) => {
-                      const isSqlAggregation = !log.Timestamp || isNaN(Date.parse(log.Timestamp));
-                      const rowId = log.Id || `agg-${index}`;
-                      const isExpanded = expandedLogIds.has(rowId);
-                      const level = log.Level || 'Information';
-                      const date = new Date(log.Timestamp);
-                      const timeStr = isSqlAggregation 
-                        ? 'SQL' 
-                        : date.toLocaleTimeString() + '.' + String(date.getMilliseconds()).padStart(3, '0');
-                      
-                      const message = isSqlAggregation
-                        ? (log.Properties && log.Properties.length > 0 
-                            ? log.Properties.map(p => `${p.Name}: ${typeof p.Value === 'object' ? JSON.stringify(p.Value) : String(p.Value)}`).join(' | ')
-                            : '(Resultado de Agregación)')
-                        : (log.RenderedMessage || log.MessageTemplate || '(Sin mensaje)');
+                <div className="bg-neutral-100 dark:bg-[#181818] border-b border-neutral-200 dark:border-neutral-850 px-4 py-2 flex flex-col md:flex-row md:items-center justify-between text-xs font-bold text-neutral-600 dark:text-neutral-400 gap-2 select-none">
+                  <div className="flex items-center gap-2">
+                    <span>Visor de Eventos</span>
+                    {rawSqlResult ? (
+                      <span className="text-[9px] bg-[#71BF44]/10 text-[#71BF44] border border-[#71BF44]/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                        SQL Dataset
+                      </span>
+                    ) : (
+                      <span className="text-[10px] bg-neutral-200 dark:bg-neutral-850 text-neutral-600 dark:text-neutral-400 px-2 py-0.5 rounded-full font-semibold">
+                        Mostrando {filteredLogs.length} de {logs.length} logs
+                      </span>
+                    )}
+                  </div>
 
-                      return (
-                        <div
-                          key={rowId}
-                          className={`group flex flex-col rounded border border-transparent transition-all ${
-                            isExpanded ? 'bg-[#181818]/60 border-neutral-850 my-1' : 'hover:bg-[#181818]/30'
+                  {rawSqlResult && (
+                    <div className="flex flex-wrap items-center gap-4">
+                      {/* Selectores de vista SQL */}
+                      <div className="flex items-center gap-1 bg-white dark:bg-[#111] p-0.5 border border-neutral-200 dark:border-neutral-800 rounded-lg">
+                        <button
+                          onClick={() => setSqlViewMode('grid')}
+                          className={`px-2 py-1 rounded-md text-[10px] transition-all ${
+                            sqlViewMode === 'grid'
+                              ? 'bg-[#71BF44] text-white dark:text-[#111]'
+                              : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-white'
                           }`}
                         >
-                          <div
-                            onClick={() => toggleLogExpand(rowId)}
-                            className="flex items-start p-2 gap-2 cursor-pointer select-none"
-                          >
-                            <button className="text-neutral-500 hover:text-white shrink-0 mt-0.5 transition-transform">
-                              <ChevronRight className={`w-3.5 h-3.5 transform transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                            </button>
-                            
-                            <span className="text-[10px] text-neutral-500 shrink-0 select-none mt-0.5">{timeStr}</span>
-                            
-                            {isSqlAggregation ? (
-                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider shrink-0 select-none text-[#71BF44] bg-[#71BF44]/10 border-[#71BF44]/20">
-                                Agg
-                              </span>
-                            ) : (
-                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider shrink-0 select-none ${LEVEL_TEXT_CLASSES[level]}`}>
-                                {level === 'Information' ? 'Info' : level}
-                              </span>
-                            )}
-                            
-                            <span className={`text-neutral-200 break-all flex-1 ${isExpanded ? 'line-clamp-none' : 'line-clamp-1'}`}>
-                              {message}
-                            </span>
+                          Tabla
+                        </button>
+                        <button
+                          onClick={() => setSqlViewMode('chart')}
+                          className={`px-2 py-1 rounded-md text-[10px] transition-all ${
+                            sqlViewMode === 'chart'
+                              ? 'bg-[#71BF44] text-white dark:text-[#111]'
+                              : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-white'
+                          }`}
+                        >
+                          Gráfica
+                        </button>
+                        <button
+                          onClick={() => setSqlViewMode('logs')}
+                          className={`px-2 py-1 rounded-md text-[10px] transition-all ${
+                            sqlViewMode === 'logs'
+                              ? 'bg-[#71BF44] text-white dark:text-[#111]'
+                              : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-white'
+                          }`}
+                        >
+                          Logs
+                        </button>
+                      </div>
 
-                            <button
-                              onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleCopyLog(log);
-                              }}
-                              className="opacity-0 group-hover:opacity-100 text-neutral-500 hover:text-white p-0.5 shrink-0 transition-opacity"
-                              title="Copiar log completo (JSON)"
-                            >
-                              <Copy className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                      <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-800 hidden sm:block" />
 
-                          {isExpanded && (
-                            <div className="border-t border-neutral-900 bg-[#131313]/50 p-3 flex flex-col gap-3 animate-fade-in text-[11px]">
-                              {log.MessageTemplate && !isSqlAggregation && (
-                                <div>
-                                  <h5 className="text-[10px] text-[#71BF44] font-bold uppercase tracking-wider mb-1">Message Template</h5>
-                                  <div className="bg-[#181818] border border-neutral-850 p-2 rounded text-neutral-300 font-mono select-all">
-                                    {log.MessageTemplate}
-                                  </div>
-                                </div>
-                              )}
-
-                              <div>
-                                <div className="flex items-center justify-between mb-2">
-                                  <h5 className="text-[10px] text-[#71BF44] font-bold uppercase tracking-wider">Propiedades Estructuradas Interactivas</h5>
-                                  <div className="flex items-center gap-2 select-none">
-                                    <button
-                                      onClick={() => handleCopyLog(log)}
-                                      className="flex items-center gap-1 text-[10px] font-bold bg-[#181818] border border-neutral-850 hover:bg-neutral-800 text-neutral-300 hover:text-white px-2 py-1 rounded transition-colors"
-                                      title="Copiar log completo (JSON)"
-                                    >
-                                      <Copy className="w-3 h-3" />
-                                      Copiar JSON
-                                    </button>
-                                    <button
-                                      onClick={() => handleDownloadLog(log)}
-                                      className="flex items-center gap-1 text-[10px] font-bold bg-[#181818] border border-neutral-850 hover:bg-neutral-800 text-neutral-300 hover:text-white px-2 py-1 rounded transition-colors"
-                                      title="Descargar log como archivo .json"
-                                    >
-                                      <FileText className="w-3 h-3 text-[#71BF44]" />
-                                      Descargar JSON
-                                    </button>
-                                  </div>
-                                </div>
-                                <div className="bg-[#181818] border border-neutral-850 rounded-lg overflow-hidden max-w-full">
-                                  <table className="w-full text-left border-collapse">
-                                    <thead>
-                                      <tr className="bg-[#1e1e1e] border-b border-neutral-850 text-[10px] text-neutral-400 font-bold uppercase select-none">
-                                        <th className="p-2 w-1/4">Propiedad</th>
-                                        <th className="p-2 w-1/2">Valor</th>
-                                        <th className="p-2 w-1/4 text-right">Acciones</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-neutral-900 font-mono text-[11px]">
-                                      {log.Properties && log.Properties.map(p => (
-                                        <tr key={p.Name} className="hover:bg-[#181818]/45 transition-colors">
-                                          <td className="p-2 font-semibold text-[#71BF44] break-all">{p.Name}</td>
-                                          <td className="p-2 text-neutral-100 break-all">{typeof p.Value === 'object' ? JSON.stringify(p.Value) : String(p.Value)}</td>
-                                          <td className="p-2 text-right whitespace-nowrap space-x-1.5 select-none">
-                                            <button
-                                              onClick={() => handleSearchProperty(p.Name, p.Value)}
-                                              className="text-[9px] font-bold bg-[#71BF44]/10 hover:bg-[#71BF44]/20 text-[#71BF44] px-1.5 py-0.5 rounded transition-colors"
-                                              title={`Filtrar por ${p.Name} = ${p.Value}`}
-                                            >
-                                              Buscar (+)
-                                            </button>
-                                            <button
-                                              onClick={() => handleSearchOthers(p.Name)}
-                                              className="text-[9px] font-bold bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-1.5 py-0.5 rounded transition-colors"
-                                              title={`Ver valores distintos de ${p.Name}`}
-                                            >
-                                              Otros
-                                            </button>
-                                          </td>
-                                        </tr>
-                                      ))}
-                                      {log.Exception && (
-                                        <tr className="hover:bg-[#181818]/45 transition-colors">
-                                          <td className="p-2 font-semibold text-red-400 break-all">@Exception</td>
-                                          <td className="p-2 text-neutral-100 break-all font-mono whitespace-pre-wrap">{log.Exception}</td>
-                                          <td className="p-2 text-right whitespace-nowrap space-x-1.5 select-none">
-                                            <button
-                                              onClick={() => handleSearchProperty('@Exception', log.Exception)}
-                                              className="text-[9px] font-bold bg-[#71BF44]/10 hover:bg-[#71BF44]/20 text-[#71BF44] px-1.5 py-0.5 rounded transition-colors"
-                                            >
-                                              Buscar (+)
-                                            </button>
-                                            <button
-                                              onClick={() => handleSearchOthers('@Exception')}
-                                              className="text-[9px] font-bold bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-1.5 py-0.5 rounded transition-colors"
-                                            >
-                                              Otros
-                                            </button>
-                                          </td>
-                                        </tr>
-                                      )}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
+                      {/* Botones de Descarga */}
+                      <div className="flex items-center gap-1.5 font-sans">
+                        <span className="text-[10px] text-neutral-450 hidden sm:inline">Descargar:</span>
+                        <button
+                          onClick={handleDownloadSqlJson}
+                          className="flex items-center gap-1 text-[10px] font-bold bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-850 hover:bg-neutral-50 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white px-2 py-1 rounded transition-colors"
+                        >
+                          JSON
+                        </button>
+                        <button
+                          onClick={handleDownloadSqlCsv}
+                          className="flex items-center gap-1 text-[10px] font-bold bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-850 hover:bg-neutral-50 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white px-2 py-1 rounded transition-colors"
+                        >
+                          CSV
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
+                
+                {rawSqlResult && sqlViewMode === 'grid' ? (
+                  /* VISTA GRID DE TABLA */
+                  <div className="flex-1 overflow-auto p-3 bg-[#0d0d0d] text-neutral-200">
+                    <div className="overflow-x-auto rounded-lg border border-neutral-850">
+                      <table className="w-full text-left border-collapse text-[11px] font-mono">
+                        <thead>
+                          <tr className="bg-[#181818] border-b border-neutral-850 text-neutral-450 font-bold uppercase select-none">
+                            {rawSqlResult.columns.map((col, i) => (
+                              <th key={i} className="p-2 border-r border-neutral-850">{col}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-neutral-900">
+                          {rawSqlResult.rows.map((row, rowIndex) => (
+                            <tr key={rowIndex} className="hover:bg-[#1e1e1e]/40 transition-colors border-b border-neutral-900">
+                              {row.map((cell, cellIndex) => (
+                                <td key={cellIndex} className="p-2 border-r border-neutral-900 break-all select-all">
+                                  {cell === null || cell === undefined ? (
+                                    <span className="text-red-400 italic">null</span>
+                                  ) : typeof cell === 'object' ? (
+                                    JSON.stringify(cell)
+                                  ) : (
+                                    String(cell)
+                                  )}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : rawSqlResult && sqlViewMode === 'chart' ? (
+                  /* VISTA GRÁFICA DE RECHARTS LINECHART */
+                  (() => {
+                    const { chartData, seriesList } = parseSqlChartData(rawSqlResult.columns, rawSqlResult.rows);
+                    return (
+                      <div className="flex-1 bg-[#0d0d0d] p-4 flex flex-col min-h-0">
+                        {chartData.length === 0 ? (
+                          <div className="flex-1 flex flex-col items-center justify-center text-center p-8 gap-2 text-neutral-500 text-xs">
+                            <Activity className="w-8 h-8 opacity-40 animate-pulse" />
+                            <p>No hay datos con series de tiempo suficientes para mostrar la gráfica.</p>
+                            <p className="text-[10px] text-neutral-600">Asegúrate de que la consulta incluya una columna 'time' y agrupaciones temporales.</p>
+                          </div>
+                        ) : (
+                          <div className="flex-1 w-full min-h-[350px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={chartData} margin={{ top: 15, right: 30, left: -20, bottom: 5 }}>
+                                <XAxis 
+                                  dataKey="timeLabel" 
+                                  tick={{ fill: '#888', fontSize: 9 }}
+                                  axisLine={{ stroke: '#333' }}
+                                  tickLine={{ stroke: '#333' }}
+                                />
+                                <YAxis 
+                                  tick={{ fill: '#888', fontSize: 9 }}
+                                  axisLine={{ stroke: '#333' }}
+                                  tickLine={{ stroke: '#333' }}
+                                  allowDecimals={false}
+                                />
+                                <RechartsTooltip
+                                  contentStyle={{
+                                    backgroundColor: '#181818',
+                                    borderColor: '#333',
+                                    borderRadius: '8px',
+                                    fontSize: '11px',
+                                    color: '#fff'
+                                  }}
+                                  labelStyle={{ color: '#fff', fontWeight: 'bold' }}
+                                />
+                                <Legend 
+                                  verticalAlign="top" 
+                                  align="right" 
+                                  iconSize={8}
+                                  wrapperStyle={{ fontSize: '9px', color: '#888', paddingBottom: '15px' }}
+                                />
+                                {seriesList.map((seriesName, index) => {
+                                  const colors = [
+                                    '#71BF44', '#0ea5e9', '#f59e0b', '#ef4444', '#ec4899', 
+                                    '#a855f7', '#14b8a6', '#6366f1', '#e11d48', '#10b981'
+                                  ];
+                                  const color = colors[index % colors.length];
+                                  return (
+                                    <Line
+                                      key={seriesName}
+                                      type="monotone"
+                                      dataKey={seriesName}
+                                      stroke={color}
+                                      activeDot={{ r: 5 }}
+                                      dot={{ r: 2 }}
+                                      strokeWidth={1.5}
+                                    />
+                                  );
+                                })}
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()
+                ) : (
+                  /* VISTA ORIGINAL DE LISTA DE LOGS (CONSOLA) */
+                  <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1 font-mono text-xs">
+                    {filteredLogs.length === 0 ? (
+                      <div className="flex-1 flex flex-col items-center justify-center text-center p-8 gap-2 text-neutral-500">
+                        <FileText className="w-8 h-8 opacity-40" />
+                        <p className="text-xs">No hay eventos que mostrar. Configura tu conexión y ejecuta una consulta.</p>
+                      </div>
+                    ) : (
+                      filteredLogs.map((log, index) => {
+                        const isSqlAggregation = !log.Timestamp || isNaN(Date.parse(log.Timestamp));
+                        const rowId = log.Id || `agg-${index}`;
+                        const isExpanded = expandedLogIds.has(rowId);
+                        const level = log.Level || 'Information';
+                        const date = new Date(log.Timestamp);
+                        const timeStr = isSqlAggregation 
+                          ? 'SQL' 
+                          : date.toLocaleTimeString() + '.' + String(date.getMilliseconds()).padStart(3, '0');
+                        
+                        const message = isSqlAggregation
+                          ? (log.Properties && log.Properties.length > 0 
+                              ? log.Properties.map(p => `${p.Name}: ${typeof p.Value === 'object' ? JSON.stringify(p.Value) : String(p.Value)}`).join(' | ')
+                              : '(Resultado de Agregación)')
+                          : (log.RenderedMessage || log.MessageTemplate || '(Sin mensaje)');
+
+                        return (
+                          <div
+                            key={rowId}
+                            className={`group flex flex-col rounded border border-transparent transition-all ${
+                              isExpanded ? 'bg-[#181818]/60 border-neutral-850 my-1' : 'hover:bg-[#181818]/30'
+                            }`}
+                          >
+                            <div
+                              onClick={() => toggleLogExpand(rowId)}
+                              className="flex items-start p-2 gap-2 cursor-pointer select-none"
+                            >
+                              <button className="text-neutral-500 hover:text-white shrink-0 mt-0.5 transition-transform">
+                                <ChevronRight className={`w-3.5 h-3.5 transform transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                              </button>
+                              
+                              <span className="text-[10px] text-neutral-500 shrink-0 select-none mt-0.5">{timeStr}</span>
+                              
+                              {isSqlAggregation ? (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider shrink-0 select-none text-[#71BF44] bg-[#71BF44]/10 border-[#71BF44]/20">
+                                  Agg
+                                </span>
+                              ) : (
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider shrink-0 select-none ${LEVEL_TEXT_CLASSES[level]}`}>
+                                  {level === 'Information' ? 'Info' : level}
+                                </span>
+                              )}
+                              
+                              <span className={`text-neutral-200 break-all flex-1 ${isExpanded ? 'line-clamp-none' : 'line-clamp-1'}`}>
+                                {message}
+                              </span>
+
+                              <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleCopyLog(log);
+                                }}
+                                className="opacity-0 group-hover:opacity-100 text-neutral-550 hover:text-white p-0.5 shrink-0 transition-opacity"
+                                title="Copiar log completo (JSON)"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            {isExpanded && (
+                              <div className="border-t border-neutral-900 bg-[#131313]/50 p-3 flex flex-col gap-3 animate-fade-in text-[11px]">
+                                {log.MessageTemplate && !isSqlAggregation && (
+                                  <div>
+                                    <h5 className="text-[10px] text-[#71BF44] font-bold uppercase tracking-wider mb-1">Message Template</h5>
+                                    <div className="bg-[#181818] border border-neutral-850 p-2 rounded text-neutral-300 font-mono select-all">
+                                      {log.MessageTemplate}
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <h5 className="text-[10px] text-[#71BF44] font-bold uppercase tracking-wider">Propiedades Estructuradas Interactivas</h5>
+                                    <div className="flex items-center gap-2 select-none">
+                                      <button
+                                        onClick={() => handleCopyLog(log)}
+                                        className="flex items-center gap-1 text-[10px] font-bold bg-[#181818] border border-neutral-850 hover:bg-neutral-800 text-neutral-300 hover:text-white px-2 py-1 rounded transition-colors"
+                                        title="Copiar log completo (JSON)"
+                                      >
+                                        <Copy className="w-3.5 h-3.5" />
+                                        Copiar JSON
+                                      </button>
+                                      <button
+                                        onClick={() => handleDownloadLog(log)}
+                                        className="flex items-center gap-1 text-[10px] font-bold bg-[#181818] border border-neutral-850 hover:bg-neutral-800 text-neutral-300 hover:text-white px-2 py-1 rounded transition-colors"
+                                        title="Descargar log como archivo .json"
+                                      >
+                                        <FileText className="w-3 h-3 text-[#71BF44]" />
+                                        Descargar JSON
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <div className="bg-[#181818] border border-neutral-850 rounded-lg overflow-hidden max-w-full">
+                                    <table className="w-full text-left border-collapse">
+                                      <thead>
+                                        <tr className="bg-[#1e1e1e] border-b border-neutral-850 text-[10px] text-neutral-400 font-bold uppercase select-none">
+                                          <th className="p-2 w-1/4">Propiedad</th>
+                                          <th className="p-2 w-1/2">Valor</th>
+                                          <th className="p-2 w-1/4 text-right">Acciones</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-neutral-900 font-mono text-[11px]">
+                                        {log.Properties && log.Properties.map(p => (
+                                          <tr key={p.Name} className="hover:bg-[#181818]/45 transition-colors">
+                                            <td className="p-2 font-semibold text-[#71BF44] break-all">{p.Name}</td>
+                                            <td className="p-2 text-neutral-100 break-all">{typeof p.Value === 'object' ? JSON.stringify(p.Value) : String(p.Value)}</td>
+                                            <td className="p-2 text-right whitespace-nowrap space-x-1.5 select-none">
+                                              <button
+                                                onClick={() => handleSearchProperty(p.Name, p.Value)}
+                                                className="text-[9px] font-bold bg-[#71BF44]/10 hover:bg-[#71BF44]/20 text-[#71BF44] px-1.5 py-0.5 rounded transition-colors"
+                                                title={`Filtrar por ${p.Name} = ${p.Value}`}
+                                              >
+                                                Buscar (+)
+                                              </button>
+                                              <button
+                                                onClick={() => handleSearchOthers(p.Name)}
+                                                className="text-[9px] font-bold bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-1.5 py-0.5 rounded transition-colors"
+                                                title={`Ver valores distintos de ${p.Name}`}
+                                              >
+                                                Otros
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                        {log.Exception && (
+                                          <tr className="hover:bg-[#181818]/45 transition-colors">
+                                            <td className="p-2 font-semibold text-red-400 break-all">@Exception</td>
+                                            <td className="p-2 text-neutral-100 break-all font-mono whitespace-pre-wrap">{log.Exception}</td>
+                                            <td className="p-2 text-right whitespace-nowrap space-x-1.5 select-none">
+                                              <button
+                                                onClick={() => handleSearchProperty('@Exception', log.Exception)}
+                                                className="text-[9px] font-bold bg-[#71BF44]/10 hover:bg-[#71BF44]/20 text-[#71BF44] px-1.5 py-0.5 rounded transition-colors"
+                                              >
+                                                Buscar (+)
+                                              </button>
+                                              <button
+                                                onClick={() => handleSearchOthers('@Exception')}
+                                                className="text-[9px] font-bold bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-1.5 py-0.5 rounded transition-colors"
+                                              >
+                                                Otros
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        )}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
               </div>
             </main>
           </>
