@@ -142,6 +142,7 @@ export default function SeqMonitor() {
   const [currentFilter, setCurrentFilter] = useState<string>('');
   const [limit, setLimit] = useState<number>(50);
   const [logs, setLogs] = useState<SeqLog[]>([]);
+  const [isLoadingLogs, setIsLoadingLogs] = useState<boolean>(false);
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(5000);
   
@@ -479,6 +480,10 @@ export default function SeqMonitor() {
       return;
     }
 
+    if (!isAutoRefresh) {
+      setIsLoadingLogs(true);
+    }
+
     try {
       const queryParams = new URLSearchParams({
         seqUrl,
@@ -571,6 +576,10 @@ export default function SeqMonitor() {
       console.error(err);
       showToast(`Error de conexión: ${err.message}`, 'error');
       if (isStreaming) stopStreaming();
+    } finally {
+      if (!isAutoRefresh) {
+        setIsLoadingLogs(false);
+      }
     }
   };
 
@@ -1353,12 +1362,13 @@ export default function SeqMonitor() {
                       }}
                       className="w-16 bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg px-2 py-2 text-xs text-neutral-900 dark:text-white text-center focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44]"
                     />
-                    <button
+                     <button
                       onClick={handleExecuteQuery}
-                      className="bg-[#71BF44] hover:bg-[#71BF44]/90 text-white dark:text-[#131313] text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-colors shrink-0"
+                      disabled={isLoadingLogs}
+                      className="bg-[#71BF44] hover:bg-[#71BF44]/90 disabled:opacity-60 disabled:cursor-not-allowed text-white dark:text-[#131313] text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-colors shrink-0"
                     >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      Ejecutar
+                      <RefreshCw className={`w-3.5 h-3.5 ${isLoadingLogs ? 'animate-spin' : ''}`} />
+                      {isLoadingLogs ? 'Procesando...' : 'Ejecutar'}
                     </button>
                   </div>
                 </div>
@@ -1541,7 +1551,13 @@ export default function SeqMonitor() {
               )}
 
               {/* Visor de Eventos (Consola / Grid / Gráficas) */}
-              <div className="flex-1 flex flex-col border border-neutral-200 dark:border-neutral-800 bg-[#0d0d0d] rounded-xl overflow-hidden min-h-0">
+              <div className="flex-1 flex flex-col border border-neutral-200 dark:border-neutral-800 bg-[#0d0d0d] rounded-xl overflow-hidden min-h-0 relative">
+                {isLoadingLogs && (
+                  <div className="absolute inset-0 bg-[#0d0d0d]/75 backdrop-blur-[1px] flex flex-col items-center justify-center gap-3 z-30 transition-all duration-300">
+                    <div className="w-8 h-8 rounded-full border-2 border-neutral-800 border-t-[#71BF44] animate-spin" />
+                    <span className="text-xs font-semibold text-neutral-400 font-mono tracking-wider animate-pulse">Procesando consulta en Seq...</span>
+                  </div>
+                )}
                 <div className="bg-neutral-100 dark:bg-[#181818] border-b border-neutral-200 dark:border-neutral-850 px-4 py-2 flex flex-col md:flex-row md:items-center justify-between text-xs font-bold text-neutral-600 dark:text-neutral-400 gap-2 select-none">
                   <div className="flex items-center gap-2">
                     <span>Visor de Eventos</span>
