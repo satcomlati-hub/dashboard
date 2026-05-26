@@ -477,7 +477,7 @@ export default function SaraChatPage() {
       }
 
     } catch {
-      const err: Message = { id: newId(), role: 'assistant', content: 'Error al conectar con SARA. Verifica que n8n esté activo.' };
+      const err: Message = { id: newId(), role: 'assistant', content: 'No pude obtener respuesta de SARA. La consulta puede haber tardado demasiado — intenta reformularla o reintenta en unos segundos.' };
       const final = [...withUser, err];
       setMessages(final);
       persist(final, sid);

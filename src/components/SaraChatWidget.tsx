@@ -203,7 +203,7 @@ export default function SaraChatWidget() {
       setMessages([...withUser, {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Error al conectar con SARA. Verifica que n8n esté activo.',
+        content: 'No pude obtener respuesta de SARA. La consulta puede haber tardado demasiado — intenta reformularla o reintenta en unos segundos.',
         timestamp: Date.now(),
       }]);
     } finally {
