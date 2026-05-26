@@ -139,9 +139,13 @@ export default function MySatcomMonitoreoPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   
-  // Sorting
+  // Sorting de la tabla principal
   const [sortField, setSortField] = useState<keyof NormalizedRecord>('fecha');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Sorting de la tabla de distribución por canales
+  const [channelSortField, setChannelSortField] = useState<'canal' | 'autorizados' | 'duplicados' | 'noAutorizados' | 'total'>('total');
+  const [channelSortOrder, setChannelSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Carga del catálogo de canales (se carga una sola vez por ambiente)
   useEffect(() => {
@@ -439,7 +443,7 @@ export default function MySatcomMonitoreoPage() {
     };
   }, [filteredRecords]);
 
-  // Contadores consolidados por Canal para la nueva vista
+  // Contadores consolidados por Canal
   const channelSummaryData = useMemo(() => {
     const summary: Record<string, { canal: string, autorizados: number, duplicados: number, noAutorizados: number, total: number }> = {};
     
@@ -454,8 +458,80 @@ export default function MySatcomMonitoreoPage() {
       summary[key].total += r.totalHora;
     });
 
-    return Object.values(summary).sort((a, b) => b.total - a.total);
+    return Object.values(summary);
   }, [filteredRecords]);
+
+  // Aplicar Ordenamiento Interactivo a la tabla resumen de canales
+  const sortedChannelSummaryData = useMemo(() => {
+    const data = [...channelSummaryData];
+    data.sort((a, b) => {
+      let valA: any = a[channelSortField];
+      let valB: any = b[channelSortField];
+      
+      if (channelSortField !== 'canal') {
+        valA = Number(valA);
+        valB = Number(valB);
+      } else {
+        valA = String(valA).toLowerCase();
+        valB = String(valB).toLowerCase();
+      }
+      
+      if (valA < valB) return channelSortOrder === 'asc' ? -1 : 1;
+      if (valA > valB) return channelSortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return data;
+  }, [channelSummaryData, channelSortField, channelSortOrder]);
+
+  // Línea de tiempo transaccional agrupada por Canal (para el nuevo gráfico de líneas)
+  const channelTimelineChartData = useMemo(() => {
+    const isSingleDay = startDate === endDate;
+    const uniqueChannels = Array.from(new Set(filteredRecords.map(r => r.canalNombre)));
+    const points: Record<string, any> = {};
+    
+    if (startDate && endDate) {
+      const start = new Date(startDate + 'T00:00:00');
+      const end = new Date(endDate + 'T23:59:59');
+      const current = new Date(start);
+      
+      while (current <= end) {
+        const year = current.getFullYear();
+        const month = String(current.getMonth() + 1).padStart(2, '0');
+        const day = String(current.getDate()).padStart(2, '0');
+        const fStr = `${year}-${month}-${day}`;
+
+        for (let h = 0; h < 24; h++) {
+          const hStr = String(h).padStart(2, '0') + ':00';
+          const key = `${fStr} ${hStr}`;
+          const label = isSingleDay ? hStr : `${month}-${day} ${hStr}`;
+          
+          points[key] = {
+            key,
+            label,
+            fecha: fStr,
+            hora: hStr,
+          };
+          
+          uniqueChannels.forEach(ch => {
+            points[key][ch] = 0;
+          });
+        }
+        current.setDate(current.getDate() + 1);
+      }
+    }
+    
+    filteredRecords.forEach(r => {
+      const key = `${r.fecha} ${r.hora}`;
+      if (points[key]) {
+        points[key][r.canalNombre] = (points[key][r.canalNombre] || 0) + r.totalHora;
+      }
+    });
+
+    return {
+      data: Object.values(points).sort((a, b) => a.key.localeCompare(b.key)),
+      channels: uniqueChannels
+    };
+  }, [filteredRecords, startDate, endDate]);
 
   // Gráfica 1: Tendencia Horaria Consolidada
   const hourlyChartData = useMemo(() => {
@@ -623,6 +699,16 @@ export default function MySatcomMonitoreoPage() {
   const toggleSort = (field: keyof NormalizedRecord) => {
     if (sortField === field) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     else { setSortField(field); setSortOrder('asc'); }
+  };
+
+  // Función para ordenar la tabla de canales
+  const toggleChannelSort = (field: typeof channelSortField) => {
+    if (channelSortField === field) {
+      setChannelSortOrder(channelSortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setChannelSortField(field);
+      setChannelSortOrder('desc');
+    }
   };
 
   const handleChartClick = (state: any) => {
@@ -885,7 +971,7 @@ export default function MySatcomMonitoreoPage() {
 
           {/* Nueva Sección: Contadores por Canal */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Tabla resumen de Canales */}
+            {/* Tabla resumen de Canales con Ordenamiento */}
             <div className="lg:col-span-2 bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
@@ -894,22 +980,32 @@ export default function MySatcomMonitoreoPage() {
                     Distribución Transaccional por Canal
                   </h3>
                 </div>
-                <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Vista Consolidada</span>
+                <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Ordenar haciendo clic en columnas</span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead>
-                    <tr className="border-b border-neutral-100 dark:border-neutral-800 text-[10px] font-black text-neutral-400 uppercase tracking-widest">
-                      <th className="py-3">Canal</th>
-                      <th className="py-3 text-right">Autorizados</th>
-                      <th className="py-3 text-right">Duplicados</th>
-                      <th className="py-3 text-right">No Autorizados</th>
-                      <th className="py-3 text-right">Total</th>
-                      <th className="py-3 text-right">Participación</th>
+                    <tr className="border-b border-neutral-100 dark:border-neutral-800 text-[10px] font-black text-neutral-400 uppercase tracking-widest select-none">
+                      <th className="py-4 cursor-pointer hover:text-[#71BF44] transition-colors" onClick={() => toggleChannelSort('canal')}>
+                        Canal {channelSortField === 'canal' && (channelSortOrder === 'asc' ? <ArrowUp className="w-3 h-3 inline ml-1" /> : <ArrowDown className="w-3 h-3 inline ml-1" />)}
+                      </th>
+                      <th className="py-4 cursor-pointer hover:text-[#71BF44] transition-colors text-right" onClick={() => toggleChannelSort('autorizados')}>
+                        Autorizados {channelSortField === 'autorizados' && (channelSortOrder === 'asc' ? <ArrowUp className="w-3 h-3 inline ml-1" /> : <ArrowDown className="w-3 h-3 inline ml-1" />)}
+                      </th>
+                      <th className="py-4 cursor-pointer hover:text-[#71BF44] transition-colors text-right" onClick={() => toggleChannelSort('duplicados')}>
+                        Duplicados {channelSortField === 'duplicados' && (channelSortOrder === 'asc' ? <ArrowUp className="w-3 h-3 inline ml-1" /> : <ArrowDown className="w-3 h-3 inline ml-1" />)}
+                      </th>
+                      <th className="py-4 cursor-pointer hover:text-[#71BF44] transition-colors text-right" onClick={() => toggleChannelSort('noAuthorized' as any)}>
+                        No Autorizados {channelSortField === 'noAutorizados' && (channelSortOrder === 'asc' ? <ArrowUp className="w-3 h-3 inline ml-1" /> : <ArrowDown className="w-3 h-3 inline ml-1" />)}
+                      </th>
+                      <th className="py-4 cursor-pointer hover:text-[#71BF44] transition-colors text-right" onClick={() => toggleChannelSort('total')}>
+                        Total {channelSortField === 'total' && (channelSortOrder === 'asc' ? <ArrowUp className="w-3 h-3 inline ml-1" /> : <ArrowDown className="w-3 h-3 inline ml-1" />)}
+                      </th>
+                      <th className="py-4 text-right">Participación</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/50">
-                    {channelSummaryData.map((row, i) => {
+                    {sortedChannelSummaryData.map((row, i) => {
                       const totalGeneral = kpis.autorizados + kpis.duplicados + kpis.noAutorizados;
                       const pct = totalGeneral > 0 ? (row.total / totalGeneral) * 100 : 0;
                       return (
@@ -923,7 +1019,7 @@ export default function MySatcomMonitoreoPage() {
                         </tr>
                       );
                     })}
-                    {channelSummaryData.length === 0 && (
+                    {sortedChannelSummaryData.length === 0 && (
                       <tr>
                         <td colSpan={6} className="py-6 text-center italic text-neutral-400">Sin datos de canales en el periodo</td>
                       </tr>
@@ -933,22 +1029,39 @@ export default function MySatcomMonitoreoPage() {
               </div>
             </div>
             
-            {/* Gráfico de barras de volumen por Canal */}
+            {/* Gráfico de línea de tiempo con transacciones por Canal */}
             <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
-                  Volumen Total por Canal
+                  Línea de Tiempo por Canal (Trx)
                 </h3>
+                <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Transacciones por Hora</span>
               </div>
               <div className="h-[250px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={channelSummaryData} layout="vertical" margin={{ top: 5, right: 5, left: -10, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E5E5" opacity={0.1} />
-                    <XAxis type="number" tick={{ fill: '#888', fontSize: 9 }} axisLine={false} tickLine={false} />
-                    <YAxis dataKey="canal" type="category" tick={{ fill: '#888', fontSize: 9 }} axisLine={false} tickLine={false} width={80} />
+                  <LineChart data={channelTimelineChartData.data} margin={{ top: 5, right: 10, left: -25, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E5E5" opacity={0.1} />
+                    <XAxis dataKey="label" tick={{ fill: '#888', fontSize: 8 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: '#888', fontSize: 9 }} axisLine={false} tickLine={false} />
                     <Tooltip contentStyle={{ backgroundColor: '#1a1a1a', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '10px' }} />
-                    <Bar name="Total Transacciones" dataKey="total" fill="#71BF44" radius={[0, 4, 4, 0]} />
-                  </BarChart>
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: '9px', textTransform: 'uppercase' }} />
+                    {channelTimelineChartData.channels.map((ch, idx) => {
+                      const colors = ['#71BF44', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4', '#10b981', '#ef4444'];
+                      const color = colors[idx % colors.length];
+                      return (
+                        <Line 
+                          key={ch} 
+                          name={ch} 
+                          type="monotone" 
+                          dataKey={ch} 
+                          stroke={color} 
+                          strokeWidth={1.5} 
+                          dot={false}
+                          activeDot={{ r: 4 }}
+                        />
+                      );
+                    })}
+                  </LineChart>
                 </ResponsiveContainer>
               </div>
             </div>
@@ -1109,7 +1222,7 @@ export default function MySatcomMonitoreoPage() {
             {/* Controles de Selección de Día */}
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black text-neutral-450 uppercase tracking-widest">Día A:</span>
+                <span className="text-[10px] font-black text-neutral-455 uppercase tracking-widest">Día A:</span>
                 <select
                   value={compareDayA}
                   onChange={(e) => setCompareDayA(e.target.value)}
@@ -1280,7 +1393,7 @@ export default function MySatcomMonitoreoPage() {
           <div className="flex items-center gap-3">
              <button 
               onClick={clearFilters}
-              className="h-12 px-5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:text-red-500 rounded-2xl transition-all flex items-center justify-center"
+              className="h-12 px-5 bg-neutral-100 dark:bg-neutral-850 text-neutral-500 hover:text-red-500 rounded-2xl transition-all flex items-center justify-center border border-neutral-200 dark:border-neutral-750"
               title="Limpiar filtros"
              >
                 <X className="w-5 h-5" />
@@ -1461,7 +1574,7 @@ export default function MySatcomMonitoreoPage() {
             </div>
             <div className="flex flex-col">
               <span className="text-[11px] font-black uppercase tracking-[0.4em] text-neutral-900 dark:text-white leading-none">Satcom Engine</span>
-              <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-[0.2em] mt-1">mySatcom Monitoreo Module v1.0</span>
+              <span className="text-[9px] font-bold text-neutral-450 uppercase tracking-[0.2em] mt-1">mySatcom Monitoreo Module v1.0</span>
             </div>
          </div>
       </footer>
