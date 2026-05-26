@@ -114,6 +114,10 @@ export default function MySatcomMonitoreoPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [localSearchTerm, setLocalSearchTerm] = useState('');
 
+  // Filtros de rango de fechas globales
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+
   // Paginación
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -275,8 +279,26 @@ export default function MySatcomMonitoreoPage() {
     return ['Todos', ...list];
   }, [normalizedRecords]);
 
-  // Aplicar Filtros y Ordenamiento
-  const filteredRecords = useMemo(() => {
+  // Obtener todas las fechas únicas disponibles de la data cargada (ordenadas cronológicamente)
+  const allUniqueDates = useMemo(() => {
+    const dates = Array.from(new Set(rawMonitoreo.map(r => r.Fecha ? String(r.Fecha).split('T')[0] : ''))).filter(Boolean).sort();
+    return dates;
+  }, [rawMonitoreo]);
+
+  // Inicializar rango de fechas con la data disponible
+  useEffect(() => {
+    if (allUniqueDates.length > 0) {
+      if (!startDate || !allUniqueDates.includes(startDate)) {
+        setStartDate(allUniqueDates[0]); // La fecha más antigua
+      }
+      if (!endDate || !allUniqueDates.includes(endDate)) {
+        setEndDate(allUniqueDates[allUniqueDates.length - 1]); // La fecha más reciente
+      }
+    }
+  }, [allUniqueDates, startDate, endDate]);
+
+  // Aplicar Filtros y Ordenamiento (sin aplicar rango de fechas global)
+  const filteredRecordsWithoutDateRange = useMemo(() => {
     let result = normalizedRecords.filter(item => {
       const matchNemonico = selectedNemonicos.length === 0 || selectedNemonicos.includes(item.nemonico);
       const matchPais = selectedPaises.length === 0 || selectedPaises.includes(item.paisNombre);
@@ -310,6 +332,14 @@ export default function MySatcomMonitoreoPage() {
 
     return result;
   }, [normalizedRecords, selectedNemonicos, selectedPaises, filterStatus, searchTerm, sortField, sortOrder]);
+
+  // Aplicar rango de fechas global sobre los registros filtrados
+  const filteredRecords = useMemo(() => {
+    if (!startDate || !endDate) return filteredRecordsWithoutDateRange;
+    return filteredRecordsWithoutDateRange.filter(item => {
+      return item.fecha >= startDate && item.fecha <= endDate;
+    });
+  }, [filteredRecordsWithoutDateRange, startDate, endDate]);
 
   // KPIs
   const kpis = useMemo(() => {
@@ -379,27 +409,60 @@ export default function MySatcomMonitoreoPage() {
   // Pestañas locales para gráficos
   const [activeChartTab, setActiveChartTab] = useState<'acumulado' | 'historial' | 'comparador'>('acumulado');
 
-  // Línea de tiempo diaria (Historial de todos los días)
+  // Línea de tiempo con detalle por hora (rellena horas sin datos para continuidad)
   const timelineChartData = useMemo(() => {
-    const dailySummary: Record<string, { fecha: string, autorizados: number, noAutorizados: number }> = {};
+    if (!startDate || !endDate) return [];
+
+    const hourlySummary: Record<string, { label: string, key: string, fecha: string, hora: string, autorizados: number, noAutorizados: number }> = {};
     
-    filteredRecords.forEach(r => {
-      const f = r.fecha;
-      if (!dailySummary[f]) {
-        dailySummary[f] = { fecha: f, autorizados: 0, noAutorizados: 0 };
+    // Generar todas las fechas en el rango
+    const start = new Date(startDate + 'T00:00:00');
+    const end = new Date(endDate + 'T23:59:59');
+    const isSingleDay = startDate === endDate;
+
+    const current = new Date(start);
+    while (current <= end) {
+      const year = current.getFullYear();
+      const month = String(current.getMonth() + 1).padStart(2, '0');
+      const day = String(current.getDate()).padStart(2, '0');
+      const fStr = `${year}-${month}-${day}`;
+
+      for (let h = 0; h < 24; h++) {
+        const hStr = String(h).padStart(2, '0') + ':00';
+        const key = `${fStr} ${hStr}`;
+        const label = isSingleDay 
+          ? hStr 
+          : `${month}-${day} ${hStr}`; // Formato "MM-DD HH:00"
+
+        hourlySummary[key] = {
+          key,
+          label,
+          fecha: fStr,
+          hora: hStr,
+          autorizados: 0,
+          noAutorizados: 0
+        };
       }
-      dailySummary[f].autorizados += r.autorizados;
-      dailySummary[f].noAutorizados += r.noAutorizados;
+      current.setDate(current.getDate() + 1);
+    }
+
+    // Completar con datos reales
+    filteredRecords.forEach(r => {
+      const key = `${r.fecha} ${r.hora}`;
+      if (hourlySummary[key]) {
+        hourlySummary[key].autorizados += r.autorizados;
+        hourlySummary[key].noAutorizados += r.noAutorizados;
+      }
     });
 
-    return Object.values(dailySummary).sort((a, b) => a.fecha.localeCompare(b.fecha));
-  }, [filteredRecords]);
+    return Object.values(hourlySummary).sort((a, b) => a.key.localeCompare(b.key));
+  }, [filteredRecords, startDate, endDate]);
 
-  // Lista de fechas únicas para el comparador
+  // Lista de fechas únicas para el comparador (usa registros sin filtro de fecha global)
   const uniqueDates = useMemo(() => {
-    const dates = Array.from(new Set(filteredRecords.map(r => r.fecha))).filter(Boolean).sort();
+    const dates = Array.from(new Set(filteredRecordsWithoutDateRange.map(r => r.fecha))).filter(Boolean).sort();
     return dates.reverse(); // Más recientes primero
-  }, [filteredRecords]);
+  }, [filteredRecordsWithoutDateRange]);
 
   // Estados de comparación
   const [compareDayA, setCompareDayA] = useState<string>('');
@@ -418,7 +481,7 @@ export default function MySatcomMonitoreoPage() {
     }
   }, [uniqueDates, compareDayA, compareDayB]);
 
-  // Datos para gráfico comparativo hora por hora
+  // Datos para gráfico comparativo hora por hora (usa registros sin filtro de fecha global)
   const comparisonChartData = useMemo(() => {
     if (!compareDayA || !compareDayB) return [];
 
@@ -429,7 +492,7 @@ export default function MySatcomMonitoreoPage() {
       hoursSummary[hh] = { hora: hh, dayA_ok: 0, dayA_fail: 0, dayB_ok: 0, dayB_fail: 0 };
     }
 
-    filteredRecords.forEach(r => {
+    filteredRecordsWithoutDateRange.forEach(r => {
       const hh = r.hora;
       if (hoursSummary[hh]) {
         if (r.fecha === compareDayA) {
@@ -444,7 +507,7 @@ export default function MySatcomMonitoreoPage() {
     });
 
     return Object.values(hoursSummary).sort((a, b) => a.hora.localeCompare(b.hora));
-  }, [filteredRecords, compareDayA, compareDayB]);
+  }, [filteredRecordsWithoutDateRange, compareDayA, compareDayB]);
 
   // Lógica de Paginación en Cliente
   const paginatedRecords = useMemo(() => {
@@ -474,6 +537,10 @@ export default function MySatcomMonitoreoPage() {
     setFilterStatus('Todos');
     setSearchTerm('');
     setLocalSearchTerm('');
+    if (allUniqueDates.length > 0) {
+      setStartDate(allUniqueDates[0]);
+      setEndDate(allUniqueDates[allUniqueDates.length - 1]);
+    }
     setCurrentPage(1);
   };
 
@@ -702,15 +769,63 @@ export default function MySatcomMonitoreoPage() {
 
       {activeChartTab === 'historial' && (
         <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm mb-10">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 mb-8">
             <div className="flex items-center gap-3">
               <Calendar className="w-5 h-5 text-[#71BF44]" />
               <div>
                 <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
-                  Línea de Tiempo Técnica (Evolución por Día)
+                  Línea de Tiempo Técnica (Evolución Detallada por Hora)
                 </h3>
-                <p className="text-[10px] text-neutral-400 uppercase tracking-widest mt-0.5">Comportamiento diario de comprobantes procesados</p>
+                <p className="text-[10px] text-neutral-400 uppercase tracking-widest mt-0.5">Comportamiento temporal de comprobantes procesados por hora</p>
               </div>
+            </div>
+
+            {/* Controles de Rango de Fechas */}
+            <div className="flex flex-wrap items-center gap-4 bg-neutral-50/50 dark:bg-neutral-850 p-2 rounded-2xl border border-neutral-200 dark:border-neutral-800">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black text-neutral-450 uppercase tracking-widest">Desde:</span>
+                <select
+                  value={startDate}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    if (e.target.value > endDate) {
+                      setEndDate(e.target.value);
+                    }
+                  }}
+                  className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-3 py-1.5 text-xs font-bold text-neutral-850 dark:text-neutral-200 outline-none focus:ring-2 focus:ring-[#71BF44]/50 cursor-pointer"
+                >
+                  {allUniqueDates.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black text-neutral-455 uppercase tracking-widest">Hasta:</span>
+                <select
+                  value={endDate}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    if (e.target.value < startDate) {
+                      setStartDate(e.target.value);
+                    }
+                  }}
+                  className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-3 py-1.5 text-xs font-bold text-neutral-850 dark:text-neutral-200 outline-none focus:ring-2 focus:ring-[#71BF44]/50 cursor-pointer"
+                >
+                  {allUniqueDates.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              
+              <div className="h-6 w-px bg-neutral-200 dark:bg-neutral-700 mx-1 hidden sm:block"></div>
+              
+              <button
+                onClick={() => {
+                  if (allUniqueDates.length > 0) {
+                    setStartDate(allUniqueDates[0]);
+                    setEndDate(allUniqueDates[allUniqueDates.length - 1]);
+                  }
+                }}
+                className="text-[10px] font-black uppercase text-[#71BF44] hover:underline cursor-pointer px-2"
+              >
+                Ver Todo
+              </button>
             </div>
             
             <div className="flex items-center gap-6">
@@ -725,9 +840,9 @@ export default function MySatcomMonitoreoPage() {
             </div>
           </div>
 
-          <div className="h-[350px]">
+          <div className="h-[500px]">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={timelineChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <AreaChart data={timelineChartData} margin={{ top: 15, right: 15, left: -15, bottom: 5 }}>
                 <defs>
                   <linearGradient id="histColorOk" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#71BF44" stopOpacity={0.2}/>
@@ -739,10 +854,33 @@ export default function MySatcomMonitoreoPage() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E5E5" opacity={0.1} />
-                <XAxis dataKey="fecha" tick={{ fill: '#888', fontSize: 9 }} tickLine={false} axisLine={false} />
+                <XAxis dataKey="label" tick={{ fill: '#888', fontSize: 9 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
                 <YAxis tick={{ fill: '#888', fontSize: 9 }} tickLine={false} axisLine={false} />
                 <Tooltip 
-                  contentStyle={{ backgroundColor: '#1a1a1a', border: 'none', borderRadius: '16px', color: '#fff', fontSize: '10px' }}
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload;
+                      return (
+                        <div className="bg-[#1a1a1a] border border-neutral-800 p-4 rounded-2xl shadow-xl text-xs flex flex-col gap-1.5">
+                          <span className="font-mono text-neutral-400 text-[10px] uppercase">Detalle Temporal</span>
+                          <span className="font-black text-white">{data.fecha} a las {data.hora}</span>
+                          <div className="h-px bg-neutral-800 my-1" />
+                          <div className="flex items-center gap-2 text-[#71BF44]">
+                            <div className="w-2 h-2 rounded-full bg-[#71BF44]" />
+                            <span>Autorizados: <strong className="text-white">{data.autorizados.toLocaleString()}</strong></span>
+                          </div>
+                          <div className="flex items-center gap-2 text-red-500">
+                            <div className="w-2 h-2 rounded-full bg-red-500" />
+                            <span>No Autorizados: <strong className="text-white">{data.noAutorizados.toLocaleString()}</strong></span>
+                          </div>
+                          <div className="flex items-center gap-2 text-blue-400 font-bold mt-0.5">
+                            <span>Total Hora: <strong className="text-white">{(data.autorizados + data.noAutorizados).toLocaleString()}</strong></span>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
                 />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', textTransform: 'uppercase' }} />
                 <Area name="Autorizados" type="monotone" dataKey="autorizados" stroke="#71BF44" fillOpacity={1} fill="url(#histColorOk)" strokeWidth={1.5} />
