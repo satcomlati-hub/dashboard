@@ -56,8 +56,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (session.user) {
         session.user.role = token.role;
         session.user.permissions = token.permissions;
-        // Apuntar a nuestra ruta de API proxy local que maneja la autenticación y evita bloqueos de cookies de terceros
-        session.user.image = "/api/user/photo";
+        // Apuntar a nuestra ruta de API proxy local pasando el email para evitar caché cruzada en el navegador
+        session.user.image = token.email 
+          ? `/api/user/photo?email=${encodeURIComponent(token.email as string)}`
+          : "/api/user/photo";
         (session as any).accessToken = token.accessToken;
       }
       return session;

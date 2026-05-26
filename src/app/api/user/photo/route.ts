@@ -1,110 +1,167 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
+import { createClient } from '@supabase/supabase-js';
+
+// Inicializar cliente admin de Supabase con clave de servicio para evadir RLS en subidas
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL || 'https://wpzfbpvtxrfyejoqjecu.supabase.co',
+  process.env.SUPABASE_SERVICE_KEY || ''
+);
+
+const BUCKET_NAME = 'chat-uploads';
+const AVATAR_FOLDER = 'avatars';
 
 export async function GET() {
   console.log('[ZohoPhotoProxy] === Nueva petición a /api/user/photo ===');
   
   const session = await auth();
-  const accessToken = (session as any)?.accessToken;
+  const email = session?.user?.email;
 
-  if (!accessToken) {
-    console.error('[ZohoPhotoProxy] Error: No se encontró accessToken en la sesión');
+  if (!email) {
+    console.error('[ZohoPhotoProxy] Error: No se encontró correo en la sesión activa');
     return NextResponse.json({
       error: 'Unauthorized',
-      message: 'No se encontró accessToken en la sesión actual de NextAuth. Intenta cerrar sesión y volver a loguearte con Zoho.'
+      message: 'No se encontró una sesión activa o el correo del usuario. Intenta iniciar sesión de nuevo.'
     }, { status: 401 });
   }
 
-  console.log(`[ZohoPhotoProxy] AccessToken obtenido: ${accessToken.substring(0, 10)}...`);
+  const avatarPath = `${AVATAR_FOLDER}/${email}`;
+  const publicUrl = `${process.env.SUPABASE_URL || 'https://wpzfbpvtxrfyejoqjecu.supabase.co'}/storage/v1/object/public/${BUCKET_NAME}/${avatarPath}`;
 
   try {
-    // 1. Obtener información del usuario para sacar la URL de la foto y el identificador
+    // 1. Comprobar si ya existe la imagen en Supabase Storage
+    console.log(`[ZohoPhotoProxy] Buscando foto en Supabase Storage para: ${email}`);
+    const { data: files, error: listError } = await supabaseAdmin.storage
+      .from(BUCKET_NAME)
+      .list(AVATAR_FOLDER, {
+        search: email
+      });
+
+    if (listError) {
+      console.warn('[ZohoPhotoProxy] Advertencia al buscar en Storage:', listError.message);
+    }
+
+    const fileExists = files && files.some(file => file.name === email);
+
+    if (fileExists) {
+      console.log(`[ZohoPhotoProxy] Imagen encontrada en Supabase. Redirigiendo a url pública: ${publicUrl}`);
+      
+      // Creamos una respuesta de redirección (307)
+      const response = NextResponse.redirect(publicUrl);
+      
+      // Forzar que el navegador no comparta caché del proxy pero sí use la imagen directamente
+      response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+      return response;
+    }
+
+    // 2. Si no existe en Supabase, descargar desde Zoho
+    const accessToken = (session as any)?.accessToken;
+    if (!accessToken) {
+      console.error('[ZohoPhotoProxy] Error: Imagen no en Supabase y no hay accessToken en la sesión');
+      return NextResponse.json({
+        error: 'Unauthorized',
+        message: 'La foto de perfil no se ha descargado de Zoho todavía y el token de acceso actual ha expirado. Por favor, cierra sesión e inicia sesión de nuevo para sincronizarla.'
+      }, { status: 401 });
+    }
+
+    console.log(`[ZohoPhotoProxy] Imagen no encontrada en Supabase. Intentando descargar de Zoho para: ${email}`);
+
+    // Petición a userinfo de Zoho
     const userInfoRes = await fetch('https://accounts.zoho.com/oauth/v2/userinfo', {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
       },
     });
 
-    console.log(`[ZohoPhotoProxy] Petición a userinfo finalizada. Estatus: ${userInfoRes.status} ${userInfoRes.statusText}`);
-
     if (!userInfoRes.ok) {
       const errorText = await userInfoRes.text();
-      console.error(`[ZohoPhotoProxy] Error al obtener info del usuario. Código ${userInfoRes.status}. Respuesta: `, errorText);
+      console.error(`[ZohoPhotoProxy] Error al obtener info del usuario Zoho. Código ${userInfoRes.status}: `, errorText);
       return NextResponse.json({
         error: 'Failed to fetch user info from Zoho',
         status: userInfoRes.status,
-        response: errorText
+        message: 'No se pudo validar la sesión con Zoho para descargar la foto de perfil.'
       }, { status: userInfoRes.status });
     }
 
     const userInfo = await userInfoRes.json();
-    console.log(`[ZohoPhotoProxy] Información de usuario obtenida: `, JSON.stringify(userInfo));
-    
-    // Mapear picture (OIDC estándar de Zoho) o photo (antiguo Zoho)
     const photoUrl = userInfo.picture || userInfo.photo;
     const zuid = userInfo.sub || userInfo.ZUID;
 
-    // Si no hay URL de foto ni identificador, no podemos continuar
     if (!photoUrl && !zuid) {
-      console.error('[ZohoPhotoProxy] Error: No se encontró photoUrl ni ZUID/sub en la respuesta de userinfo');
-      return NextResponse.json({
+      console.error('[ZohoPhotoProxy] Error: No se encontró photoUrl ni ZUID en la respuesta de userinfo de Zoho');
+      return NextResponse.json({ 
         error: 'No photo found',
-        message: 'No se encontró una foto de perfil válida ni identificador (sub/ZUID) en los datos devueltos por Zoho.',
-        debugUserInfoReceived: userInfo
+        message: 'Zoho no devolvió una foto de perfil válida para esta cuenta.'
       }, { status: 404 });
     }
 
-    // Usar la URL devuelta por Zoho, o construir el fallback clásico de Zoho contacts
     const targetUrl = photoUrl || `https://contacts.zoho.com/file?fs=thumb&ID=${zuid}`;
-    console.log(`[ZohoPhotoProxy] Descargando foto desde: ${targetUrl}`);
+    console.log(`[ZohoPhotoProxy] Descargando foto desde Zoho: ${targetUrl}`);
 
-    // 2. Descargar la imagen desde Zoho
-    // Probamos con la cabecera estándar de Zoho o de Bearer según corresponda
-    console.log('[ZohoPhotoProxy] Intentando descarga con Zoho-oauthtoken...');
+    // Intentamos descargar la foto de Zoho con distintos métodos de autenticación
     let photoRes = await fetch(targetUrl, {
       headers: {
         'Authorization': `Zoho-oauthtoken ${accessToken}`,
       },
     });
 
-    console.log(`[ZohoPhotoProxy] Respuesta descarga 1 (Zoho-oauthtoken): ${photoRes.status} ${photoRes.statusText}`);
-
     if (!photoRes.ok) {
-      // Intentar con Bearer (muy común en endpoints OIDC / profile)
-      console.log('[ZohoPhotoProxy] Intentando descarga alternativa con Bearer...');
-      const photoResAlt = await fetch(targetUrl, {
+      console.log('[ZohoPhotoProxy] Falló descarga primaria. Intentando descarga alternativa con Bearer...');
+      photoRes = await fetch(targetUrl, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
         },
       });
-
-      console.log(`[ZohoPhotoProxy] Respuesta descarga 2 (Bearer): ${photoResAlt.status} ${photoResAlt.statusText}`);
-
-      if (!photoResAlt.ok) {
-        // Fallback final: intentar fetch simple por si es pública
-        console.log('[ZohoPhotoProxy] Intentando descarga pública sin cabeceras...');
-        const photoResPublic = await fetch(targetUrl);
-        
-        console.log(`[ZohoPhotoProxy] Respuesta descarga 3 (Pública): ${photoResPublic.status} ${photoResPublic.statusText}`);
-        
-        if (!photoResPublic.ok) {
-          console.error('[ZohoPhotoProxy] Error: Todas las descargas de la foto fallaron');
-          return NextResponse.json({
-            error: 'Failed to download photo from Zoho',
-            status: photoResPublic.status,
-            message: 'No se pudo descargar el archivo de imagen de Zoho con ningún método.',
-            debugUserInfoReceived: userInfo
-          }, { status: photoResPublic.status });
-        }
-        console.log('[ZohoPhotoProxy] Descarga pública exitosa');
-        return responseFromFetch(photoResPublic);
-      }
-      console.log('[ZohoPhotoProxy] Descarga alternativa (Bearer) exitosa');
-      return responseFromFetch(photoResAlt);
     }
 
-    console.log('[ZohoPhotoProxy] Descarga inicial (Zoho-oauthtoken) exitosa');
-    return responseFromFetch(photoRes);
+    if (!photoRes.ok) {
+      console.log('[ZohoPhotoProxy] Falló descarga con cabeceras. Intentando descarga pública sin cabeceras...');
+      photoRes = await fetch(targetUrl);
+    }
+
+    if (!photoRes.ok) {
+      console.error('[ZohoPhotoProxy] Error: Todas las descargas de la foto fallaron de Zoho');
+      return NextResponse.json({
+        error: 'Failed to download photo from Zoho',
+        status: photoRes.status,
+        message: 'No se pudo descargar el archivo físico de la imagen de perfil desde Zoho.'
+      }, { status: photoRes.status });
+    }
+
+    // 3. Obtener el Buffer de la imagen
+    const contentType = photoRes.headers.get('Content-Type') || 'image/jpeg';
+    const arrayBuffer = await photoRes.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    console.log(`[ZohoPhotoProxy] Subiendo foto a Supabase en ruta: ${avatarPath} (${buffer.length} bytes, type: ${contentType})`);
+    
+    // Subir la imagen a Supabase Storage (usando upsert para reemplazar si es necesario)
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from(BUCKET_NAME)
+      .upload(avatarPath, buffer, {
+        contentType,
+        upsert: true
+      });
+
+    if (uploadError) {
+      console.error('[ZohoPhotoProxy] Error al subir la imagen a Supabase Storage:', uploadError);
+      
+      // Fallback: Si por alguna razón la subida a Supabase falla, al menos servimos el buffer
+      // directamente en esta petición para no romper la UI del usuario en este instante.
+      const headers = new Headers();
+      headers.set('Content-Type', contentType);
+      headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+      return new NextResponse(buffer, {
+        status: 200,
+        headers,
+      });
+    }
+
+    console.log(`[ZohoPhotoProxy] Foto subida exitosamente a Supabase. Redirigiendo a url pública.`);
+    
+    const response = NextResponse.redirect(publicUrl);
+    response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+    return response;
 
   } catch (error: any) {
     console.error(`[ZohoPhotoProxy] Excepción en el proxy de fotos: `, error);
@@ -113,18 +170,4 @@ export async function GET() {
       message: error?.message || String(error)
     }, { status: 500 });
   }
-}
-
-async function responseFromFetch(fetchRes: Response) {
-  const blob = await fetchRes.blob();
-  const headers = new Headers();
-  headers.set('Content-Type', fetchRes.headers.get('Content-Type') || 'image/jpeg');
-  headers.set('Cache-Control', 'public, max-age=3600'); // Cache por 1 hora
-  
-  console.log(`[ZohoPhotoProxy] Retornando imagen de tamaño ${blob.size} bytes y tipo ${headers.get('Content-Type')}`);
-  
-  return new NextResponse(blob, {
-    status: 200,
-    headers,
-  });
 }
