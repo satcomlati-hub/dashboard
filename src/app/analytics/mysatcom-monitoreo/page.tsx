@@ -112,10 +112,28 @@ export default function MySatcomMonitoreoPage() {
   const [selectedPaises, setSelectedPaises] = useState<string[]>([]);
   const [filterStatus, setFilterStatus] = useState<'Todos' | 'Con Incidencias' | 'Sin Incidencias'>('Todos');
   const [searchTerm, setSearchTerm] = useState('');
+  const [localSearchTerm, setLocalSearchTerm] = useState('');
+
+  // Paginación
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   
   // Sorting
   const [sortField, setSortField] = useState<keyof NormalizedRecord>('fecha');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Debounce de búsqueda
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchTerm(localSearchTerm);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [localSearchTerm]);
+
+  // Reiniciar paginación cuando cambian los filtros
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedNemonicos, selectedPaises, filterStatus, searchTerm]);
 
   // Carga de datos
   const fetchData = useCallback(async (isRefresh = false) => {
@@ -208,12 +226,24 @@ export default function MySatcomMonitoreoPage() {
     fetchData();
   }, [fetchData]);
 
-  // Cruzar y normalizar los datos
+  // Cruzar y normalizar los datos con búsqueda pre-indexada O(1) para alta performance (90,000+ filas)
   const normalizedRecords = useMemo(() => {
+    const catalogMap: Record<number, CatalogEmisor> = {};
+    rawCatalog.forEach(c => {
+      const id = Number(c.IdEmisor || (c as any).ID_Emisor);
+      if (!isNaN(id)) catalogMap[id] = c;
+    });
+
+    const activityMap: Record<number, ActivityRecord> = {};
+    rawActivity.forEach(a => {
+      const id = Number(a.IdEmisor || (a as any).ID_Emisor);
+      if (!isNaN(id)) activityMap[id] = a;
+    });
+
     return rawMonitoreo.map(m => {
-      const emisorId = m.IdEmisor;
-      const emisorInfo = rawCatalog.find(c => Number(c.IdEmisor || (c as any).ID_Emisor) === Number(emisorId));
-      const activityInfo = rawActivity.find(a => Number(a.IdEmisor || (a as any).ID_Emisor) === Number(emisorId));
+      const emisorId = Number(m.IdEmisor);
+      const emisorInfo = catalogMap[emisorId];
+      const activityInfo = activityMap[emisorId];
 
       const paisId = emisorInfo?.IdPais || emisorInfo?.CodigoPais || emisorInfo?.Pais || 593;
       const paisNombre = PAIS_MAP[paisId] || emisorInfo?.NombrePais || 'Ecuador';
@@ -221,7 +251,7 @@ export default function MySatcomMonitoreoPage() {
       return {
         fecha: m.Fecha ? String(m.Fecha).split('T')[0] : '',
         hora: m.Hora || '00:00',
-        idEmisor: Number(emisorId),
+        idEmisor: emisorId,
         nemonico: emisorInfo?.Nemonico || emisorInfo?.nemonico || `EM-${emisorId}`,
         razonSocial: emisorInfo?.RazonSocial || emisorInfo?.razon_social || `Emisor ${emisorId}`,
         idPais: Number(paisId),
@@ -416,6 +446,16 @@ export default function MySatcomMonitoreoPage() {
     return Object.values(hoursSummary).sort((a, b) => a.hora.localeCompare(b.hora));
   }, [filteredRecords, compareDayA, compareDayB]);
 
+  // Lógica de Paginación en Cliente
+  const paginatedRecords = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredRecords.slice(startIndex, startIndex + pageSize);
+  }, [filteredRecords, currentPage, pageSize]);
+
+  const totalPages = useMemo(() => {
+    return Math.max(1, Math.ceil(filteredRecords.length / pageSize));
+  }, [filteredRecords, pageSize]);
+
   const toggleSort = (field: keyof NormalizedRecord) => {
     if (sortField === field) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     else { setSortField(field); setSortOrder('asc'); }
@@ -433,6 +473,8 @@ export default function MySatcomMonitoreoPage() {
     setSelectedPaises([]);
     setFilterStatus('Todos');
     setSearchTerm('');
+    setLocalSearchTerm('');
+    setCurrentPage(1);
   };
 
   const handleExport = () => {
@@ -862,10 +904,10 @@ export default function MySatcomMonitoreoPage() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
                 <input 
-                  type="text"
+                  type="text" 
                   placeholder="Ej: MERAMEXAIR, 13:00, 2026-05..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  value={localSearchTerm}
+                  onChange={(e) => setLocalSearchTerm(e.target.value)}
                   className="w-full bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl pl-10 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-[#71BF44]/50 transition-all"
                 />
               </div>
@@ -912,7 +954,7 @@ export default function MySatcomMonitoreoPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/50">
-              {filteredRecords.map((row, i) => {
+              {paginatedRecords.map((row, i) => {
                 const hasErrors = row.noAutorizados > 0;
                 return (
                   <tr key={i} className="group hover:bg-neutral-50 dark:hover:bg-white/[0.01] transition-all">
@@ -970,6 +1012,70 @@ export default function MySatcomMonitoreoPage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Controles de Paginación */}
+        <div className="p-6 border-t border-neutral-100 dark:border-neutral-800 flex flex-col sm:flex-row items-center justify-between gap-4 bg-neutral-50/30 dark:bg-white/[0.005]">
+          <div className="text-xs text-neutral-500 font-bold uppercase tracking-wider">
+            Mostrando {filteredRecords.length === 0 ? 0 : Math.min(filteredRecords.length, (currentPage - 1) * pageSize + 1)}-{Math.min(filteredRecords.length, currentPage * pageSize)} de {filteredRecords.length.toLocaleString()} registros
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-6">
+            {/* Selector de tamaño de página */}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Filas por página:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg px-2.5 py-1 text-xs font-bold outline-none cursor-pointer"
+              >
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value={200}>200</option>
+                <option value={500}>500</option>
+              </select>
+            </div>
+
+            {/* Botones de navegación */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="p-2 bg-white dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-750 rounded-lg text-xs font-black disabled:opacity-30 disabled:cursor-not-allowed hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all cursor-pointer"
+                title="Primera página"
+              >
+                «
+              </button>
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-2 bg-white dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-750 rounded-lg text-xs font-black disabled:opacity-30 disabled:cursor-not-allowed hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all cursor-pointer"
+              >
+                Anterior
+              </button>
+              <span className="text-xs font-black text-neutral-800 dark:text-neutral-250 px-3">
+                {currentPage} / {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-2 bg-white dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-750 rounded-lg text-xs font-black disabled:opacity-30 disabled:cursor-not-allowed hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all cursor-pointer"
+              >
+                Siguiente
+              </button>
+              <button
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="p-2 bg-white dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-750 rounded-lg text-xs font-black disabled:opacity-30 disabled:cursor-not-allowed hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all cursor-pointer"
+                title="Última página"
+              >
+                »
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
