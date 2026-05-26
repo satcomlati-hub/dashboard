@@ -346,6 +346,76 @@ export default function MySatcomMonitoreoPage() {
       .slice(0, 10);
   }, [filteredRecords]);
 
+  // Pestañas locales para gráficos
+  const [activeChartTab, setActiveChartTab] = useState<'acumulado' | 'historial' | 'comparador'>('acumulado');
+
+  // Línea de tiempo diaria (Historial de todos los días)
+  const timelineChartData = useMemo(() => {
+    const dailySummary: Record<string, { fecha: string, autorizados: number, noAutorizados: number }> = {};
+    
+    filteredRecords.forEach(r => {
+      const f = r.fecha;
+      if (!dailySummary[f]) {
+        dailySummary[f] = { fecha: f, autorizados: 0, noAutorizados: 0 };
+      }
+      dailySummary[f].autorizados += r.autorizados;
+      dailySummary[f].noAutorizados += r.noAutorizados;
+    });
+
+    return Object.values(dailySummary).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  }, [filteredRecords]);
+
+  // Lista de fechas únicas para el comparador
+  const uniqueDates = useMemo(() => {
+    const dates = Array.from(new Set(filteredRecords.map(r => r.fecha))).filter(Boolean).sort();
+    return dates.reverse(); // Más recientes primero
+  }, [filteredRecords]);
+
+  // Estados de comparación
+  const [compareDayA, setCompareDayA] = useState<string>('');
+  const [compareDayB, setCompareDayB] = useState<string>('');
+  const [compareMetric, setCompareMetric] = useState<'noAutorizados' | 'autorizados' | 'todos'>('noAutorizados');
+
+  // Inicializar días de comparación
+  useEffect(() => {
+    if (uniqueDates.length > 0) {
+      if (!compareDayA || !uniqueDates.includes(compareDayA)) {
+        setCompareDayA(uniqueDates[0]);
+      }
+      if (!compareDayB || !uniqueDates.includes(compareDayB)) {
+        setCompareDayB(uniqueDates[1] || uniqueDates[0]);
+      }
+    }
+  }, [uniqueDates, compareDayA, compareDayB]);
+
+  // Datos para gráfico comparativo hora por hora
+  const comparisonChartData = useMemo(() => {
+    if (!compareDayA || !compareDayB) return [];
+
+    const hoursSummary: Record<string, { hora: string, dayA_ok: number, dayA_fail: number, dayB_ok: number, dayB_fail: number }> = {};
+    
+    for (let i = 0; i < 24; i++) {
+      const hh = String(i).padStart(2, '0') + ':00';
+      hoursSummary[hh] = { hora: hh, dayA_ok: 0, dayA_fail: 0, dayB_ok: 0, dayB_fail: 0 };
+    }
+
+    filteredRecords.forEach(r => {
+      const hh = r.hora;
+      if (hoursSummary[hh]) {
+        if (r.fecha === compareDayA) {
+          hoursSummary[hh].dayA_ok += r.autorizados;
+          hoursSummary[hh].dayA_fail += r.noAutorizados;
+        }
+        if (r.fecha === compareDayB) {
+          hoursSummary[hh].dayB_ok += r.autorizados;
+          hoursSummary[hh].dayB_fail += r.noAutorizados;
+        }
+      }
+    });
+
+    return Object.values(hoursSummary).sort((a, b) => a.hora.localeCompare(b.hora));
+  }, [filteredRecords, compareDayA, compareDayB]);
+
   const toggleSort = (field: keyof NormalizedRecord) => {
     if (sortField === field) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     else { setSortField(field); setSortOrder('asc'); }
@@ -439,7 +509,7 @@ export default function MySatcomMonitoreoPage() {
                   </button>
                 </div>
                 <div className="w-1 h-1 rounded-full bg-neutral-300" />
-                <p className="text-xs text-neutral-500 font-medium tracking-tight">Monitoreo transaccional por hora de emisores (Últimos 5 días).</p>
+                <p className="text-xs text-neutral-500 font-medium tracking-tight">Monitoreo transaccional por hora de emisores (Historial y Comparador).</p>
               </div>
             </div>
           </div>
@@ -467,7 +537,7 @@ export default function MySatcomMonitoreoPage() {
         <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm">
           <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Comprobantes Autorizados</p>
           <h3 className="text-3xl font-black text-[#71BF44] leading-none">{kpis.autorizados.toLocaleString()}</h3>
-          <p className="text-[10px] text-neutral-400 mt-2">Últimos 5 días procesados con éxito.</p>
+          <p className="text-[10px] text-neutral-400 mt-2">Comprobantes autorizados con éxito en el período.</p>
         </div>
 
         <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm">
@@ -493,77 +563,254 @@ export default function MySatcomMonitoreoPage() {
         </div>
       </div>
 
-      {/* Visualizaciones */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
-        
-        {/* Gráfico 1: Tendencia Horaria */}
-        <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-3">
-              <Clock className="w-5 h-5 text-[#71BF44]" />
-              <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
-                Tendencia de Actividad por Hora
-              </h3>
+      {/* Pestañas de Visualización */}
+      <div className="flex border-b border-neutral-200 dark:border-neutral-800 mb-6 gap-2 bg-neutral-50/50 dark:bg-white/[0.01] p-1.5 rounded-2xl w-fit">
+        <button
+          onClick={() => setActiveChartTab('acumulado')}
+          className={`px-6 py-2.5 rounded-xl text-xs font-bold uppercase transition-all tracking-wider cursor-pointer ${activeChartTab === 'acumulado' ? 'bg-[#71BF44] text-white dark:text-[#111] shadow' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-white'}`}
+        >
+          Análisis Acumulado
+        </button>
+        <button
+          onClick={() => setActiveChartTab('historial')}
+          className={`px-6 py-2.5 rounded-xl text-xs font-bold uppercase transition-all tracking-wider cursor-pointer ${activeChartTab === 'historial' ? 'bg-[#71BF44] text-white dark:text-[#111] shadow' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-white'}`}
+        >
+          Línea de Tiempo Diaria
+        </button>
+        <button
+          onClick={() => setActiveChartTab('comparador')}
+          className={`px-6 py-2.5 rounded-xl text-xs font-bold uppercase transition-all tracking-wider cursor-pointer ${activeChartTab === 'comparador' ? 'bg-[#71BF44] text-white dark:text-[#111] shadow' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-white'}`}
+        >
+          Comparador de Días
+        </button>
+      </div>
+
+      {/* Renderizado de Visualizaciones según pestaña activa */}
+      {activeChartTab === 'acumulado' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
+          {/* Gráfico 1: Tendencia Horaria */}
+          <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-3">
+                <Clock className="w-5 h-5 text-[#71BF44]" />
+                <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
+                  Tendencia de Actividad por Hora
+                </h3>
+              </div>
+              <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Acumulado General</span>
             </div>
-            <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Acumulado General</span>
+
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={hourlyChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorOk" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#71BF44" stopOpacity={0.2}/>
+                      <stop offset="95%" stopColor="#71BF44" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorFail" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2}/>
+                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E5E5" opacity={0.1} />
+                  <XAxis dataKey="hora" tick={{ fill: '#888', fontSize: 9 }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fill: '#888', fontSize: 9 }} tickLine={false} axisLine={false} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#1a1a1a', border: 'none', borderRadius: '16px', color: '#fff', fontSize: '10px' }}
+                  />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', textTransform: 'uppercase' }} />
+                  <Area name="Autorizados" type="monotone" dataKey="autorizados" stroke="#71BF44" fillOpacity={1} fill="url(#colorOk)" strokeWidth={1.5} />
+                  <Area name="No Autorizados" type="monotone" dataKey="noAutorizados" stroke="#ef4444" fillOpacity={1} fill="url(#colorFail)" strokeWidth={1.5} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
           </div>
 
-          <div className="h-[300px]">
+          {/* Gráfico 2: Top Emisores */}
+          <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-3">
+                <Building2 className="w-5 h-5 text-[#71BF44]" />
+                <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
+                  Top 10 Emisores con Incidencias
+                </h3>
+              </div>
+              <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Filtrar al hacer clic</span>
+            </div>
+
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={topEmisoresChartData} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E5E5" opacity={0.1} />
+                  <XAxis dataKey="name" tick={{ fill: '#888', fontSize: 9 }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fill: '#888', fontSize: 9 }} tickLine={false} axisLine={false} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#1a1a1a', border: 'none', borderRadius: '16px', color: '#fff', fontSize: '10px' }}
+                  />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', textTransform: 'uppercase' }} />
+                  <Bar name="Autorizados" dataKey="autorizados" fill="#71BF44" stackId="stack" radius={[0, 0, 0, 0]} />
+                  <Bar name="No Autorizados" dataKey="no_autorizados" fill="#ef4444" stackId="stack" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeChartTab === 'historial' && (
+        <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm mb-10">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+            <div className="flex items-center gap-3">
+              <Calendar className="w-5 h-5 text-[#71BF44]" />
+              <div>
+                <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
+                  Línea de Tiempo Técnica (Evolución por Día)
+                </h3>
+                <p className="text-[10px] text-neutral-400 uppercase tracking-widest mt-0.5">Comportamiento diario de comprobantes procesados</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-[#71BF44]" />
+                <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Autorizados</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-red-500" />
+                <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">No Autorizados</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="h-[350px]">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={hourlyChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <AreaChart data={timelineChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="colorOk" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="histColorOk" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#71BF44" stopOpacity={0.2}/>
                     <stop offset="95%" stopColor="#71BF44" stopOpacity={0}/>
                   </linearGradient>
-                  <linearGradient id="colorFail" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="histColorFail" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2}/>
                     <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E5E5" opacity={0.1} />
-                <XAxis dataKey="hora" tick={{ fill: '#888', fontSize: 9 }} tickLine={false} axisLine={false} />
+                <XAxis dataKey="fecha" tick={{ fill: '#888', fontSize: 9 }} tickLine={false} axisLine={false} />
                 <YAxis tick={{ fill: '#888', fontSize: 9 }} tickLine={false} axisLine={false} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#1a1a1a', border: 'none', borderRadius: '16px', color: '#fff', fontSize: '10px' }}
                 />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', textTransform: 'uppercase' }} />
-                <Area name="Autorizados" type="monotone" dataKey="autorizados" stroke="#71BF44" fillOpacity={1} fill="url(#colorOk)" strokeWidth={1.5} />
-                <Area name="No Autorizados" type="monotone" dataKey="noAutorizados" stroke="#ef4444" fillOpacity={1} fill="url(#colorFail)" strokeWidth={1.5} />
+                <Area name="Autorizados" type="monotone" dataKey="autorizados" stroke="#71BF44" fillOpacity={1} fill="url(#histColorOk)" strokeWidth={1.5} />
+                <Area name="No Autorizados" type="monotone" dataKey="noAutorizados" stroke="#ef4444" fillOpacity={1} fill="url(#histColorFail)" strokeWidth={1.5} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
+      )}
 
-        {/* Gráfico 2: Top Emisores */}
-        <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
-          <div className="flex items-center justify-between mb-8">
+      {activeChartTab === 'comparador' && (
+        <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm mb-10 flex flex-col gap-6">
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 pb-6 border-b border-neutral-100 dark:border-neutral-800">
             <div className="flex items-center gap-3">
-              <Building2 className="w-5 h-5 text-[#71BF44]" />
-              <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
-                Top 10 Emisores con Incidencias
-              </h3>
+              <TrendingUp className="w-5 h-5 text-[#71BF44]" />
+              <div>
+                <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
+                  Comparativa Horaria Interdiaria (Día A vs Día B)
+                </h3>
+                <p className="text-[10px] text-neutral-400 uppercase tracking-widest mt-0.5">Analiza el patrón de errores hora por hora entre dos fechas</p>
+              </div>
             </div>
-            <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Filtrar al hacer clic</span>
+
+            {/* Controles de Selección de Día */}
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black text-neutral-450 uppercase tracking-widest">Día A:</span>
+                <select
+                  value={compareDayA}
+                  onChange={(e) => setCompareDayA(e.target.value)}
+                  className="bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-4 py-2 text-xs font-bold text-neutral-850 dark:text-neutral-200 outline-none focus:ring-2 focus:ring-[#71BF44]/50 cursor-pointer"
+                >
+                  {uniqueDates.length > 0 ? (
+                    uniqueDates.map(d => <option key={d} value={d}>{d}</option>)
+                  ) : (
+                    <option value="">Sin datos</option>
+                  )}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black text-neutral-450 uppercase tracking-widest">Día B:</span>
+                <select
+                  value={compareDayB}
+                  onChange={(e) => setCompareDayB(e.target.value)}
+                  className="bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-4 py-2 text-xs font-bold text-neutral-850 dark:text-neutral-200 outline-none focus:ring-2 focus:ring-[#71BF44]/50 cursor-pointer"
+                >
+                  {uniqueDates.length > 0 ? (
+                    uniqueDates.map(d => <option key={d} value={d}>{d}</option>)
+                  ) : (
+                    <option value="">Sin datos</option>
+                  )}
+                </select>
+              </div>
+
+              <div className="h-6 w-px bg-neutral-200 dark:bg-neutral-700 mx-2 hidden sm:block"></div>
+
+              {/* Selector de Métrica */}
+              <div className="flex bg-neutral-50 dark:bg-neutral-850 p-0.5 rounded-lg border border-neutral-200 dark:border-neutral-800">
+                <button
+                  onClick={() => setCompareMetric('noAutorizados')}
+                  className={`px-3 py-1.5 text-[9px] font-black rounded uppercase transition-all cursor-pointer ${compareMetric === 'noAutorizados' ? 'bg-red-500 text-white' : 'text-neutral-500 hover:text-neutral-850 dark:text-neutral-450'}`}
+                >
+                  No Autorizados (Fails)
+                </button>
+                <button
+                  onClick={() => setCompareMetric('autorizados')}
+                  className={`px-3 py-1.5 text-[9px] font-black rounded uppercase transition-all cursor-pointer ${compareMetric === 'autorizados' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-850 dark:text-neutral-450'}`}
+                >
+                  Autorizados (OK)
+                </button>
+                <button
+                  onClick={() => setCompareMetric('todos')}
+                  className={`px-3 py-1.5 text-[9px] font-black rounded uppercase transition-all cursor-pointer ${compareMetric === 'todos' ? 'bg-blue-600 text-white' : 'text-neutral-500 hover:text-neutral-850 dark:text-neutral-450'}`}
+                >
+                  Todos
+                </button>
+              </div>
+            </div>
           </div>
 
-          <div className="h-[300px]">
+          <div className="h-[350px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={topEmisoresChartData} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
+              <LineChart data={comparisonChartData} margin={{ top: 15, right: 20, left: -20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E5E5" opacity={0.1} />
-                <XAxis dataKey="name" tick={{ fill: '#888', fontSize: 9 }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fill: '#888', fontSize: 9 }} tickLine={false} axisLine={false} />
+                <XAxis dataKey="hora" tick={{ fill: '#888', fontSize: 9 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#888', fontSize: 9 }} axisLine={false} tickLine={false} />
                 <Tooltip 
-                  contentStyle={{ backgroundColor: '#1a1a1a', border: 'none', borderRadius: '16px', color: '#fff', fontSize: '10px' }}
+                  contentStyle={{ backgroundColor: '#181818', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '10px' }}
                 />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', textTransform: 'uppercase' }} />
-                <Bar name="Autorizados" dataKey="autorizados" fill="#71BF44" stackId="stack" radius={[0, 0, 0, 0]} />
-                <Bar name="No Autorizados" dataKey="no_autorizados" fill="#ef4444" stackId="stack" radius={[4, 4, 0, 0]} />
-              </BarChart>
+                
+                {(compareMetric === 'autorizados' || compareMetric === 'todos') && (
+                  <Line name={`Día A: OK (${compareDayA})`} type="monotone" dataKey="dayA_ok" stroke="#71BF44" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                )}
+                {(compareMetric === 'autorizados' || compareMetric === 'todos') && (
+                  <Line name={`Día B: OK (${compareDayB})`} type="monotone" dataKey="dayB_ok" stroke="#9ee379" strokeWidth={1.5} strokeDasharray="5 5" dot={{ r: 2 }} />
+                )}
+                
+                {(compareMetric === 'noAutorizados' || compareMetric === 'todos') && (
+                  <Line name={`Día A: FAIL (${compareDayA})`} type="monotone" dataKey="dayA_fail" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                )}
+                {(compareMetric === 'noAutorizados' || compareMetric === 'todos') && (
+                  <Line name={`Día B: FAIL (${compareDayB})`} type="monotone" dataKey="dayB_fail" stroke="#fca5a5" strokeWidth={1.5} strokeDasharray="5 5" dot={{ r: 2 }} />
+                )}
+              </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Grid Area */}
       <div id="grid-area" className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] overflow-hidden shadow-sm">
