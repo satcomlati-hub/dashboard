@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { 
   ChevronLeft, 
@@ -108,8 +108,8 @@ export default function MySatcomMonitoreoPage() {
   const [refreshing, setRefreshing] = useState(false);
 
   // Filters
-  const [filterNemonico, setFilterNemonico] = useState('Todos');
-  const [filterPais, setFilterPais] = useState('Todos');
+  const [selectedNemonicos, setSelectedNemonicos] = useState<string[]>([]);
+  const [selectedPaises, setSelectedPaises] = useState<string[]>([]);
   const [filterStatus, setFilterStatus] = useState<'Todos' | 'Con Incidencias' | 'Sin Incidencias'>('Todos');
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -248,8 +248,8 @@ export default function MySatcomMonitoreoPage() {
   // Aplicar Filtros y Ordenamiento
   const filteredRecords = useMemo(() => {
     let result = normalizedRecords.filter(item => {
-      const matchNemonico = filterNemonico === 'Todos' || item.nemonico === filterNemonico;
-      const matchPais = filterPais === 'Todos' || item.paisNombre === filterPais;
+      const matchNemonico = selectedNemonicos.length === 0 || selectedNemonicos.includes(item.nemonico);
+      const matchPais = selectedPaises.length === 0 || selectedPaises.includes(item.paisNombre);
       
       let matchStatus = true;
       if (filterStatus === 'Con Incidencias') matchStatus = item.noAutorizados > 0;
@@ -279,7 +279,7 @@ export default function MySatcomMonitoreoPage() {
     });
 
     return result;
-  }, [normalizedRecords, filterNemonico, filterPais, filterStatus, searchTerm, sortField, sortOrder]);
+  }, [normalizedRecords, selectedNemonicos, selectedPaises, filterStatus, searchTerm, sortField, sortOrder]);
 
   // KPIs
   const kpis = useMemo(() => {
@@ -353,14 +353,14 @@ export default function MySatcomMonitoreoPage() {
 
   const handleChartClick = (state: any) => {
     if (state && state.activeLabel) {
-      setFilterNemonico(state.activeLabel);
+      setSelectedNemonicos([state.activeLabel]);
       document.getElementById('grid-area')?.scrollIntoView({ behavior: 'smooth' });
     }
   };
 
   const clearFilters = () => {
-    setFilterNemonico('Todos');
-    setFilterPais('Todos');
+    setSelectedNemonicos([]);
+    setSelectedPaises([]);
     setFilterStatus('Todos');
     setSearchTerm('');
   };
@@ -573,34 +573,24 @@ export default function MySatcomMonitoreoPage() {
           <div className="flex flex-wrap items-end gap-6 flex-1 min-w-[500px]">
             
             {/* Filter Company */}
-            <div className="flex flex-col gap-2 w-56">
-              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Empresa (Nemónico)</label>
-              <div className="relative">
-                <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-                <select 
-                  value={filterNemonico}
-                  onChange={(e) => setFilterNemonico(e.target.value)}
-                  className="w-full bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl pl-10 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-[#71BF44]/50 transition-all appearance-none cursor-pointer"
-                >
-                  {nemonicosList.map(nem => <option key={nem} value={nem}>{nem}</option>)}
-                </select>
-              </div>
-            </div>
+            <MultiSelectDropdown 
+              label="Empresa (Nemónico)"
+              options={nemonicosList}
+              selectedValues={selectedNemonicos}
+              onChange={setSelectedNemonicos}
+              icon={<Building2 className="w-4 h-4 text-neutral-450 dark:text-neutral-500" />}
+              placeholder="Buscar empresa..."
+            />
 
             {/* Filter Pais */}
-            <div className="flex flex-col gap-2 w-48">
-              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">País</label>
-              <div className="relative">
-                <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-                <select 
-                  value={filterPais}
-                  onChange={(e) => setFilterPais(e.target.value)}
-                  className="w-full bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl pl-10 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-[#71BF44]/50 transition-all appearance-none cursor-pointer"
-                >
-                  {paisesList.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
-              </div>
-            </div>
+            <MultiSelectDropdown 
+              label="País"
+              options={paisesList}
+              selectedValues={selectedPaises}
+              onChange={setSelectedPaises}
+              icon={<Globe className="w-4 h-4 text-neutral-450 dark:text-neutral-500" />}
+              placeholder="Buscar país..."
+            />
 
             {/* Filter Estado */}
             <div className="flex flex-col gap-2 w-48">
@@ -748,6 +738,122 @@ export default function MySatcomMonitoreoPage() {
             </div>
          </div>
       </footer>
+    </div>
+  );
+}
+
+// Componente Dropdown de Selección Múltiple Premium
+interface MultiSelectDropdownProps {
+  label: string;
+  options: string[];
+  selectedValues: string[];
+  onChange: (values: string[]) => void;
+  icon?: React.ReactNode;
+  placeholder?: string;
+}
+
+function MultiSelectDropdown({ label, options, selectedValues, onChange, icon, placeholder = 'Buscar...' }: MultiSelectDropdownProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredOptions = options.filter(opt => 
+    opt.toLowerCase().includes(search.toLowerCase()) && opt !== 'Todos'
+  );
+
+  const toggleOption = (val: string) => {
+    if (selectedValues.includes(val)) {
+      onChange(selectedValues.filter(v => v !== val));
+    } else {
+      onChange([...selectedValues, val]);
+    }
+  };
+
+  const selectAll = () => {
+    onChange(options.filter(o => o !== 'Todos'));
+  };
+
+  const clearAll = () => {
+    onChange([]);
+  };
+
+  const displayLabel = useMemo(() => {
+    if (selectedValues.length === 0) return 'Todos';
+    if (selectedValues.length === 1) return selectedValues[0];
+    return `${selectedValues.length} seleccionados`;
+  }, [selectedValues]);
+
+  return (
+    <div className="flex flex-col gap-2 w-56 relative" ref={dropdownRef}>
+      <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">{label}</label>
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl pl-10 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-[#71BF44]/50 transition-all cursor-pointer flex items-center justify-between select-none min-h-[42px]"
+      >
+        <span className="absolute left-3 text-neutral-450">{icon}</span>
+        <span className="truncate flex-1 text-neutral-800 dark:text-neutral-200 pr-2">
+          {displayLabel}
+        </span>
+        <span className="text-[10px] text-neutral-400 ml-1">▼</span>
+      </div>
+
+      {isOpen && (
+        <div className="absolute top-[72px] left-0 z-50 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-xl w-64 p-3 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center gap-1.5 relative">
+            <Search className="absolute left-2.5 w-3.5 h-3.5 text-neutral-450 dark:text-neutral-550" />
+            <input 
+              type="text" 
+              placeholder={placeholder}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-850 rounded-lg pl-8 pr-2 py-1 text-[11px] font-bold outline-none focus:border-[#71BF44] text-neutral-800 dark:text-neutral-250"
+            />
+          </div>
+
+          <div className="flex justify-between items-center text-[10px] font-black uppercase text-[#71BF44] px-1 pt-1">
+            <button onClick={selectAll} className="hover:underline cursor-pointer">Todos</button>
+            <button onClick={clearAll} className="hover:underline text-neutral-400 cursor-pointer">Limpiar</button>
+          </div>
+
+          <div className="h-px bg-neutral-100 dark:bg-neutral-800 my-1" />
+
+          <div className="flex-1 max-h-40 overflow-y-auto flex flex-col gap-1 pr-1">
+            {filteredOptions.length === 0 ? (
+              <span className="text-[10px] italic text-neutral-400 p-2 text-center">Sin opciones</span>
+            ) : (
+              filteredOptions.map(opt => {
+                const isSelected = selectedValues.includes(opt);
+                return (
+                  <label 
+                    key={opt}
+                    className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-800/50 cursor-pointer text-xs select-none"
+                  >
+                    <input 
+                      type="checkbox" 
+                      checked={isSelected}
+                      onChange={() => toggleOption(opt)}
+                      className="rounded border-neutral-350 dark:border-neutral-700 text-[#71BF44] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                    />
+                    <span className={`truncate ${isSelected ? 'font-bold text-[#71BF44]' : 'text-neutral-700 dark:text-neutral-300'}`}>
+                      {opt}
+                    </span>
+                  </label>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
