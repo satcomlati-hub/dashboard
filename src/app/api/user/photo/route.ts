@@ -2,11 +2,19 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { createClient } from '@supabase/supabase-js';
 
-// Inicializar cliente admin de Supabase con clave de servicio para evadir RLS en subidas
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL || 'https://wpzfbpvtxrfyejoqjecu.supabase.co',
-  process.env.SUPABASE_SERVICE_KEY || ''
-);
+// Inicializar cliente admin de Supabase con clave de servicio para evadir RLS en subidas (de manera perezosa)
+let supabaseAdminInstance: ReturnType<typeof createClient> | null = null;
+function getSupabaseAdmin() {
+  if (!supabaseAdminInstance) {
+    const supabaseUrl = process.env.SUPABASE_URL || 'https://wpzfbpvtxrfyejoqjecu.supabase.co';
+    const supabaseKey = process.env.SUPABASE_SERVICE_KEY || '';
+    if (!supabaseKey) {
+      throw new Error('Supabase supabaseKey (SUPABASE_SERVICE_KEY) is required but was not provided in the environment variables.');
+    }
+    supabaseAdminInstance = createClient(supabaseUrl, supabaseKey);
+  }
+  return supabaseAdminInstance;
+}
 
 const BUCKET_NAME = 'chat-uploads';
 const AVATAR_FOLDER = 'avatars';
@@ -31,7 +39,7 @@ export async function GET() {
   try {
     // 1. Comprobar si ya existe la imagen en Supabase Storage
     console.log(`[ZohoPhotoProxy] Buscando foto en Supabase Storage para: ${email}`);
-    const { data: files, error: listError } = await supabaseAdmin.storage
+    const { data: files, error: listError } = await getSupabaseAdmin().storage
       .from(BUCKET_NAME)
       .list(AVATAR_FOLDER, {
         search: email
@@ -136,7 +144,7 @@ export async function GET() {
     console.log(`[ZohoPhotoProxy] Subiendo foto a Supabase en ruta: ${avatarPath} (${buffer.length} bytes, type: ${contentType})`);
     
     // Subir la imagen a Supabase Storage (usando upsert para reemplazar si es necesario)
-    const { error: uploadError } = await supabaseAdmin.storage
+    const { error: uploadError } = await getSupabaseAdmin().storage
       .from(BUCKET_NAME)
       .upload(avatarPath, buffer, {
         contentType,
