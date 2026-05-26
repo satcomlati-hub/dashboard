@@ -424,7 +424,6 @@ export default function MySatcomMonitoreoPage() {
     const totalNoAutorizados = filteredRecords.reduce((acc, curr) => acc + curr.noAutorizados, 0);
     const totalGeneral = totalAutorizados + totalDuplicados + totalNoAutorizados;
     
-    // Tasa de autorización efectiva (excluyendo duplicados y no autorizados de la efectividad directa, o considerándolos según regla de negocio)
     const tasaEfectividad = totalGeneral > 0 ? ((totalAutorizados + totalDuplicados) / totalGeneral) * 100 : 100;
     
     const emisoresUnicosConErrores = new Set(
@@ -440,7 +439,25 @@ export default function MySatcomMonitoreoPage() {
     };
   }, [filteredRecords]);
 
-  // Gráfica 1: Tendencia Horaria Consolidada (con Duplicados)
+  // Contadores consolidados por Canal para la nueva vista
+  const channelSummaryData = useMemo(() => {
+    const summary: Record<string, { canal: string, autorizados: number, duplicados: number, noAutorizados: number, total: number }> = {};
+    
+    filteredRecords.forEach(r => {
+      const key = r.canalNombre;
+      if (!summary[key]) {
+        summary[key] = { canal: key, autorizados: 0, duplicados: 0, noAutorizados: 0, total: 0 };
+      }
+      summary[key].autorizados += r.autorizados;
+      summary[key].duplicados += r.duplicados;
+      summary[key].noAutorizados += r.noAutorizados;
+      summary[key].total += r.totalHora;
+    });
+
+    return Object.values(summary).sort((a, b) => b.total - a.total);
+  }, [filteredRecords]);
+
+  // Gráfica 1: Tendencia Horaria Consolidada
   const hourlyChartData = useMemo(() => {
     const hoursSummary: Record<string, { hora: string, autorizados: number, duplicados: number, noAutorizados: number }> = {};
     
@@ -461,7 +478,7 @@ export default function MySatcomMonitoreoPage() {
     return Object.values(hoursSummary).sort((a, b) => a.hora.localeCompare(b.hora));
   }, [filteredRecords]);
 
-  // Gráfica 2: Top Emisores Afectados (con No Autorizados y Duplicados)
+  // Gráfica 2: Top Emisores Afectados
   const topEmisoresChartData = useMemo(() => {
     const emisorSummary: Record<string, { name: string, razonSocial: string, autorizados: number, duplicados: number, no_autorizados: number }> = {};
     
@@ -491,7 +508,7 @@ export default function MySatcomMonitoreoPage() {
   // Pestañas locales para gráficos
   const [activeChartTab, setActiveChartTab] = useState<'acumulado' | 'historial' | 'comparador'>('acumulado');
 
-  // Línea de tiempo con detalle por hora (incluye Duplicados)
+  // Línea de tiempo con detalle por hora
   const timelineChartData = useMemo(() => {
     if (!startDate || !endDate) return [];
 
@@ -563,7 +580,7 @@ export default function MySatcomMonitoreoPage() {
     }
   }, [uniqueDates, compareDayA, compareDayB]);
 
-  // Datos para gráfico comparativo (incluye duplicados)
+  // Datos para gráfico comparativo
   const comparisonChartData = useMemo(() => {
     if (!compareDayA || !compareDayB) return [];
 
@@ -728,7 +745,7 @@ export default function MySatcomMonitoreoPage() {
         </div>
       )}
 
-      {/* KPI Cards (5 columnas para incluir Duplicados) */}
+      {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-10">
         <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm">
           <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Comprobantes Autorizados</p>
@@ -789,78 +806,151 @@ export default function MySatcomMonitoreoPage() {
 
       {/* Renderizado de Visualizaciones según pestaña activa */}
       {activeChartTab === 'acumulado' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
-          {/* Gráfico 1: Tendencia Horaria */}
-          <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-3">
-                <Clock className="w-5 h-5 text-[#71BF44]" />
-                <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
-                  Tendencia de Actividad por Hora
-                </h3>
+        <div className="flex flex-col gap-8 mb-10">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Gráfico 1: Tendencia Horaria */}
+            <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-3">
+                  <Clock className="w-5 h-5 text-[#71BF44]" />
+                  <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
+                    Tendencia de Actividad por Hora
+                  </h3>
+                </div>
+                <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Acumulado General</span>
               </div>
-              <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Acumulado General</span>
+
+              <div className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={hourlyChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorOk" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#71BF44" stopOpacity={0.2}/>
+                        <stop offset="95%" stopColor="#71BF44" stopOpacity={0}/>
+                      </linearGradient>
+                      <linearGradient id="colorDup" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                      </linearGradient>
+                      <linearGradient id="colorFail" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2}/>
+                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E5E5" opacity={0.1} />
+                    <XAxis dataKey="hora" tick={{ fill: '#888', fontSize: 9 }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fill: '#888', fontSize: 9 }} tickLine={false} axisLine={false} />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#1a1a1a', border: 'none', borderRadius: '16px', color: '#fff', fontSize: '10px' }}
+                    />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', textTransform: 'uppercase' }} />
+                    <Area name="Autorizados" type="monotone" dataKey="autorizados" stroke="#71BF44" fillOpacity={1} fill="url(#colorOk)" strokeWidth={1.5} />
+                    <Area name="Duplicados" type="monotone" dataKey="duplicados" stroke="#3b82f6" fillOpacity={1} fill="url(#colorDup)" strokeWidth={1.5} />
+                    <Area name="No Autorizados" type="monotone" dataKey="noAutorizados" stroke="#ef4444" fillOpacity={1} fill="url(#colorFail)" strokeWidth={1.5} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
             </div>
 
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={hourlyChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorOk" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#71BF44" stopOpacity={0.2}/>
-                      <stop offset="95%" stopColor="#71BF44" stopOpacity={0}/>
-                    </linearGradient>
-                    <linearGradient id="colorDup" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                    </linearGradient>
-                    <linearGradient id="colorFail" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2}/>
-                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E5E5" opacity={0.1} />
-                  <XAxis dataKey="hora" tick={{ fill: '#888', fontSize: 9 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fill: '#888', fontSize: 9 }} tickLine={false} axisLine={false} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#1a1a1a', border: 'none', borderRadius: '16px', color: '#fff', fontSize: '10px' }}
-                  />
-                  <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', textTransform: 'uppercase' }} />
-                  <Area name="Autorizados" type="monotone" dataKey="autorizados" stroke="#71BF44" fillOpacity={1} fill="url(#colorOk)" strokeWidth={1.5} />
-                  <Area name="Duplicados" type="monotone" dataKey="duplicados" stroke="#3b82f6" fillOpacity={1} fill="url(#colorDup)" strokeWidth={1.5} />
-                  <Area name="No Autorizados" type="monotone" dataKey="noAutorizados" stroke="#ef4444" fillOpacity={1} fill="url(#colorFail)" strokeWidth={1.5} />
-                </AreaChart>
-              </ResponsiveContainer>
+            {/* Gráfico 2: Top Emisores */}
+            <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-3">
+                  <Building2 className="w-5 h-5 text-[#71BF44]" />
+                  <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
+                    Top 10 Emisores con Incidencias
+                  </h3>
+                </div>
+                <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Filtrar al hacer clic</span>
+              </div>
+
+              <div className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={topEmisoresChartData} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E5E5" opacity={0.1} />
+                    <XAxis dataKey="name" tick={{ fill: '#888', fontSize: 9 }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fill: '#888', fontSize: 9 }} tickLine={false} axisLine={false} />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#1a1a1a', border: 'none', borderRadius: '16px', color: '#fff', fontSize: '10px' }}
+                    />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', textTransform: 'uppercase' }} />
+                    <Bar name="Autorizados" dataKey="autorizados" fill="#71BF44" stackId="stack" />
+                    <Bar name="Duplicados" dataKey="duplicados" fill="#3b82f6" stackId="stack" />
+                    <Bar name="No Autorizados" dataKey="no_autorizados" fill="#ef4444" stackId="stack" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </div>
 
-          {/* Gráfico 2: Top Emisores */}
-          <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-3">
-                <Building2 className="w-5 h-5 text-[#71BF44]" />
+          {/* Nueva Sección: Contadores por Canal */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Tabla resumen de Canales */}
+            <div className="lg:col-span-2 bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <Radio className="w-5 h-5 text-[#71BF44]" />
+                  <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
+                    Distribución Transaccional por Canal
+                  </h3>
+                </div>
+                <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Vista Consolidada</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-neutral-100 dark:border-neutral-800 text-[10px] font-black text-neutral-400 uppercase tracking-widest">
+                      <th className="py-3">Canal</th>
+                      <th className="py-3 text-right">Autorizados</th>
+                      <th className="py-3 text-right">Duplicados</th>
+                      <th className="py-3 text-right">No Autorizados</th>
+                      <th className="py-3 text-right">Total</th>
+                      <th className="py-3 text-right">Participación</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/50">
+                    {channelSummaryData.map((row, i) => {
+                      const totalGeneral = kpis.autorizados + kpis.duplicados + kpis.noAutorizados;
+                      const pct = totalGeneral > 0 ? (row.total / totalGeneral) * 100 : 0;
+                      return (
+                        <tr key={i} className="hover:bg-neutral-50 dark:hover:bg-white/[0.01]">
+                          <td className="py-4 font-black text-neutral-800 dark:text-neutral-200 uppercase">{row.canal}</td>
+                          <td className="py-4 text-right text-[#71BF44] font-bold">{row.autorizados.toLocaleString()}</td>
+                          <td className="py-4 text-right text-blue-500 font-bold">{row.duplicados.toLocaleString()}</td>
+                          <td className="py-4 text-right text-red-500 font-bold">{row.noAutorizados.toLocaleString()}</td>
+                          <td className="py-4 text-right font-black text-neutral-950 dark:text-white">{row.total.toLocaleString()}</td>
+                          <td className="py-4 text-right font-mono text-neutral-550">{pct.toFixed(1)}%</td>
+                        </tr>
+                      );
+                    })}
+                    {channelSummaryData.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-6 text-center italic text-neutral-400">Sin datos de canales en el periodo</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            
+            {/* Gráfico de barras de volumen por Canal */}
+            <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
+              <div className="flex items-center justify-between mb-6">
                 <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
-                  Top 10 Emisores con Incidencias
+                  Volumen Total por Canal
                 </h3>
               </div>
-              <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Filtrar al hacer clic</span>
-            </div>
-
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={topEmisoresChartData} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E5E5" opacity={0.1} />
-                  <XAxis dataKey="name" tick={{ fill: '#888', fontSize: 9 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fill: '#888', fontSize: 9 }} tickLine={false} axisLine={false} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#1a1a1a', border: 'none', borderRadius: '16px', color: '#fff', fontSize: '10px' }}
-                  />
-                  <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', textTransform: 'uppercase' }} />
-                  <Bar name="Autorizados" dataKey="autorizados" fill="#71BF44" stackId="stack" />
-                  <Bar name="Duplicados" dataKey="duplicados" fill="#3b82f6" stackId="stack" />
-                  <Bar name="No Autorizados" dataKey="no_autorizados" fill="#ef4444" stackId="stack" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <div className="h-[250px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={channelSummaryData} layout="vertical" margin={{ top: 5, right: 5, left: -10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E5E5" opacity={0.1} />
+                    <XAxis type="number" tick={{ fill: '#888', fontSize: 9 }} axisLine={false} tickLine={false} />
+                    <YAxis dataKey="canal" type="category" tick={{ fill: '#888', fontSize: 9 }} axisLine={false} tickLine={false} width={80} />
+                    <Tooltip contentStyle={{ backgroundColor: '#1a1a1a', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '10px' }} />
+                    <Bar name="Total Transacciones" dataKey="total" fill="#71BF44" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </div>
         </div>
@@ -882,7 +972,7 @@ export default function MySatcomMonitoreoPage() {
             {/* Controles de Rango de Fechas */}
             <div className="flex flex-wrap items-center gap-4 bg-neutral-50/50 dark:bg-neutral-850 p-2 rounded-2xl border border-neutral-200 dark:border-neutral-800">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black text-neutral-450 uppercase tracking-widest">Desde:</span>
+                <span className="text-[10px] font-black text-neutral-455 uppercase tracking-widest">Desde:</span>
                 <select
                   value={startDate}
                   onChange={(e) => {
@@ -1245,7 +1335,7 @@ export default function MySatcomMonitoreoPage() {
                         <span className="text-xs font-black text-neutral-900 dark:text-white uppercase tracking-tighter line-clamp-1">{row.razonSocial}</span>
                         <div className="flex flex-wrap items-center gap-2 mt-0.5">
                           <span className="text-[9px] font-black text-[#71BF44] bg-[#71BF44]/5 px-2 py-0.5 rounded border border-[#71BF44]/10 uppercase tracking-widest">{row.nemonico}</span>
-                          <span className="text-[9px] text-neutral-450 dark:text-neutral-550 flex items-center gap-1 uppercase">
+                          <span className="text-[9px] text-neutral-450 dark:text-neutral-555 flex items-center gap-1 uppercase">
                             <Globe className="w-2.5 h-2.5" />
                             {row.paisNombre}
                           </span>
