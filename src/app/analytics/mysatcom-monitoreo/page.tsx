@@ -23,7 +23,8 @@ import {
   Building2,
   Globe,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  Radio
 } from 'lucide-react';
 import { formatDate } from '@/lib/formatters';
 import {
@@ -70,7 +71,9 @@ interface MonitoreoRecord {
   Fecha: string;
   Hora: string;
   IdEmisor: number;
+  Canal: number;
   Autorizados: number;
+  Duplicados: number;
   NoAutorizados: number;
   TotalHora: number;
 }
@@ -83,7 +86,10 @@ interface NormalizedRecord {
   razonSocial: string;
   idPais: number;
   paisNombre: string;
+  canalCodigo: number;
+  canalNombre: string;
   autorizados: number;
+  duplicados: number;
   noAutorizados: number;
   totalHora: number;
   ultimoAutorizado: string;
@@ -97,11 +103,21 @@ const PAIS_MAP: Record<number, string> = {
   51: 'Perú',
 };
 
+// Catálogo estático por defecto de Canales
+const DEFAULT_CHANNELS: Record<number, string> = {
+  0: 'FTP',
+  1: 'WEB',
+  2: 'BRIDGE',
+  3: 'SYNC',
+  4: 'BDD_SUMESA'
+};
+
 export default function MySatcomMonitoreoPage() {
   const [selectedAmbiente, setSelectedAmbiente] = useState<'V5' | 'Colombia'>('V5');
   const [rawCatalog, setRawCatalog] = useState<CatalogEmisor[]>([]);
   const [rawActivity, setRawActivity] = useState<ActivityRecord[]>([]);
   const [rawMonitoreo, setRawMonitoreo] = useState<MonitoreoRecord[]>([]);
+  const [channelsCatalog, setChannelsCatalog] = useState<Record<number, string>>(DEFAULT_CHANNELS);
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -110,6 +126,7 @@ export default function MySatcomMonitoreoPage() {
   // Filters
   const [selectedNemonicos, setSelectedNemonicos] = useState<string[]>([]);
   const [selectedPaises, setSelectedPaises] = useState<string[]>([]);
+  const [selectedCanales, setSelectedCanales] = useState<string[]>([]);
   const [filterStatus, setFilterStatus] = useState<'Todos' | 'Con Incidencias' | 'Sin Incidencias'>('Todos');
   const [searchTerm, setSearchTerm] = useState('');
   const [localSearchTerm, setLocalSearchTerm] = useState('');
@@ -126,6 +143,41 @@ export default function MySatcomMonitoreoPage() {
   const [sortField, setSortField] = useState<keyof NormalizedRecord>('fecha');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
+  // Carga del catálogo de canales (se carga una sola vez por ambiente)
+  useEffect(() => {
+    const fetchChannels = async () => {
+      try {
+        const res = await fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=${selectedAmbiente}&Proceso=consulta_tablero_canales_mysatcom_2026`);
+        if (res.ok) {
+          const json = await res.json();
+          let parsedChannels: Record<number, string> = { ...DEFAULT_CHANNELS };
+          
+          let dataList: any[] = [];
+          if (Array.isArray(json)) {
+            json.forEach(item => {
+              const dataNode = item.data ? (typeof item.data === 'string' ? JSON.parse(item.data) : item.data) : item;
+              if (Array.isArray(dataNode)) dataList = [...dataList, ...dataNode];
+              else if (dataNode && dataNode.CodigoCanal !== undefined) dataList.push(dataNode);
+            });
+          }
+          
+          dataList.forEach((ch: any) => {
+            const code = Number(ch.CodigoCanal ?? ch.codigoCanal);
+            const name = ch.Canal ?? ch.canal;
+            if (!isNaN(code) && name) {
+              parsedChannels[code] = name;
+            }
+          });
+          
+          setChannelsCatalog(parsedChannels);
+        }
+      } catch (err) {
+        console.error("Error al cargar canales desde la API, usando valores estáticos por defecto", err);
+      }
+    };
+    fetchChannels();
+  }, [selectedAmbiente]);
+
   // Debounce de búsqueda
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -137,9 +189,9 @@ export default function MySatcomMonitoreoPage() {
   // Reiniciar paginación cuando cambian los filtros
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedNemonicos, selectedPaises, filterStatus, searchTerm]);
+  }, [selectedNemonicos, selectedPaises, selectedCanales, filterStatus, searchTerm]);
 
-  // Carga de datos
+  // Carga de datos principales
   const fetchData = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) setRefreshing(true);
@@ -181,7 +233,7 @@ export default function MySatcomMonitoreoPage() {
         });
       }
 
-      // Parsear monitoreo
+      // Parsear monitoreo con los nuevos campos (Canal y Duplicados)
       let monitoreo: MonitoreoRecord[] = [];
       if (Array.isArray(jsonMonitoreo)) {
         jsonMonitoreo.forEach(item => {
@@ -189,28 +241,39 @@ export default function MySatcomMonitoreoPage() {
           if (Array.isArray(dataNode)) {
             monitoreo = [...monitoreo, ...dataNode];
           } else if (dataNode && (dataNode.Fecha || dataNode.co_fecha_in)) {
-            // Mapear campos en caso de que vengan en minúsculas u otros formatos
+            const auts = Number(dataNode.Autorizados || dataNode.autorizados || 0);
+            const dups = Number(dataNode.Duplicados || dataNode.duplicados || 0);
+            const noAuts = Number(dataNode.NoAutorizados || dataNode.noAutorizados || 0);
             monitoreo.push({
               Fecha: dataNode.Fecha || dataNode.fecha || dataNode.co_fecha_in,
               Hora: dataNode.Hora || dataNode.hora,
               IdEmisor: dataNode.IdEmisor || dataNode.idEmisor || dataNode.co_id_emisor || dataNode.ID_Emisor,
-              Autorizados: Number(dataNode.Autorizados || dataNode.autorizados || 0),
-              NoAutorizados: Number(dataNode.NoAutorizados || dataNode.noAutorizados || dataNode.NoAutorizados || 0),
-              TotalHora: Number(dataNode.TotalHora || dataNode.totalHora || dataNode.TotalDiario || 0)
+              Canal: Number(dataNode.Canal || dataNode.canal || dataNode.co_canal || 0),
+              Autorizados: auts,
+              Duplicados: dups,
+              NoAutorizados: noAuts,
+              TotalHora: auts + dups + noAuts
             });
           }
         });
       } else if (jsonMonitoreo && typeof jsonMonitoreo === 'object') {
         const dataNode = jsonMonitoreo.data ? (typeof jsonMonitoreo.data === 'string' ? JSON.parse(jsonMonitoreo.data) : jsonMonitoreo.data) : jsonMonitoreo;
         if (Array.isArray(dataNode)) {
-          monitoreo = dataNode.map((d: any) => ({
-            Fecha: d.Fecha || d.fecha || d.co_fecha_in,
-            Hora: d.Hora || d.hora,
-            IdEmisor: d.IdEmisor || d.idEmisor || d.co_id_emisor || d.ID_Emisor,
-            Autorizados: Number(d.Autorizados || 0),
-            NoAutorizados: Number(d.NoAutorizados || 0),
-            TotalHora: Number(d.TotalHora || d.TotalDiario || 0)
-          }));
+          monitoreo = dataNode.map((d: any) => {
+            const auts = Number(d.Autorizados || 0);
+            const dups = Number(d.Duplicados || 0);
+            const noAuts = Number(d.NoAutorizados || 0);
+            return {
+              Fecha: d.Fecha || d.fecha || d.co_fecha_in,
+              Hora: d.Hora || d.hora,
+              IdEmisor: d.IdEmisor || d.idEmisor || d.co_id_emisor || d.ID_Emisor,
+              Canal: Number(d.Canal || d.canal || d.co_canal || 0),
+              Autorizados: auts,
+              Duplicados: dups,
+              NoAutorizados: noAuts,
+              TotalHora: auts + dups + noAuts
+            };
+          });
         }
       }
 
@@ -230,7 +293,7 @@ export default function MySatcomMonitoreoPage() {
     fetchData();
   }, [fetchData]);
 
-  // Cruzar y normalizar los datos con búsqueda pre-indexada O(1) para alta performance (90,000+ filas)
+  // Cruzar y normalizar los datos con búsqueda pre-indexada O(1)
   const normalizedRecords = useMemo(() => {
     const catalogMap: Record<number, CatalogEmisor> = {};
     rawCatalog.forEach(c => {
@@ -252,6 +315,9 @@ export default function MySatcomMonitoreoPage() {
       const paisId = emisorInfo?.IdPais || emisorInfo?.CodigoPais || emisorInfo?.Pais || 593;
       const paisNombre = PAIS_MAP[paisId] || emisorInfo?.NombrePais || 'Ecuador';
 
+      const canalCod = Number(m.Canal);
+      const canalNombre = channelsCatalog[canalCod] || `Canal ${canalCod}`;
+
       return {
         fecha: m.Fecha ? String(m.Fecha).split('T')[0] : '',
         hora: m.Hora || '00:00',
@@ -260,13 +326,16 @@ export default function MySatcomMonitoreoPage() {
         razonSocial: emisorInfo?.RazonSocial || emisorInfo?.razon_social || `Emisor ${emisorId}`,
         idPais: Number(paisId),
         paisNombre: paisNombre,
+        canalCodigo: canalCod,
+        canalNombre: canalNombre,
         autorizados: Number(m.Autorizados || 0),
+        duplicados: Number(m.Duplicados || 0),
         noAutorizados: Number(m.NoAutorizados || 0),
         totalHora: Number(m.TotalHora || 0),
         ultimoAutorizado: activityInfo?.UltimoAutorizado || '---',
       } as NormalizedRecord;
     });
-  }, [rawMonitoreo, rawCatalog, rawActivity]);
+  }, [rawMonitoreo, rawCatalog, rawActivity, channelsCatalog]);
 
   // Listas de filtros únicos
   const nemonicosList = useMemo(() => {
@@ -279,29 +348,35 @@ export default function MySatcomMonitoreoPage() {
     return ['Todos', ...list];
   }, [normalizedRecords]);
 
-  // Obtener todas las fechas únicas disponibles de la data cargada (ordenadas cronológicamente)
+  const canalesList = useMemo(() => {
+    const list = Array.from(new Set(normalizedRecords.map(r => r.canalNombre))).filter(Boolean).sort();
+    return ['Todos', ...list];
+  }, [normalizedRecords]);
+
+  // Obtener todas las fechas únicas disponibles
   const allUniqueDates = useMemo(() => {
     const dates = Array.from(new Set(rawMonitoreo.map(r => r.Fecha ? String(r.Fecha).split('T')[0] : ''))).filter(Boolean).sort();
     return dates;
   }, [rawMonitoreo]);
 
-  // Inicializar rango de fechas con la data disponible
+  // Inicializar rango de fechas
   useEffect(() => {
     if (allUniqueDates.length > 0) {
       if (!startDate || !allUniqueDates.includes(startDate)) {
-        setStartDate(allUniqueDates[0]); // La fecha más antigua
+        setStartDate(allUniqueDates[0]);
       }
       if (!endDate || !allUniqueDates.includes(endDate)) {
-        setEndDate(allUniqueDates[allUniqueDates.length - 1]); // La fecha más reciente
+        setEndDate(allUniqueDates[allUniqueDates.length - 1]);
       }
     }
   }, [allUniqueDates, startDate, endDate]);
 
-  // Aplicar Filtros y Ordenamiento (sin aplicar rango de fechas global)
+  // Aplicar Filtros y Ordenamiento
   const filteredRecordsWithoutDateRange = useMemo(() => {
     let result = normalizedRecords.filter(item => {
       const matchNemonico = selectedNemonicos.length === 0 || selectedNemonicos.includes(item.nemonico);
       const matchPais = selectedPaises.length === 0 || selectedPaises.includes(item.paisNombre);
+      const matchCanal = selectedCanales.length === 0 || selectedCanales.includes(item.canalNombre);
       
       let matchStatus = true;
       if (filterStatus === 'Con Incidencias') matchStatus = item.noAutorizados > 0;
@@ -310,17 +385,18 @@ export default function MySatcomMonitoreoPage() {
       const matchSearch = !searchTerm || 
         item.razonSocial?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.nemonico?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.canalNombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.hora?.includes(searchTerm) ||
         item.fecha?.includes(searchTerm);
       
-      return matchNemonico && matchPais && matchStatus && matchSearch;
+      return matchNemonico && matchPais && matchCanal && matchStatus && matchSearch;
     });
 
     result.sort((a, b) => {
       let valA: any = a[sortField];
       let valB: any = b[sortField];
 
-      if (sortField === 'autorizados' || sortField === 'noAutorizados' || sortField === 'totalHora') {
+      if (sortField === 'autorizados' || sortField === 'duplicados' || sortField === 'noAutorizados' || sortField === 'totalHora') {
         valA = Number(valA);
         valB = Number(valB);
       }
@@ -331,9 +407,9 @@ export default function MySatcomMonitoreoPage() {
     });
 
     return result;
-  }, [normalizedRecords, selectedNemonicos, selectedPaises, filterStatus, searchTerm, sortField, sortOrder]);
+  }, [normalizedRecords, selectedNemonicos, selectedPaises, selectedCanales, filterStatus, searchTerm, sortField, sortOrder]);
 
-  // Aplicar rango de fechas global sobre los registros filtrados
+  // Aplicar rango de fechas global
   const filteredRecords = useMemo(() => {
     if (!startDate || !endDate) return filteredRecordsWithoutDateRange;
     return filteredRecordsWithoutDateRange.filter(item => {
@@ -341,12 +417,15 @@ export default function MySatcomMonitoreoPage() {
     });
   }, [filteredRecordsWithoutDateRange, startDate, endDate]);
 
-  // KPIs
+  // KPIs actualizados
   const kpis = useMemo(() => {
     const totalAutorizados = filteredRecords.reduce((acc, curr) => acc + curr.autorizados, 0);
+    const totalDuplicados = filteredRecords.reduce((acc, curr) => acc + curr.duplicados, 0);
     const totalNoAutorizados = filteredRecords.reduce((acc, curr) => acc + curr.noAutorizados, 0);
-    const totalGeneral = totalAutorizados + totalNoAutorizados;
-    const tasaEfectividad = totalGeneral > 0 ? (totalAutorizados / totalGeneral) * 100 : 100;
+    const totalGeneral = totalAutorizados + totalDuplicados + totalNoAutorizados;
+    
+    // Tasa de autorización efectiva (excluyendo duplicados y no autorizados de la efectividad directa, o considerándolos según regla de negocio)
+    const tasaEfectividad = totalGeneral > 0 ? ((totalAutorizados + totalDuplicados) / totalGeneral) * 100 : 100;
     
     const emisoresUnicosConErrores = new Set(
       filteredRecords.filter(r => r.noAutorizados > 0).map(r => r.idEmisor)
@@ -354,26 +433,27 @@ export default function MySatcomMonitoreoPage() {
 
     return {
       autorizados: totalAutorizados,
+      duplicados: totalDuplicados,
       noAutorizados: totalNoAutorizados,
       tasa: tasaEfectividad,
       emisoresAfectados: emisoresUnicosConErrores
     };
   }, [filteredRecords]);
 
-  // Gráfica 1: Tendencia Horaria Consolidada
+  // Gráfica 1: Tendencia Horaria Consolidada (con Duplicados)
   const hourlyChartData = useMemo(() => {
-    const hoursSummary: Record<string, { hora: string, autorizados: number, noAutorizados: number }> = {};
+    const hoursSummary: Record<string, { hora: string, autorizados: number, duplicados: number, noAutorizados: number }> = {};
     
-    // Rellenar todas las horas por defecto para tener continuidad
     for (let i = 0; i < 24; i++) {
       const hh = String(i).padStart(2, '0') + ':00';
-      hoursSummary[hh] = { hora: hh, autorizados: 0, noAutorizados: 0 };
+      hoursSummary[hh] = { hora: hh, autorizados: 0, duplicados: 0, noAutorizados: 0 };
     }
 
     filteredRecords.forEach(r => {
       const hh = r.hora;
       if (hoursSummary[hh]) {
         hoursSummary[hh].autorizados += r.autorizados;
+        hoursSummary[hh].duplicados += r.duplicados;
         hoursSummary[hh].noAutorizados += r.noAutorizados;
       }
     });
@@ -381,16 +461,17 @@ export default function MySatcomMonitoreoPage() {
     return Object.values(hoursSummary).sort((a, b) => a.hora.localeCompare(b.hora));
   }, [filteredRecords]);
 
-  // Gráfica 2: Top Emisores Afectados (con No Autorizados)
+  // Gráfica 2: Top Emisores Afectados (con No Autorizados y Duplicados)
   const topEmisoresChartData = useMemo(() => {
-    const emisorSummary: Record<string, { name: string, razonSocial: string, autorizados: number, no_autorizados: number }> = {};
+    const emisorSummary: Record<string, { name: string, razonSocial: string, autorizados: number, duplicados: number, no_autorizados: number }> = {};
     
     filteredRecords.forEach(r => {
       const key = r.nemonico;
       if (!emisorSummary[key]) {
-        emisorSummary[key] = { name: key, razonSocial: r.razonSocial, autorizados: 0, no_autorizados: 0 };
+        emisorSummary[key] = { name: key, razonSocial: r.razonSocial, autorizados: 0, duplicados: 0, no_autorizados: 0 };
       }
       emisorSummary[key].autorizados += r.autorizados;
+      emisorSummary[key].duplicados += r.duplicados;
       emisorSummary[key].no_autorizados += r.noAutorizados;
     });
 
@@ -399,8 +480,9 @@ export default function MySatcomMonitoreoPage() {
         name: e.name,
         emisor: e.razonSocial,
         autorizados: e.autorizados,
+        duplicados: e.duplicados,
         no_autorizados: e.no_autorizados,
-        total: e.autorizados + e.no_autorizados
+        total: e.autorizados + e.duplicados + e.no_autorizados
       }))
       .sort((a, b) => b.no_autorizados - a.no_autorizados)
       .slice(0, 10);
@@ -409,13 +491,12 @@ export default function MySatcomMonitoreoPage() {
   // Pestañas locales para gráficos
   const [activeChartTab, setActiveChartTab] = useState<'acumulado' | 'historial' | 'comparador'>('acumulado');
 
-  // Línea de tiempo con detalle por hora (rellena horas sin datos para continuidad)
+  // Línea de tiempo con detalle por hora (incluye Duplicados)
   const timelineChartData = useMemo(() => {
     if (!startDate || !endDate) return [];
 
-    const hourlySummary: Record<string, { label: string, key: string, fecha: string, hora: string, autorizados: number, noAutorizados: number }> = {};
+    const hourlySummary: Record<string, { label: string, key: string, fecha: string, hora: string, autorizados: number, duplicados: number, noAutorizados: number }> = {};
     
-    // Generar todas las fechas en el rango
     const start = new Date(startDate + 'T00:00:00');
     const end = new Date(endDate + 'T23:59:59');
     const isSingleDay = startDate === endDate;
@@ -432,7 +513,7 @@ export default function MySatcomMonitoreoPage() {
         const key = `${fStr} ${hStr}`;
         const label = isSingleDay 
           ? hStr 
-          : `${month}-${day} ${hStr}`; // Formato "MM-DD HH:00"
+          : `${month}-${day} ${hStr}`;
 
         hourlySummary[key] = {
           key,
@@ -440,17 +521,18 @@ export default function MySatcomMonitoreoPage() {
           fecha: fStr,
           hora: hStr,
           autorizados: 0,
+          duplicados: 0,
           noAutorizados: 0
         };
       }
       current.setDate(current.getDate() + 1);
     }
 
-    // Completar con datos reales
     filteredRecords.forEach(r => {
       const key = `${r.fecha} ${r.hora}`;
       if (hourlySummary[key]) {
         hourlySummary[key].autorizados += r.autorizados;
+        hourlySummary[key].duplicados += r.duplicados;
         hourlySummary[key].noAutorizados += r.noAutorizados;
       }
     });
@@ -458,16 +540,16 @@ export default function MySatcomMonitoreoPage() {
     return Object.values(hourlySummary).sort((a, b) => a.key.localeCompare(b.key));
   }, [filteredRecords, startDate, endDate]);
 
-  // Lista de fechas únicas para el comparador (usa registros sin filtro de fecha global)
+  // Lista de fechas únicas para el comparador
   const uniqueDates = useMemo(() => {
     const dates = Array.from(new Set(filteredRecordsWithoutDateRange.map(r => r.fecha))).filter(Boolean).sort();
-    return dates.reverse(); // Más recientes primero
+    return dates.reverse();
   }, [filteredRecordsWithoutDateRange]);
 
   // Estados de comparación
   const [compareDayA, setCompareDayA] = useState<string>('');
   const [compareDayB, setCompareDayB] = useState<string>('');
-  const [compareMetric, setCompareMetric] = useState<'noAutorizados' | 'autorizados' | 'todos'>('noAutorizados');
+  const [compareMetric, setCompareMetric] = useState<'noAutorizados' | 'autorizados' | 'duplicados' | 'todos'>('noAutorizados');
 
   // Inicializar días de comparación
   useEffect(() => {
@@ -481,15 +563,15 @@ export default function MySatcomMonitoreoPage() {
     }
   }, [uniqueDates, compareDayA, compareDayB]);
 
-  // Datos para gráfico comparativo hora por hora (usa registros sin filtro de fecha global)
+  // Datos para gráfico comparativo (incluye duplicados)
   const comparisonChartData = useMemo(() => {
     if (!compareDayA || !compareDayB) return [];
 
-    const hoursSummary: Record<string, { hora: string, dayA_ok: number, dayA_fail: number, dayB_ok: number, dayB_fail: number }> = {};
+    const hoursSummary: Record<string, { hora: string, dayA_ok: number, dayA_dup: number, dayA_fail: number, dayB_ok: number, dayB_dup: number, dayB_fail: number }> = {};
     
     for (let i = 0; i < 24; i++) {
       const hh = String(i).padStart(2, '0') + ':00';
-      hoursSummary[hh] = { hora: hh, dayA_ok: 0, dayA_fail: 0, dayB_ok: 0, dayB_fail: 0 };
+      hoursSummary[hh] = { hora: hh, dayA_ok: 0, dayA_dup: 0, dayA_fail: 0, dayB_ok: 0, dayB_dup: 0, dayB_fail: 0 };
     }
 
     filteredRecordsWithoutDateRange.forEach(r => {
@@ -497,10 +579,12 @@ export default function MySatcomMonitoreoPage() {
       if (hoursSummary[hh]) {
         if (r.fecha === compareDayA) {
           hoursSummary[hh].dayA_ok += r.autorizados;
+          hoursSummary[hh].dayA_dup += r.duplicados;
           hoursSummary[hh].dayA_fail += r.noAutorizados;
         }
         if (r.fecha === compareDayB) {
           hoursSummary[hh].dayB_ok += r.autorizados;
+          hoursSummary[hh].dayB_dup += r.duplicados;
           hoursSummary[hh].dayB_fail += r.noAutorizados;
         }
       }
@@ -509,7 +593,7 @@ export default function MySatcomMonitoreoPage() {
     return Object.values(hoursSummary).sort((a, b) => a.hora.localeCompare(b.hora));
   }, [filteredRecordsWithoutDateRange, compareDayA, compareDayB]);
 
-  // Lógica de Paginación en Cliente
+  // Paginación
   const paginatedRecords = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize;
     return filteredRecords.slice(startIndex, startIndex + pageSize);
@@ -534,6 +618,7 @@ export default function MySatcomMonitoreoPage() {
   const clearFilters = () => {
     setSelectedNemonicos([]);
     setSelectedPaises([]);
+    setSelectedCanales([]);
     setFilterStatus('Todos');
     setSearchTerm('');
     setLocalSearchTerm('');
@@ -547,14 +632,16 @@ export default function MySatcomMonitoreoPage() {
   const handleExport = () => {
     if (!filteredRecords.length) return;
     const csvContent = [
-      ['Fecha', 'Hora', 'Emisor', 'Nemonico', 'Pais', 'Autorizados', 'No Autorizados', 'Total', 'Ultimo Autorizado OK'],
+      ['Fecha', 'Hora', 'Emisor', 'Nemonico', 'Pais', 'Canal', 'Autorizados', 'Duplicados', 'No Autorizados', 'Total', 'Ultimo Autorizado OK'],
       ...filteredRecords.map(r => [
         r.fecha,
         r.hora,
         `"${r.razonSocial.replace(/"/g, '""')}"`,
         r.nemonico,
         r.paisNombre,
+        r.canalNombre,
         r.autorizados,
+        r.duplicados,
         r.noAutorizados,
         r.totalHora,
         r.ultimoAutorizado
@@ -618,7 +705,7 @@ export default function MySatcomMonitoreoPage() {
                   </button>
                 </div>
                 <div className="w-1 h-1 rounded-full bg-neutral-300" />
-                <p className="text-xs text-neutral-500 font-medium tracking-tight">Monitoreo transaccional por hora de emisores (Historial y Comparador).</p>
+                <p className="text-xs text-neutral-500 font-medium tracking-tight">Monitoreo transaccional por hora, canal y estado de comprobantes.</p>
               </div>
             </div>
           </div>
@@ -641,22 +728,28 @@ export default function MySatcomMonitoreoPage() {
         </div>
       )}
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+      {/* KPI Cards (5 columnas para incluir Duplicados) */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-10">
         <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm">
           <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Comprobantes Autorizados</p>
           <h3 className="text-3xl font-black text-[#71BF44] leading-none">{kpis.autorizados.toLocaleString()}</h3>
-          <p className="text-[10px] text-neutral-400 mt-2">Comprobantes autorizados con éxito en el período.</p>
+          <p className="text-[10px] text-neutral-400 mt-2">Autorizados con éxito en el período.</p>
+        </div>
+
+        <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm">
+          <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Comprobantes Duplicados</p>
+          <h3 className="text-3xl font-black text-blue-500 leading-none">{kpis.duplicados.toLocaleString()}</h3>
+          <p className="text-[10px] text-neutral-400 mt-2">Transacciones duplicadas (Estado 14).</p>
         </div>
 
         <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm">
           <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Comprobantes No Autorizados</p>
           <h3 className="text-3xl font-black text-red-500 leading-none">{kpis.noAutorizados.toLocaleString()}</h3>
-          <p className="text-[10px] text-neutral-400 mt-2">Documentos rechazados o con fallas.</p>
+          <p className="text-[10px] text-neutral-400 mt-2">Rechazados o fallidos (Sin Duplicados).</p>
         </div>
 
         <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm">
-          <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Tasa de Autorización</p>
+          <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Tasa de Efectividad</p>
           <h3 className="text-3xl font-black text-neutral-900 dark:text-white leading-none">
             {kpis.tasa.toFixed(2)}%
           </h3>
@@ -717,6 +810,10 @@ export default function MySatcomMonitoreoPage() {
                       <stop offset="5%" stopColor="#71BF44" stopOpacity={0.2}/>
                       <stop offset="95%" stopColor="#71BF44" stopOpacity={0}/>
                     </linearGradient>
+                    <linearGradient id="colorDup" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
                     <linearGradient id="colorFail" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2}/>
                       <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
@@ -730,6 +827,7 @@ export default function MySatcomMonitoreoPage() {
                   />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', textTransform: 'uppercase' }} />
                   <Area name="Autorizados" type="monotone" dataKey="autorizados" stroke="#71BF44" fillOpacity={1} fill="url(#colorOk)" strokeWidth={1.5} />
+                  <Area name="Duplicados" type="monotone" dataKey="duplicados" stroke="#3b82f6" fillOpacity={1} fill="url(#colorDup)" strokeWidth={1.5} />
                   <Area name="No Autorizados" type="monotone" dataKey="noAutorizados" stroke="#ef4444" fillOpacity={1} fill="url(#colorFail)" strokeWidth={1.5} />
                 </AreaChart>
               </ResponsiveContainer>
@@ -758,7 +856,8 @@ export default function MySatcomMonitoreoPage() {
                     contentStyle={{ backgroundColor: '#1a1a1a', border: 'none', borderRadius: '16px', color: '#fff', fontSize: '10px' }}
                   />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', textTransform: 'uppercase' }} />
-                  <Bar name="Autorizados" dataKey="autorizados" fill="#71BF44" stackId="stack" radius={[0, 0, 0, 0]} />
+                  <Bar name="Autorizados" dataKey="autorizados" fill="#71BF44" stackId="stack" />
+                  <Bar name="Duplicados" dataKey="duplicados" fill="#3b82f6" stackId="stack" />
                   <Bar name="No Autorizados" dataKey="no_autorizados" fill="#ef4444" stackId="stack" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -834,6 +933,10 @@ export default function MySatcomMonitoreoPage() {
                 <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Autorizados</span>
               </div>
               <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-blue-500" />
+                <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Duplicados</span>
+              </div>
+              <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-red-500" />
                 <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">No Autorizados</span>
               </div>
@@ -847,6 +950,10 @@ export default function MySatcomMonitoreoPage() {
                   <linearGradient id="histColorOk" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#71BF44" stopOpacity={0.2}/>
                     <stop offset="95%" stopColor="#71BF44" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="histColorDup" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
                   </linearGradient>
                   <linearGradient id="histColorFail" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2}/>
@@ -869,12 +976,16 @@ export default function MySatcomMonitoreoPage() {
                             <div className="w-2 h-2 rounded-full bg-[#71BF44]" />
                             <span>Autorizados: <strong className="text-white">{data.autorizados.toLocaleString()}</strong></span>
                           </div>
+                          <div className="flex items-center gap-2 text-blue-400">
+                            <div className="w-2 h-2 rounded-full bg-blue-500" />
+                            <span>Duplicados: <strong className="text-white">{data.duplicados.toLocaleString()}</strong></span>
+                          </div>
                           <div className="flex items-center gap-2 text-red-500">
                             <div className="w-2 h-2 rounded-full bg-red-500" />
                             <span>No Autorizados: <strong className="text-white">{data.noAutorizados.toLocaleString()}</strong></span>
                           </div>
-                          <div className="flex items-center gap-2 text-blue-400 font-bold mt-0.5">
-                            <span>Total Hora: <strong className="text-white">{(data.autorizados + data.noAutorizados).toLocaleString()}</strong></span>
+                          <div className="flex items-center gap-2 text-neutral-400 font-bold mt-0.5 border-t border-neutral-800 pt-1.5">
+                            <span>Total Hora: <strong className="text-white">{(data.autorizados + data.duplicados + data.noAutorizados).toLocaleString()}</strong></span>
                           </div>
                         </div>
                       );
@@ -884,6 +995,7 @@ export default function MySatcomMonitoreoPage() {
                 />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', textTransform: 'uppercase' }} />
                 <Area name="Autorizados" type="monotone" dataKey="autorizados" stroke="#71BF44" fillOpacity={1} fill="url(#histColorOk)" strokeWidth={1.5} />
+                <Area name="Duplicados" type="monotone" dataKey="duplicados" stroke="#3b82f6" fillOpacity={1} fill="url(#histColorDup)" strokeWidth={1.5} />
                 <Area name="No Autorizados" type="monotone" dataKey="noAutorizados" stroke="#ef4444" fillOpacity={1} fill="url(#histColorFail)" strokeWidth={1.5} />
               </AreaChart>
             </ResponsiveContainer>
@@ -922,7 +1034,7 @@ export default function MySatcomMonitoreoPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black text-neutral-450 uppercase tracking-widest">Día B:</span>
+                <span className="text-[10px] font-black text-neutral-455 uppercase tracking-widest">Día B:</span>
                 <select
                   value={compareDayB}
                   onChange={(e) => setCompareDayB(e.target.value)}
@@ -942,19 +1054,25 @@ export default function MySatcomMonitoreoPage() {
               <div className="flex bg-neutral-50 dark:bg-neutral-850 p-0.5 rounded-lg border border-neutral-200 dark:border-neutral-800">
                 <button
                   onClick={() => setCompareMetric('noAutorizados')}
-                  className={`px-3 py-1.5 text-[9px] font-black rounded uppercase transition-all cursor-pointer ${compareMetric === 'noAutorizados' ? 'bg-red-500 text-white' : 'text-neutral-500 hover:text-neutral-850 dark:text-neutral-450'}`}
+                  className={`px-3 py-1.5 text-[9px] font-black rounded uppercase transition-all cursor-pointer ${compareMetric === 'noAutorizados' ? 'bg-red-500 text-white' : 'text-neutral-500 hover:text-neutral-850 dark:text-neutral-455'}`}
                 >
-                  No Autorizados (Fails)
+                  No Autorizados
+                </button>
+                <button
+                  onClick={() => setCompareMetric('duplicados')}
+                  className={`px-3 py-1.5 text-[9px] font-black rounded uppercase transition-all cursor-pointer ${compareMetric === 'duplicados' ? 'bg-blue-500 text-white' : 'text-neutral-500 hover:text-neutral-850 dark:text-neutral-455'}`}
+                >
+                  Duplicados
                 </button>
                 <button
                   onClick={() => setCompareMetric('autorizados')}
-                  className={`px-3 py-1.5 text-[9px] font-black rounded uppercase transition-all cursor-pointer ${compareMetric === 'autorizados' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-850 dark:text-neutral-450'}`}
+                  className={`px-3 py-1.5 text-[9px] font-black rounded uppercase transition-all cursor-pointer ${compareMetric === 'autorizados' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-850 dark:text-neutral-455'}`}
                 >
-                  Autorizados (OK)
+                  Autorizados
                 </button>
                 <button
                   onClick={() => setCompareMetric('todos')}
-                  className={`px-3 py-1.5 text-[9px] font-black rounded uppercase transition-all cursor-pointer ${compareMetric === 'todos' ? 'bg-blue-600 text-white' : 'text-neutral-500 hover:text-neutral-850 dark:text-neutral-450'}`}
+                  className={`px-3 py-1.5 text-[9px] font-black rounded uppercase transition-all cursor-pointer ${compareMetric === 'todos' ? 'bg-neutral-800 text-white dark:bg-neutral-700' : 'text-neutral-500 hover:text-neutral-850 dark:text-neutral-455'}`}
                 >
                   Todos
                 </button>
@@ -974,17 +1092,24 @@ export default function MySatcomMonitoreoPage() {
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', textTransform: 'uppercase' }} />
                 
                 {(compareMetric === 'autorizados' || compareMetric === 'todos') && (
-                  <Line name={`Día A: OK (${compareDayA})`} type="monotone" dataKey="dayA_ok" stroke="#71BF44" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                  <Line name={`Día A: Autorizados (${compareDayA})`} type="monotone" dataKey="dayA_ok" stroke="#71BF44" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
                 )}
                 {(compareMetric === 'autorizados' || compareMetric === 'todos') && (
-                  <Line name={`Día B: OK (${compareDayB})`} type="monotone" dataKey="dayB_ok" stroke="#9ee379" strokeWidth={1.5} strokeDasharray="5 5" dot={{ r: 2 }} />
+                  <Line name={`Día B: Autorizados (${compareDayB})`} type="monotone" dataKey="dayB_ok" stroke="#9ee379" strokeWidth={1.5} strokeDasharray="5 5" dot={{ r: 2 }} />
+                )}
+
+                {(compareMetric === 'duplicados' || compareMetric === 'todos') && (
+                  <Line name={`Día A: Duplicados (${compareDayA})`} type="monotone" dataKey="dayA_dup" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                )}
+                {(compareMetric === 'duplicados' || compareMetric === 'todos') && (
+                  <Line name={`Día B: Duplicados (${compareDayB})`} type="monotone" dataKey="dayB_dup" stroke="#60a5fa" strokeWidth={1.5} strokeDasharray="5 5" dot={{ r: 2 }} />
                 )}
                 
                 {(compareMetric === 'noAutorizados' || compareMetric === 'todos') && (
-                  <Line name={`Día A: FAIL (${compareDayA})`} type="monotone" dataKey="dayA_fail" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                  <Line name={`Día A: No Autorizados (${compareDayA})`} type="monotone" dataKey="dayA_fail" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
                 )}
                 {(compareMetric === 'noAutorizados' || compareMetric === 'todos') && (
-                  <Line name={`Día B: FAIL (${compareDayB})`} type="monotone" dataKey="dayB_fail" stroke="#fca5a5" strokeWidth={1.5} strokeDasharray="5 5" dot={{ r: 2 }} />
+                  <Line name={`Día B: No Autorizados (${compareDayB})`} type="monotone" dataKey="dayB_fail" stroke="#fca5a5" strokeWidth={1.5} strokeDasharray="5 5" dot={{ r: 2 }} />
                 )}
               </LineChart>
             </ResponsiveContainer>
@@ -1019,6 +1144,16 @@ export default function MySatcomMonitoreoPage() {
               placeholder="Buscar país..."
             />
 
+            {/* Filter Canal */}
+            <MultiSelectDropdown 
+              label="Canal"
+              options={canalesList}
+              selectedValues={selectedCanales}
+              onChange={setSelectedCanales}
+              icon={<Radio className="w-4 h-4 text-neutral-450 dark:text-neutral-500" />}
+              placeholder="Buscar canal..."
+            />
+
             {/* Filter Estado */}
             <div className="flex flex-col gap-2 w-48">
               <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Estado</label>
@@ -1038,12 +1173,12 @@ export default function MySatcomMonitoreoPage() {
             
             {/* Global Search */}
             <div className="flex flex-col gap-2 flex-1 min-w-[280px]">
-              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Buscar en Razón Social, Hora o Fecha</label>
+              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Buscar en Razón Social, Canal, Hora o Fecha</label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
                 <input 
                   type="text" 
-                  placeholder="Ej: MERAMEXAIR, 13:00, 2026-05..."
+                  placeholder="Ej: FTP, WEB, 13:00, 2026-05..."
                   value={localSearchTerm}
                   onChange={(e) => setLocalSearchTerm(e.target.value)}
                   className="w-full bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl pl-10 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-[#71BF44]/50 transition-all"
@@ -1084,6 +1219,9 @@ export default function MySatcomMonitoreoPage() {
                 <th className="px-8 py-5 cursor-pointer hover:text-[#71BF44] transition-colors text-right" onClick={() => toggleSort('autorizados')}>
                   Autorizados {sortField === 'autorizados' && (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
                 </th>
+                <th className="px-8 py-5 cursor-pointer hover:text-[#71BF44] transition-colors text-right" onClick={() => toggleSort('duplicados')}>
+                  Duplicados {sortField === 'duplicados' && (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
+                </th>
                 <th className="px-8 py-5 cursor-pointer hover:text-[#71BF44] transition-colors text-right" onClick={() => toggleSort('noAutorizados')}>
                   No Autorizados {sortField === 'noAutorizados' && (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
                 </th>
@@ -1105,11 +1243,14 @@ export default function MySatcomMonitoreoPage() {
                     <td className="px-8 py-5">
                       <div className="flex flex-col">
                         <span className="text-xs font-black text-neutral-900 dark:text-white uppercase tracking-tighter line-clamp-1">{row.razonSocial}</span>
-                        <div className="flex items-center gap-2 mt-0.5">
+                        <div className="flex flex-wrap items-center gap-2 mt-0.5">
                           <span className="text-[9px] font-black text-[#71BF44] bg-[#71BF44]/5 px-2 py-0.5 rounded border border-[#71BF44]/10 uppercase tracking-widest">{row.nemonico}</span>
                           <span className="text-[9px] text-neutral-450 dark:text-neutral-550 flex items-center gap-1 uppercase">
                             <Globe className="w-2.5 h-2.5" />
                             {row.paisNombre}
+                          </span>
+                          <span className="text-[9px] text-blue-500 bg-blue-50 dark:bg-blue-950/20 px-2 py-0.5 rounded border border-blue-500/10 font-bold uppercase tracking-wider">
+                            {row.canalNombre}
                           </span>
                         </div>
                       </div>
@@ -1117,6 +1258,11 @@ export default function MySatcomMonitoreoPage() {
                     <td className="px-8 py-5 text-right">
                       <span className="text-sm font-black text-[#71BF44] tracking-tighter">
                         {row.autorizados.toLocaleString()}
+                      </span>
+                    </td>
+                    <td className="px-8 py-5 text-right">
+                      <span className="text-sm font-black text-blue-500 tracking-tighter">
+                        {row.duplicados.toLocaleString()}
                       </span>
                     </td>
                     <td className="px-8 py-5 text-right">
@@ -1140,7 +1286,7 @@ export default function MySatcomMonitoreoPage() {
               })}
               {filteredRecords.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-24 text-center">
+                  <td colSpan={7} className="py-24 text-center">
                     <div className="flex flex-col items-center gap-4 opacity-20 text-neutral-400">
                       <Search className="w-16 h-16" />
                       <p className="text-2xl font-black uppercase tracking-[0.4em]">Sin Resultados</p>
