@@ -50,6 +50,9 @@ interface CatalogEmisor {
   IdPais: number;
   NombrePais?: string;
   CodigoPais?: number;
+  Pais?: number;
+  nemonico?: string;
+  razon_social?: string;
 }
 
 interface ActivityRecord {
@@ -212,15 +215,15 @@ export default function MySatcomMonitoreoPage() {
       const emisorInfo = rawCatalog.find(c => Number(c.IdEmisor || (c as any).ID_Emisor) === Number(emisorId));
       const activityInfo = rawActivity.find(a => Number(a.IdEmisor || (a as any).ID_Emisor) === Number(emisorId));
 
-      const paisId = emisorInfo?.IdPais || emisorInfo?.CodigoPais || (emisorInfo as any).Pais || 593;
+      const paisId = emisorInfo?.IdPais || emisorInfo?.CodigoPais || emisorInfo?.Pais || 593;
       const paisNombre = PAIS_MAP[paisId] || emisorInfo?.NombrePais || 'Ecuador';
 
       return {
         fecha: m.Fecha ? String(m.Fecha).split('T')[0] : '',
         hora: m.Hora || '00:00',
         idEmisor: Number(emisorId),
-        nemonico: emisorInfo?.Nemonico || (emisorInfo as any).nemonico || `EM-${emisorId}`,
-        razonSocial: emisorInfo?.RazonSocial || (emisorInfo as any).razon_social || `Emisor ${emisorId}`,
+        nemonico: emisorInfo?.Nemonico || emisorInfo?.nemonico || `EM-${emisorId}`,
+        razonSocial: emisorInfo?.RazonSocial || emisorInfo?.razon_social || `Emisor ${emisorId}`,
         idPais: Number(paisId),
         paisNombre: paisNombre,
         autorizados: Number(m.Autorizados || 0),
