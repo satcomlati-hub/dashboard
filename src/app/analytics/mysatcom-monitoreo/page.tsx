@@ -161,7 +161,7 @@ export default function MySatcomMonitoreoPage() {
             json.forEach(item => {
               const dataNode = item.data ? (typeof item.data === 'string' ? JSON.parse(item.data) : item.data) : item;
               if (Array.isArray(dataNode)) dataList = [...dataList, ...dataNode];
-              else if (dataNode && dataNode.CodigoCanal !== undefined) dataList.push(dataNode);
+              else if (dataNode && (dataNode.CodigoCanal !== undefined || dataNode.codigoCanal !== undefined)) dataList.push(dataNode);
             });
           }
           
@@ -195,7 +195,7 @@ export default function MySatcomMonitoreoPage() {
     setCurrentPage(1);
   }, [selectedNemonicos, selectedPaises, selectedCanales, filterStatus, searchTerm]);
 
-  // Carga de datos principales
+  // Carga de datos principales con mapeo robusto a mayúsculas/minúsculas
   const fetchData = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) setRefreshing(true);
@@ -237,22 +237,23 @@ export default function MySatcomMonitoreoPage() {
         });
       }
 
-      // Parsear monitoreo con los nuevos campos (Canal y Duplicados)
+      // Parsear monitoreo con los nuevos campos (Canal y Duplicados) con fallbacks robustos
       let monitoreo: MonitoreoRecord[] = [];
       if (Array.isArray(jsonMonitoreo)) {
         jsonMonitoreo.forEach(item => {
           const dataNode = item.data ? (typeof item.data === 'string' ? JSON.parse(item.data) : item.data) : item;
           if (Array.isArray(dataNode)) {
             monitoreo = [...monitoreo, ...dataNode];
-          } else if (dataNode && (dataNode.Fecha || dataNode.co_fecha_in)) {
-            const auts = Number(dataNode.Autorizados || dataNode.autorizados || 0);
-            const dups = Number(dataNode.Duplicados || dataNode.duplicados || 0);
-            const noAuts = Number(dataNode.NoAutorizados || dataNode.noAutorizados || 0);
+          } else if (dataNode && (dataNode.Fecha || dataNode.fecha || dataNode.co_fecha_in)) {
+            const auts = Number(dataNode.Autorizados ?? dataNode.autorizados ?? 0);
+            const dups = Number(dataNode.Duplicados ?? dataNode.duplicados ?? 0);
+            const noAuts = Number(dataNode.NoAutorizados ?? dataNode.noAutorizados ?? dataNode.no_autorizados ?? 0);
+            const canalVal = Number(dataNode.Canal ?? dataNode.canal ?? dataNode.co_canal ?? 0);
             monitoreo.push({
               Fecha: dataNode.Fecha || dataNode.fecha || dataNode.co_fecha_in,
               Hora: dataNode.Hora || dataNode.hora,
               IdEmisor: dataNode.IdEmisor || dataNode.idEmisor || dataNode.co_id_emisor || dataNode.ID_Emisor,
-              Canal: Number(dataNode.Canal || dataNode.canal || dataNode.co_canal || 0),
+              Canal: canalVal,
               Autorizados: auts,
               Duplicados: dups,
               NoAutorizados: noAuts,
@@ -264,14 +265,15 @@ export default function MySatcomMonitoreoPage() {
         const dataNode = jsonMonitoreo.data ? (typeof jsonMonitoreo.data === 'string' ? JSON.parse(jsonMonitoreo.data) : jsonMonitoreo.data) : jsonMonitoreo;
         if (Array.isArray(dataNode)) {
           monitoreo = dataNode.map((d: any) => {
-            const auts = Number(d.Autorizados || 0);
-            const dups = Number(d.Duplicados || 0);
-            const noAuts = Number(d.NoAutorizados || 0);
+            const auts = Number(d.Autorizados ?? d.autorizados ?? 0);
+            const dups = Number(d.Duplicados ?? d.duplicados ?? 0);
+            const noAuts = Number(d.NoAutorizados ?? d.noAutorizados ?? d.no_autorizados ?? 0);
+            const canalVal = Number(d.Canal ?? d.canal ?? d.co_canal ?? 0);
             return {
               Fecha: d.Fecha || d.fecha || d.co_fecha_in,
               Hora: d.Hora || d.hora,
               IdEmisor: d.IdEmisor || d.idEmisor || d.co_id_emisor || d.ID_Emisor,
-              Canal: Number(d.Canal || d.canal || d.co_canal || 0),
+              Canal: canalVal,
               Autorizados: auts,
               Duplicados: dups,
               NoAutorizados: noAuts,
@@ -353,7 +355,7 @@ export default function MySatcomMonitoreoPage() {
   }, [normalizedRecords]);
 
   const canalesList = useMemo(() => {
-    const list = Array.from(new Set(normalizedRecords.map(r => r.canalNombre))).filter(Boolean).sort();
+    const list = Array.from(new Set(normalizedRecords.map(r => `${r.canalNombre} (${r.canalCodigo})`))).filter(Boolean).sort();
     return ['Todos', ...list];
   }, [normalizedRecords]);
 
@@ -380,7 +382,7 @@ export default function MySatcomMonitoreoPage() {
     let result = normalizedRecords.filter(item => {
       const matchNemonico = selectedNemonicos.length === 0 || selectedNemonicos.includes(item.nemonico);
       const matchPais = selectedPaises.length === 0 || selectedPaises.includes(item.paisNombre);
-      const matchCanal = selectedCanales.length === 0 || selectedCanales.includes(item.canalNombre);
+      const matchCanal = selectedCanales.length === 0 || selectedCanales.includes(`${item.canalNombre} (${item.canalCodigo})`);
       
       let matchStatus = true;
       if (filterStatus === 'Con Incidencias') matchStatus = item.noAutorizados > 0;
@@ -390,6 +392,8 @@ export default function MySatcomMonitoreoPage() {
         item.razonSocial?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.nemonico?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.canalNombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        String(item.canalCodigo).includes(searchTerm) ||
+        String(item.idEmisor).includes(searchTerm) ||
         item.hora?.includes(searchTerm) ||
         item.fecha?.includes(searchTerm);
       
@@ -445,12 +449,12 @@ export default function MySatcomMonitoreoPage() {
 
   // Contadores consolidados por Canal
   const channelSummaryData = useMemo(() => {
-    const summary: Record<string, { canal: string, autorizados: number, duplicados: number, noAutorizados: number, total: number }> = {};
+    const summary: Record<string, { canal: string, canalCodigo: number, autorizados: number, duplicados: number, noAutorizados: number, total: number }> = {};
     
     filteredRecords.forEach(r => {
-      const key = r.canalNombre;
+      const key = `${r.canalNombre} (${r.canalCodigo})`;
       if (!summary[key]) {
-        summary[key] = { canal: key, autorizados: 0, duplicados: 0, noAutorizados: 0, total: 0 };
+        summary[key] = { canal: r.canalNombre, canalCodigo: r.canalCodigo, autorizados: 0, duplicados: 0, noAutorizados: 0, total: 0 };
       }
       summary[key].autorizados += r.autorizados;
       summary[key].duplicados += r.duplicados;
@@ -483,7 +487,7 @@ export default function MySatcomMonitoreoPage() {
     return data;
   }, [channelSummaryData, channelSortField, channelSortOrder]);
 
-  // Línea de tiempo transaccional agrupada por Canal (para el nuevo gráfico de líneas)
+  // Línea de tiempo transaccional agrupada por Canal
   const channelTimelineChartData = useMemo(() => {
     const isSingleDay = startDate === endDate;
     const uniqueChannels = Array.from(new Set(filteredRecords.map(r => r.canalNombre)));
@@ -987,7 +991,7 @@ export default function MySatcomMonitoreoPage() {
                   <thead>
                     <tr className="border-b border-neutral-100 dark:border-neutral-800 text-[10px] font-black text-neutral-400 uppercase tracking-widest select-none">
                       <th className="py-4 cursor-pointer hover:text-[#71BF44] transition-colors" onClick={() => toggleChannelSort('canal')}>
-                        Canal {channelSortField === 'canal' && (channelSortOrder === 'asc' ? <ArrowUp className="w-3 h-3 inline ml-1" /> : <ArrowDown className="w-3 h-3 inline ml-1" />)}
+                        Canal (Código) {channelSortField === 'canal' && (channelSortOrder === 'asc' ? <ArrowUp className="w-3 h-3 inline ml-1" /> : <ArrowDown className="w-3 h-3 inline ml-1" />)}
                       </th>
                       <th className="py-4 cursor-pointer hover:text-[#71BF44] transition-colors text-right" onClick={() => toggleChannelSort('autorizados')}>
                         Autorizados {channelSortField === 'autorizados' && (channelSortOrder === 'asc' ? <ArrowUp className="w-3 h-3 inline ml-1" /> : <ArrowDown className="w-3 h-3 inline ml-1" />)}
@@ -1010,7 +1014,9 @@ export default function MySatcomMonitoreoPage() {
                       const pct = totalGeneral > 0 ? (row.total / totalGeneral) * 100 : 0;
                       return (
                         <tr key={i} className="hover:bg-neutral-50 dark:hover:bg-white/[0.01]">
-                          <td className="py-4 font-black text-neutral-800 dark:text-neutral-200 uppercase">{row.canal}</td>
+                          <td className="py-4 font-black text-neutral-800 dark:text-neutral-200 uppercase">
+                            {row.canal} <span className="text-[10px] font-mono text-neutral-400 font-bold ml-1">({row.canalCodigo})</span>
+                          </td>
                           <td className="py-4 text-right text-[#71BF44] font-bold">{row.autorizados.toLocaleString()}</td>
                           <td className="py-4 text-right text-blue-500 font-bold">{row.duplicados.toLocaleString()}</td>
                           <td className="py-4 text-right text-red-500 font-bold">{row.noAutorizados.toLocaleString()}</td>
@@ -1448,12 +1454,13 @@ export default function MySatcomMonitoreoPage() {
                         <span className="text-xs font-black text-neutral-900 dark:text-white uppercase tracking-tighter line-clamp-1">{row.razonSocial}</span>
                         <div className="flex flex-wrap items-center gap-2 mt-0.5">
                           <span className="text-[9px] font-black text-[#71BF44] bg-[#71BF44]/5 px-2 py-0.5 rounded border border-[#71BF44]/10 uppercase tracking-widest">{row.nemonico}</span>
+                          <span className="text-[9px] text-neutral-500 bg-neutral-100 dark:bg-neutral-800/50 px-2 py-0.5 rounded border border-neutral-200 dark:border-neutral-700 font-mono font-bold">ID: {row.idEmisor}</span>
                           <span className="text-[9px] text-neutral-450 dark:text-neutral-555 flex items-center gap-1 uppercase">
                             <Globe className="w-2.5 h-2.5" />
                             {row.paisNombre}
                           </span>
                           <span className="text-[9px] text-blue-500 bg-blue-50 dark:bg-blue-950/20 px-2 py-0.5 rounded border border-blue-500/10 font-bold uppercase tracking-wider">
-                            {row.canalNombre}
+                            {row.canalNombre} <span className="text-[8px] font-mono text-blue-400 font-bold">({row.canalCodigo})</span>
                           </span>
                         </div>
                       </div>
@@ -1644,7 +1651,7 @@ function MultiSelectDropdown({ label, options, selectedValues, onChange, icon, p
         <span className="truncate flex-1 text-neutral-800 dark:text-neutral-200 pr-2">
           {displayLabel}
         </span>
-        <span className="text-[10px] text-neutral-400 ml-1">▼</span>
+        <span className="text-[10px] text-neutral-450 ml-1">▼</span>
       </div>
 
       {isOpen && (
