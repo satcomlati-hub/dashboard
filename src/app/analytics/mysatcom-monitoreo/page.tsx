@@ -147,6 +147,36 @@ export default function MySatcomMonitoreoPage() {
   const [channelSortField, setChannelSortField] = useState<'canal' | 'autorizados' | 'duplicados' | 'noAutorizados' | 'total'>('total');
   const [channelSortOrder, setChannelSortOrder] = useState<'asc' | 'desc'>('desc');
 
+  // Rango de periodo para el gráfico de Tendencia Horaria (hoy, ayer, semana)
+  const [trendPeriod, setTrendPeriod] = useState<'hoy' | 'ayer' | 'semana'>('hoy');
+
+  // Obtener fecha local actual de forma robusta YYYY-MM-DD
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    const offset = d.getTimezoneOffset();
+    const localDate = new Date(d.getTime() - (offset * 60 * 1000));
+    return localDate.toISOString().split('T')[0];
+  }, []);
+
+  // Calcular las fechas relativas de comparación
+  const datesInfo = useMemo(() => {
+    const today = new Date(todayStr + 'T00:00:00');
+    
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    
+    const weekStart = new Date(today);
+    weekStart.setDate(weekStart.getDate() - 7);
+    const weekStartStr = weekStart.toISOString().split('T')[0];
+    
+    return {
+      todayStr,
+      yesterdayStr,
+      weekStartStr
+    };
+  }, [todayStr]);
+
   // Carga del catálogo de canales (se carga una sola vez por ambiente)
   useEffect(() => {
     const fetchChannels = async () => {
@@ -195,7 +225,7 @@ export default function MySatcomMonitoreoPage() {
     setCurrentPage(1);
   }, [selectedNemonicos, selectedPaises, selectedCanales, filterStatus, searchTerm]);
 
-  // Carga de datos principales con mapeo robusto a mayúsculas/minúsculas
+  // Carga de datos principales con mapeo robusto a mayúsculas/minúsculas y TotalHora unificado
   const fetchData = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) setRefreshing(true);
@@ -237,49 +267,40 @@ export default function MySatcomMonitoreoPage() {
         });
       }
 
-      // Parsear monitoreo con los nuevos campos (Canal y Duplicados) con fallbacks robustos
+      // Parsear monitoreo con los nuevos campos y fallbacks robustos para asegurar TotalHora
       let monitoreo: MonitoreoRecord[] = [];
+      const processMonitoreoArray = (arr: any[]) => {
+        return arr.map((d: any) => {
+          const auts = Number(d.Autorizados ?? d.autorizados ?? 0);
+          const dups = Number(d.Duplicados ?? d.duplicados ?? 0);
+          const noAuts = Number(d.NoAutorizados ?? d.noAutorizados ?? d.no_autorizados ?? 0);
+          const canalVal = Number(d.Canal ?? d.canal ?? d.co_canal ?? 0);
+          return {
+            Fecha: d.Fecha || d.fecha || d.co_fecha_in,
+            Hora: d.Hora || d.hora,
+            IdEmisor: d.IdEmisor || d.idEmisor || d.co_id_emisor || d.ID_Emisor,
+            Canal: canalVal,
+            Autorizados: auts,
+            Duplicados: dups,
+            NoAutorizados: noAuts,
+            TotalHora: auts + dups + noAuts
+          };
+        });
+      };
+
       if (Array.isArray(jsonMonitoreo)) {
         jsonMonitoreo.forEach(item => {
           const dataNode = item.data ? (typeof item.data === 'string' ? JSON.parse(item.data) : item.data) : item;
           if (Array.isArray(dataNode)) {
-            monitoreo = [...monitoreo, ...dataNode];
+            monitoreo = [...monitoreo, ...processMonitoreoArray(dataNode)];
           } else if (dataNode && (dataNode.Fecha || dataNode.fecha || dataNode.co_fecha_in)) {
-            const auts = Number(dataNode.Autorizados ?? dataNode.autorizados ?? 0);
-            const dups = Number(dataNode.Duplicados ?? dataNode.duplicados ?? 0);
-            const noAuts = Number(dataNode.NoAutorizados ?? dataNode.noAutorizados ?? dataNode.no_autorizados ?? 0);
-            const canalVal = Number(dataNode.Canal ?? dataNode.canal ?? dataNode.co_canal ?? 0);
-            monitoreo.push({
-              Fecha: dataNode.Fecha || dataNode.fecha || dataNode.co_fecha_in,
-              Hora: dataNode.Hora || dataNode.hora,
-              IdEmisor: dataNode.IdEmisor || dataNode.idEmisor || dataNode.co_id_emisor || dataNode.ID_Emisor,
-              Canal: canalVal,
-              Autorizados: auts,
-              Duplicados: dups,
-              NoAutorizados: noAuts,
-              TotalHora: auts + dups + noAuts
-            });
+            monitoreo = [...monitoreo, ...processMonitoreoArray([dataNode])];
           }
         });
       } else if (jsonMonitoreo && typeof jsonMonitoreo === 'object') {
         const dataNode = jsonMonitoreo.data ? (typeof jsonMonitoreo.data === 'string' ? JSON.parse(jsonMonitoreo.data) : jsonMonitoreo.data) : jsonMonitoreo;
         if (Array.isArray(dataNode)) {
-          monitoreo = dataNode.map((d: any) => {
-            const auts = Number(d.Autorizados ?? d.autorizados ?? 0);
-            const dups = Number(d.Duplicados ?? d.duplicados ?? 0);
-            const noAuts = Number(d.NoAutorizados ?? d.noAutorizados ?? d.no_autorizados ?? 0);
-            const canalVal = Number(d.Canal ?? d.canal ?? d.co_canal ?? 0);
-            return {
-              Fecha: d.Fecha || d.fecha || d.co_fecha_in,
-              Hora: d.Hora || d.hora,
-              IdEmisor: d.IdEmisor || d.idEmisor || d.co_id_emisor || d.ID_Emisor,
-              Canal: canalVal,
-              Autorizados: auts,
-              Duplicados: dups,
-              NoAutorizados: noAuts,
-              TotalHora: auts + dups + noAuts
-            };
-          });
+          monitoreo = processMonitoreoArray(dataNode);
         }
       }
 
@@ -487,44 +508,35 @@ export default function MySatcomMonitoreoPage() {
     return data;
   }, [channelSummaryData, channelSortField, channelSortOrder]);
 
-  // Línea de tiempo transaccional agrupada por Canal
+  // Determinar el día objetivo a mostrar en el gráfico de canales (HOY)
+  const targetDateForChannels = todayStr;
+
+  // Línea de tiempo transaccional agrupada por Canal (exclusivamente para el día de HOY)
   const channelTimelineChartData = useMemo(() => {
-    const isSingleDay = startDate === endDate;
-    const uniqueChannels = Array.from(new Set(filteredRecords.map(r => r.canalNombre)));
+    const targetDate = targetDateForChannels;
+    const dayRecords = filteredRecordsWithoutDateRange.filter(r => r.fecha === targetDate);
+    const uniqueChannels = Array.from(new Set(normalizedRecords.map(r => r.canalNombre))).filter(Boolean);
     const points: Record<string, any> = {};
     
-    if (startDate && endDate) {
-      const start = new Date(startDate + 'T00:00:00');
-      const end = new Date(endDate + 'T23:59:59');
-      const current = new Date(start);
+    // Inicializar las 24 horas del día seleccionado
+    for (let h = 0; h < 24; h++) {
+      const hStr = String(h).padStart(2, '0') + ':00';
+      const key = `${targetDate} ${hStr}`;
       
-      while (current <= end) {
-        const year = current.getFullYear();
-        const month = String(current.getMonth() + 1).padStart(2, '0');
-        const day = String(current.getDate()).padStart(2, '0');
-        const fStr = `${year}-${month}-${day}`;
-
-        for (let h = 0; h < 24; h++) {
-          const hStr = String(h).padStart(2, '0') + ':00';
-          const key = `${fStr} ${hStr}`;
-          const label = isSingleDay ? hStr : `${month}-${day} ${hStr}`;
-          
-          points[key] = {
-            key,
-            label,
-            fecha: fStr,
-            hora: hStr,
-          };
-          
-          uniqueChannels.forEach(ch => {
-            points[key][ch] = 0;
-          });
-        }
-        current.setDate(current.getDate() + 1);
-      }
+      points[key] = {
+        key,
+        label: hStr,
+        fecha: targetDate,
+        hora: hStr,
+      };
+      
+      uniqueChannels.forEach(ch => {
+        points[key][ch] = 0;
+      });
     }
     
-    filteredRecords.forEach(r => {
+    // Poblar con la suma transaccional real de cada canal
+    dayRecords.forEach(r => {
       const key = `${r.fecha} ${r.hora}`;
       if (points[key]) {
         points[key][r.canalNombre] = (points[key][r.canalNombre] || 0) + r.totalHora;
@@ -533,11 +545,12 @@ export default function MySatcomMonitoreoPage() {
 
     return {
       data: Object.values(points).sort((a, b) => a.key.localeCompare(b.key)),
-      channels: uniqueChannels
+      channels: uniqueChannels,
+      dateLabel: targetDate
     };
-  }, [filteredRecords, startDate, endDate]);
+  }, [filteredRecordsWithoutDateRange, normalizedRecords, targetDateForChannels]);
 
-  // Gráfica 1: Tendencia Horaria Consolidada
+  // Gráfica 1: Tendencia Horaria Consolidada (filtro temporal: hoy, ayer, semana)
   const hourlyChartData = useMemo(() => {
     const hoursSummary: Record<string, { hora: string, autorizados: number, duplicados: number, noAutorizados: number }> = {};
     
@@ -546,7 +559,18 @@ export default function MySatcomMonitoreoPage() {
       hoursSummary[hh] = { hora: hh, autorizados: 0, duplicados: 0, noAutorizados: 0 };
     }
 
-    filteredRecords.forEach(r => {
+    const filteredForTrend = filteredRecordsWithoutDateRange.filter(r => {
+      if (trendPeriod === 'hoy') {
+        return r.fecha === datesInfo.todayStr;
+      } else if (trendPeriod === 'ayer') {
+        return r.fecha === datesInfo.yesterdayStr;
+      } else if (trendPeriod === 'semana') {
+        return r.fecha >= datesInfo.weekStartStr && r.fecha < datesInfo.todayStr;
+      }
+      return true;
+    });
+
+    filteredForTrend.forEach(r => {
       const hh = r.hora;
       if (hoursSummary[hh]) {
         hoursSummary[hh].autorizados += r.autorizados;
@@ -556,7 +580,7 @@ export default function MySatcomMonitoreoPage() {
     });
 
     return Object.values(hoursSummary).sort((a, b) => a.hora.localeCompare(b.hora));
-  }, [filteredRecords]);
+  }, [filteredRecordsWithoutDateRange, trendPeriod, datesInfo]);
 
   // Gráfica 2: Top Emisores Afectados
   const topEmisoresChartData = useMemo(() => {
@@ -898,16 +922,37 @@ export default function MySatcomMonitoreoPage() {
       {activeChartTab === 'acumulado' && (
         <div className="flex flex-col gap-8 mb-10">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Gráfico 1: Tendencia Horaria */}
+            {/* Gráfico 1: Tendencia Horaria (Filtros: Hoy, Ayer, Semana) */}
             <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
-              <div className="flex items-center justify-between mb-8">
+              <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
                 <div className="flex items-center gap-3">
                   <Clock className="w-5 h-5 text-[#71BF44]" />
                   <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
                     Tendencia de Actividad por Hora
                   </h3>
                 </div>
-                <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Acumulado General</span>
+                
+                {/* Selector de Rango de Tendencia */}
+                <div className="flex bg-neutral-105 dark:bg-neutral-850 p-0.5 rounded-lg border border-neutral-200 dark:border-neutral-800 text-[9px] font-black uppercase">
+                  <button 
+                    onClick={() => setTrendPeriod('hoy')}
+                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${trendPeriod === 'hoy' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
+                  >
+                    Hoy
+                  </button>
+                  <button 
+                    onClick={() => setTrendPeriod('ayer')}
+                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${trendPeriod === 'ayer' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
+                  >
+                    Ayer
+                  </button>
+                  <button 
+                    onClick={() => setTrendPeriod('semana')}
+                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${trendPeriod === 'semana' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
+                  >
+                    Semana (Exc. Hoy)
+                  </button>
+                </div>
               </div>
 
               <div className="h-[300px]">
@@ -1035,13 +1080,18 @@ export default function MySatcomMonitoreoPage() {
               </div>
             </div>
             
-            {/* Gráfico de línea de tiempo con transacciones por Canal */}
+            {/* Gráfico de línea de tiempo con transacciones por Canal (exclusivo para HOY / TargetDate) */}
             <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
-                  Línea de Tiempo por Canal (Trx)
-                </h3>
-                <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Transacciones por Hora</span>
+                <div>
+                  <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
+                    Línea de Tiempo por Canal (Trx)
+                  </h3>
+                  <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block mt-0.5">
+                    Actividad de: <strong className="text-[#71BF44]">{channelTimelineChartData.dateLabel}</strong>
+                  </span>
+                </div>
+                <span className="text-[9px] font-bold text-neutral-450 uppercase tracking-widest">Trx por Hora (Hoy)</span>
               </div>
               <div className="h-[250px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -1339,7 +1389,7 @@ export default function MySatcomMonitoreoPage() {
               options={nemonicosList}
               selectedValues={selectedNemonicos}
               onChange={setSelectedNemonicos}
-              icon={<Building2 className="w-4 h-4 text-neutral-450 dark:text-neutral-500" />}
+              icon={<Building2 className="w-4 h-4 text-neutral-450 dark:text-neutral-550" />}
               placeholder="Buscar empresa..."
             />
 
@@ -1349,7 +1399,7 @@ export default function MySatcomMonitoreoPage() {
               options={paisesList}
               selectedValues={selectedPaises}
               onChange={setSelectedPaises}
-              icon={<Globe className="w-4 h-4 text-neutral-450 dark:text-neutral-500" />}
+              icon={<Globe className="w-4 h-4 text-neutral-450 dark:text-neutral-550" />}
               placeholder="Buscar país..."
             />
 
@@ -1359,7 +1409,7 @@ export default function MySatcomMonitoreoPage() {
               options={canalesList}
               selectedValues={selectedCanales}
               onChange={setSelectedCanales}
-              icon={<Radio className="w-4 h-4 text-neutral-450 dark:text-neutral-500" />}
+              icon={<Radio className="w-4 h-4 text-neutral-450 dark:text-neutral-550" />}
               placeholder="Buscar canal..."
             />
 
