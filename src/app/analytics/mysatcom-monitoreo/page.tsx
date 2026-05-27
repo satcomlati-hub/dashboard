@@ -147,17 +147,14 @@ export default function MySatcomMonitoreoPage() {
   const [channelSortField, setChannelSortField] = useState<'canal' | 'autorizados' | 'duplicados' | 'noAutorizados' | 'total'>('total');
   const [channelSortOrder, setChannelSortOrder] = useState<'asc' | 'desc'>('desc');
 
-  // Rango de periodo para el gráfico de Tendencia Horaria (hoy, ayer, semana, todaSemana)
-  const [trendPeriod, setTrendPeriod] = useState<'hoy' | 'ayer' | 'semana' | 'todaSemana'>('hoy');
-
-  // Rango de periodo para el gráfico de Canales (hoy, ayer, semana, todaSemana)
-  const [channelPeriod, setChannelPeriod] = useState<'hoy' | 'ayer' | 'semana' | 'todaSemana'>('hoy');
-
-  // Rango de periodo para el gráfico de Top Emisores (hoy, ayer, semana, todaSemana)
-  const [topPeriod, setTopPeriod] = useState<'hoy' | 'ayer' | 'semana' | 'todaSemana'>('hoy');
+  // Periodo global de análisis para todos los gráficos (hoy, ayer, semana, todaSemana)
+  const [globalPeriod, setGlobalPeriod] = useState<'hoy' | 'ayer' | 'semana' | 'todaSemana'>('hoy');
 
   // Control para limitar la comparación hasta la hora actual
   const [limitToCurrentHour, setLimitToCurrentHour] = useState<boolean>(false);
+
+  // Canales que el usuario ha decidido ocultar en el gráfico de canales
+  const [hiddenChannels, setHiddenChannels] = useState<string[]>([]);
 
   // Obtener la hora actual en la zona horaria local
   const currentHour = useMemo(() => {
@@ -523,15 +520,16 @@ export default function MySatcomMonitoreoPage() {
   }, [channelSummaryData, channelSortField, channelSortOrder]);
 
   // Línea de tiempo transaccional agrupada por Canal
+  // Línea de tiempo transaccional agrupada por Canal
   const channelTimelineChartData = useMemo(() => {
     const dayRecords = filteredRecordsWithoutDateRange.filter(r => {
-      if (channelPeriod === 'hoy') {
+      if (globalPeriod === 'hoy') {
         return r.fecha === datesInfo.todayStr;
-      } else if (channelPeriod === 'ayer') {
+      } else if (globalPeriod === 'ayer') {
         return r.fecha === datesInfo.yesterdayStr;
-      } else if (channelPeriod === 'semana') {
+      } else if (globalPeriod === 'semana') {
         return r.fecha >= datesInfo.weekStartStr && r.fecha < datesInfo.todayStr;
-      } else if (channelPeriod === 'todaSemana') {
+      } else if (globalPeriod === 'todaSemana') {
         return r.fecha >= datesInfo.weekStartStr && r.fecha <= datesInfo.todayStr;
       }
       return true;
@@ -569,17 +567,17 @@ export default function MySatcomMonitoreoPage() {
     });
 
     let dateLabel = '';
-    if (channelPeriod === 'hoy') dateLabel = datesInfo.todayStr;
-    else if (channelPeriod === 'ayer') dateLabel = datesInfo.yesterdayStr;
-    else if (channelPeriod === 'semana') dateLabel = `Semana (Sin Hoy: ${datesInfo.weekStartStr} al ${datesInfo.yesterdayStr})`;
-    else if (channelPeriod === 'todaSemana') dateLabel = `Semana (Con Hoy: ${datesInfo.weekStartStr} al ${datesInfo.todayStr})`;
+    if (globalPeriod === 'hoy') dateLabel = datesInfo.todayStr;
+    else if (globalPeriod === 'ayer') dateLabel = datesInfo.yesterdayStr;
+    else if (globalPeriod === 'semana') dateLabel = `Semana (Sin Hoy: ${datesInfo.weekStartStr} al ${datesInfo.yesterdayStr})`;
+    else if (globalPeriod === 'todaSemana') dateLabel = `Semana (Con Hoy: ${datesInfo.weekStartStr} al ${datesInfo.todayStr})`;
 
     return {
       data: Object.values(points).sort((a, b) => a.key.localeCompare(b.key)),
       channels: uniqueChannels,
       dateLabel
     };
-  }, [filteredRecordsWithoutDateRange, normalizedRecords, channelPeriod, datesInfo, limitToCurrentHour, currentHour]);
+  }, [filteredRecordsWithoutDateRange, normalizedRecords, globalPeriod, datesInfo, limitToCurrentHour, currentHour]);
 
   // Gráfica 1: Tendencia Horaria Consolidada (filtro temporal: hoy, ayer, semana, todaSemana)
   const hourlyChartData = useMemo(() => {
@@ -592,13 +590,13 @@ export default function MySatcomMonitoreoPage() {
     }
 
     const filteredForTrend = filteredRecordsWithoutDateRange.filter(r => {
-      if (trendPeriod === 'hoy') {
+      if (globalPeriod === 'hoy') {
         return r.fecha === datesInfo.todayStr;
-      } else if (trendPeriod === 'ayer') {
+      } else if (globalPeriod === 'ayer') {
         return r.fecha === datesInfo.yesterdayStr;
-      } else if (trendPeriod === 'semana') {
+      } else if (globalPeriod === 'semana') {
         return r.fecha >= datesInfo.weekStartStr && r.fecha < datesInfo.todayStr;
-      } else if (trendPeriod === 'todaSemana') {
+      } else if (globalPeriod === 'todaSemana') {
         return r.fecha >= datesInfo.weekStartStr && r.fecha <= datesInfo.todayStr;
       }
       return true;
@@ -616,21 +614,21 @@ export default function MySatcomMonitoreoPage() {
       }
     });
 
-    return Object.values(hoursSummary).sort((a, b) => a.hora.localeCompare(b.hora));
-  }, [filteredRecordsWithoutDateRange, trendPeriod, datesInfo, limitToCurrentHour, currentHour]);
+    return Object.values(hoursSummary).sort((a, b) => a.hora.hora.localeCompare(b.hora));
+  }, [filteredRecordsWithoutDateRange, globalPeriod, datesInfo, limitToCurrentHour, currentHour]);
 
   // Gráfica 2: Top Emisores Afectados
   const topEmisoresChartData = useMemo(() => {
     const emisorSummary: Record<string, { name: string, razonSocial: string, autorizados: number, duplicados: number, no_autorizados: number }> = {};
     
     const filteredForTop = filteredRecordsWithoutDateRange.filter(r => {
-      if (topPeriod === 'hoy') {
+      if (globalPeriod === 'hoy') {
         return r.fecha === datesInfo.todayStr;
-      } else if (topPeriod === 'ayer') {
+      } else if (globalPeriod === 'ayer') {
         return r.fecha === datesInfo.yesterdayStr;
-      } else if (topPeriod === 'semana') {
+      } else if (globalPeriod === 'semana') {
         return r.fecha >= datesInfo.weekStartStr && r.fecha < datesInfo.todayStr;
-      } else if (topPeriod === 'todaSemana') {
+      } else if (globalPeriod === 'todaSemana') {
         return r.fecha >= datesInfo.weekStartStr && r.fecha <= datesInfo.todayStr;
       }
       return true;
@@ -663,7 +661,139 @@ export default function MySatcomMonitoreoPage() {
       }))
       .sort((a, b) => b.no_autorizados - a.no_autorizados)
       .slice(0, 10);
-  }, [filteredRecordsWithoutDateRange, topPeriod, datesInfo, limitToCurrentHour, currentHour]);
+  }, [filteredRecordsWithoutDateRange, globalPeriod, datesInfo, limitToCurrentHour, currentHour]);
+
+  // Análisis de Anomalías de la Operación Actual (Hoy)
+  const anomaliesAnalysis = useMemo(() => {
+    const todayRecords = filteredRecordsWithoutDateRange.filter(r => r.fecha === datesInfo.todayStr && parseInt(r.hora.split(':')[0], 10) <= currentHour);
+    const historicalRecords = filteredRecordsWithoutDateRange.filter(r => r.fecha !== datesInfo.todayStr && parseInt(r.hora.split(':')[0], 10) <= currentHour);
+    
+    const uniqueHistDays = Array.from(new Set(historicalRecords.map(r => r.fecha))).filter(Boolean);
+    const histDaysCount = uniqueHistDays.length || 1;
+
+    const todayAuts = todayRecords.reduce((acc, r) => acc + r.autorizados, 0);
+    const todayDups = todayRecords.reduce((acc, r) => acc + r.duplicados, 0);
+    const todayNoAuts = todayRecords.reduce((acc, r) => acc + r.noAutorizados, 0);
+    const todayTotal = todayAuts + todayDups + todayNoAuts;
+
+    const histAutsAvg = historicalRecords.reduce((acc, r) => acc + r.autorizados, 0) / histDaysCount;
+    const histDupsAvg = historicalRecords.reduce((acc, r) => acc + r.duplicados, 0) / histDaysCount;
+    const histNoAutsAvg = historicalRecords.reduce((acc, r) => acc + r.noAutorizados, 0) / histDaysCount;
+    const histTotalAvg = histAutsAvg + histDupsAvg + histNoAutsAvg;
+
+    const alerts: { type: 'danger' | 'warning' | 'info' | 'success', message: string, detail: string }[] = [];
+
+    if (todayTotal > 0 && histTotalAvg > 0) {
+      const autPct = ((todayAuts - histAutsAvg) / (histAutsAvg || 1)) * 100;
+      if (autPct < -20) {
+        alerts.push({
+          type: 'danger',
+          message: 'Bajo Volumen de Aprobaciones',
+          detail: `Hoy se han autorizado ${todayAuts.toLocaleString()} comprobantes, un ${Math.abs(autPct).toFixed(1)}% MENOS del promedio histórico a esta hora (${histAutsAvg.toLocaleString(undefined, { maximumFractionDigits: 0 })}).`
+        });
+      } else if (autPct > 20) {
+        alerts.push({
+          type: 'success',
+          message: 'Pico de Facturación / Autorizados',
+          detail: `Operación con alto rendimiento: hoy se han autorizado ${todayAuts.toLocaleString()} comprobantes, un ${autPct.toFixed(1)}% MÁS que el promedio histórico a esta hora (${histAutsAvg.toLocaleString(undefined, { maximumFractionDigits: 0 })}).`
+        });
+      }
+
+      const dupPct = ((todayDups - histDupsAvg) / (histDupsAvg || 1)) * 100;
+      if (todayDups > histDupsAvg + 10 && dupPct > 25) {
+        alerts.push({
+          type: 'warning',
+          message: 'Alerta de Comprobantes Duplicados',
+          detail: `Se detecta un incremento de duplicados (Estado 14) de +${dupPct.toFixed(1)}% (Hoy: ${todayDups.toLocaleString()} vs Promedio a esta hora: ${histDupsAvg.toLocaleString(undefined, { maximumFractionDigits: 0 })}).`
+        });
+      }
+
+      const noAutPct = ((todayNoAuts - histNoAutsAvg) / (histNoAutsAvg || 1)) * 100;
+      if (todayNoAuts > histNoAutsAvg + 10 && noAutPct > 25) {
+        alerts.push({
+          type: 'danger',
+          message: 'Incremento de Comprobantes No Autorizados',
+          detail: `Pico crítico de rechazos de +${noAutPct.toFixed(1)}% (Hoy: ${todayNoAuts.toLocaleString()} vs Promedio a esta hora: ${histNoAutsAvg.toLocaleString(undefined, { maximumFractionDigits: 0 })}).`
+        });
+      }
+    }
+
+    if (alerts.length === 0) {
+      alerts.push({
+        type: 'info',
+        message: 'Comportamiento transaccional estable',
+        detail: 'El flujo transaccional y la tasa de aprobación de hoy se encuentran dentro de los parámetros normales habituales (variación < 15%).'
+      });
+    }
+
+    const emisorTodayMap: Record<string, { razonSocial: string, auts: number, dups: number, noAuts: number }> = {};
+    const emisorHistMap: Record<string, { razonSocial: string, auts: number, dups: number, noAuts: number }> = {};
+
+    todayRecords.forEach(r => {
+      if (!emisorTodayMap[r.nemonico]) {
+        emisorTodayMap[r.nemonico] = { razonSocial: r.razonSocial, auts: 0, dups: 0, noAuts: 0 };
+      }
+      emisorTodayMap[r.nemonico].auts += r.autorizados;
+      emisorTodayMap[r.nemonico].dups += r.duplicados;
+      emisorTodayMap[r.nemonico].noAuts += r.noAutorizados;
+    });
+
+    historicalRecords.forEach(r => {
+      if (!emisorHistMap[r.nemonico]) {
+        emisorHistMap[r.nemonico] = { razonSocial: r.razonSocial, auts: 0, dups: 0, noAuts: 0 };
+      }
+      emisorHistMap[r.nemonico].auts += r.autorizados;
+      emisorHistMap[r.nemonico].dups += r.duplicados;
+      emisorHistMap[r.nemonico].noAuts += r.noAutorizados;
+    });
+
+    const emisorAnomalies: { nemonico: string, razonSocial: string, todayAuts: number, todayNoAuts: number, todayDups: number, histAutsAvg: number, histNoAutsAvg: number, histDupsAvg: number, pctChange: number, label: string }[] = [];
+
+    Object.keys(emisorTodayMap).forEach(nemonico => {
+      const today = emisorTodayMap[nemonico];
+      const hist = emisorHistMap[nemonico] || { auts: 0, dups: 0, noAuts: 0 };
+
+      const eHistAutsAvg = hist.auts / histDaysCount;
+      const eHistNoAutsAvg = hist.noAuts / histDaysCount;
+      const eHistDupsAvg = hist.dups / histDaysCount;
+
+      let pctChange = 0;
+      let label = '';
+      
+      if (today.noAuts > eHistNoAutsAvg + 5) {
+        pctChange = eHistNoAutsAvg > 0 ? ((today.noAuts - eHistNoAutsAvg) / eHistNoAutsAvg) * 100 : 100;
+        label = `Pico de Errores (Hoy: ${today.noAuts} vs Prom: ${eHistNoAutsAvg.toFixed(1)})`;
+      }
+      else if (today.dups > eHistDupsAvg + 5) {
+        pctChange = eHistDupsAvg > 0 ? ((today.dups - eHistDupsAvg) / eHistDupsAvg) * 100 : 100;
+        label = `Pico de Duplicados (Hoy: ${today.dups} vs Prom: ${eHistDupsAvg.toFixed(1)})`;
+      }
+      else if (eHistAutsAvg > 10 && today.auts < eHistAutsAvg * 0.5) {
+        pctChange = ((eHistAutsAvg - today.auts) / eHistAutsAvg) * 100;
+        label = `Baja Aprobación (${pctChange.toFixed(0)}% menos de lo normal)`;
+      }
+
+      if (label) {
+        emisorAnomalies.push({
+          nemonico,
+          razonSocial: today.razonSocial,
+          todayAuts: today.auts,
+          todayNoAuts: today.noAuts,
+          todayDups: today.dups,
+          histAutsAvg: eHistAutsAvg,
+          histNoAutsAvg: eHistNoAutsAvg,
+          histDupsAvg: eHistDupsAvg,
+          pctChange,
+          label
+        });
+      }
+    });
+
+    return {
+      alerts,
+      topAnomalousEmisores: emisorAnomalies.sort((a, b) => b.pctChange - a.pctChange).slice(0, 5)
+    };
+  }, [datesInfo, currentHour, filteredRecordsWithoutDateRange]);
 
   // Pestañas locales para gráficos
   const [activeChartTab, setActiveChartTab] = useState<'acumulado' | 'historial' | 'comparador'>('acumulado');
@@ -977,14 +1107,44 @@ export default function MySatcomMonitoreoPage() {
       {/* Renderizado de Visualizaciones según pestaña activa */}
       {activeChartTab === 'acumulado' && (
         <div className="flex flex-col gap-8 mb-10">
-          {/* Opciones globales de comparación */}
-          <div className="flex items-center justify-end gap-3 bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-2xl px-6 py-3.5 shadow-sm">
+          {/* Selector de periodo unificado y opciones globales */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
+            <div className="flex flex-wrap items-center gap-4">
+              <span className="text-xs font-black text-neutral-500 dark:text-neutral-400 uppercase tracking-widest">Periodo de Análisis:</span>
+              <div className="flex bg-neutral-105 dark:bg-neutral-850 p-0.5 rounded-lg border border-neutral-200 dark:border-neutral-800 text-[10px] font-black uppercase">
+                <button 
+                  onClick={() => setGlobalPeriod('hoy')}
+                  className={`px-4 py-2 rounded transition-all cursor-pointer ${globalPeriod === 'hoy' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-450'}`}
+                >
+                  Hoy
+                </button>
+                <button 
+                  onClick={() => setGlobalPeriod('ayer')}
+                  className={`px-4 py-2 rounded transition-all cursor-pointer ${globalPeriod === 'ayer' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-450'}`}
+                >
+                  Ayer
+                </button>
+                <button 
+                  onClick={() => setGlobalPeriod('semana')}
+                  className={`px-4 py-2 rounded transition-all cursor-pointer ${globalPeriod === 'semana' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-450'}`}
+                >
+                  Semana (Exc. Hoy)
+                </button>
+                <button 
+                  onClick={() => setGlobalPeriod('todaSemana')}
+                  className={`px-4 py-2 rounded transition-all cursor-pointer ${globalPeriod === 'todaSemana' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-450'}`}
+                >
+                  Toda la Semana
+                </button>
+              </div>
+            </div>
+            
             <label className="flex items-center gap-3 cursor-pointer select-none">
               <input 
                 type="checkbox" 
                 checked={limitToCurrentHour} 
                 onChange={(e) => setLimitToCurrentHour(e.target.checked)}
-                className="w-4.5 h-4.5 text-[#71BF44] bg-neutral-100 border-neutral-300 rounded focus:ring-[#71BF44] focus:ring-2 dark:focus:ring-offset-neutral-900 focus:ring-offset-2 dark:bg-neutral-800 dark:border-neutral-700 cursor-pointer"
+                className="w-4.5 h-4.5 text-[#71BF44] bg-neutral-105 border-neutral-300 rounded focus:ring-[#71BF44] focus:ring-2 dark:focus:ring-offset-neutral-900 focus:ring-offset-2 dark:bg-neutral-800 dark:border-neutral-700 cursor-pointer"
               />
               <span className="text-xs font-bold text-neutral-750 dark:text-neutral-300 uppercase tracking-wider">
                 Comparar solo hasta la hora actual ({String(currentHour).padStart(2, '0')}:00)
@@ -992,44 +1152,99 @@ export default function MySatcomMonitoreoPage() {
             </label>
           </div>
 
+          {/* Panel de Detección de Anomalías (HOY) */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Columna de Alertas Generales de la Plataforma */}
+            <div className="lg:col-span-2 bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm flex flex-col gap-6">
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-500" />
+                <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
+                  Análisis y Estado General de la Operación (Hoy)
+                </h3>
+              </div>
+              <div className="flex flex-col gap-4 flex-1 justify-center">
+                {anomaliesAnalysis.alerts.map((alert, idx) => {
+                  const bgColors = {
+                    danger: 'bg-red-500/10 border-red-500/20 text-red-700 dark:text-red-400',
+                    warning: 'bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400',
+                    success: 'bg-[#71BF44]/10 border-[#71BF44]/20 text-emerald-700 dark:text-emerald-400',
+                    info: 'bg-blue-500/10 border-blue-500/20 text-blue-700 dark:text-blue-400'
+                  };
+                  const textColors = {
+                    danger: 'text-red-500',
+                    warning: 'text-amber-500',
+                    success: 'text-[#71BF44]',
+                    info: 'text-blue-500'
+                  };
+                  return (
+                    <div key={idx} className={`p-5 border rounded-2xl ${bgColors[alert.type]} flex gap-4 items-start`}>
+                      <div className={`p-2 rounded-xl bg-white dark:bg-[#1c1c1c] border border-current/10 shrink-0 ${textColors[alert.type]}`}>
+                        <Activity className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black uppercase tracking-wider mb-1">{alert.message}</h4>
+                        <p className="text-xs opacity-90 leading-relaxed font-medium">{alert.detail}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Columna de Emisores con Comportamiento Diferente (Top 5) */}
+            <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm flex flex-col gap-6">
+              <div className="flex items-center gap-3">
+                <TrendingUp className="w-5 h-5 text-[#71BF44]" />
+                <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
+                  Top 5 Emisores con Operación Inusual
+                </h3>
+              </div>
+              <div className="flex flex-col gap-4 flex-1 overflow-y-auto max-h-[300px]">
+                {anomaliesAnalysis.topAnomalousEmisores.map((emisor, idx) => (
+                  <div 
+                    key={idx} 
+                    onClick={() => {
+                      setSelectedNemonicos([emisor.nemonico]);
+                      document.getElementById('grid-area')?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className="p-4 border border-neutral-100 dark:border-neutral-800 hover:border-[#71BF44]/30 dark:hover:border-[#71BF44]/30 rounded-2xl flex items-center justify-between gap-4 cursor-pointer hover:bg-neutral-50 dark:hover:bg-white/[0.01] transition-all group"
+                  >
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <span className="text-xs font-black text-neutral-900 dark:text-white group-hover:text-[#71BF44] transition-colors truncate">
+                        {emisor.nemonico}
+                      </span>
+                      <span className="text-[10px] text-neutral-400 font-bold truncate">
+                        {emisor.razonSocial}
+                      </span>
+                      <span className="text-[10px] text-red-500 font-black uppercase mt-1">
+                        {emisor.label}
+                      </span>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-xs font-mono font-black text-red-500">
+                        {emisor.pctChange > 0 ? `+${emisor.pctChange.toFixed(0)}%` : `-${emisor.pctChange.toFixed(0)}%`}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {anomaliesAnalysis.topAnomalousEmisores.length === 0 && (
+                  <div className="flex flex-col items-center justify-center flex-1 py-8 text-center">
+                    <CheckCircle2 className="w-8 h-8 text-[#71BF44] opacity-50 mb-2" />
+                    <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">Emisores estables</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Gráfico 1: Tendencia Horaria (Filtros: Hoy, Ayer, Semana) */}
+            {/* Gráfico 1: Tendencia Horaria (Filtro Unificado) */}
             <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
-                <div className="flex items-center gap-3">
-                  <Clock className="w-5 h-5 text-[#71BF44]" />
-                  <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
-                    Tendencia de Actividad por Hora
-                  </h3>
-                </div>
-                
-                {/* Selector de Rango de Tendencia */}
-                <div className="flex bg-neutral-105 dark:bg-neutral-850 p-0.5 rounded-lg border border-neutral-200 dark:border-neutral-800 text-[9px] font-black uppercase">
-                  <button 
-                    onClick={() => setTrendPeriod('hoy')}
-                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${trendPeriod === 'hoy' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
-                  >
-                    Hoy
-                  </button>
-                  <button 
-                    onClick={() => setTrendPeriod('ayer')}
-                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${trendPeriod === 'ayer' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
-                  >
-                    Ayer
-                  </button>
-                  <button 
-                    onClick={() => setTrendPeriod('semana')}
-                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${trendPeriod === 'semana' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
-                  >
-                    Semana (Exc. Hoy)
-                  </button>
-                  <button 
-                    onClick={() => setTrendPeriod('todaSemana')}
-                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${trendPeriod === 'todaSemana' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
-                  >
-                    Toda la Semana
-                  </button>
-                </div>
+              <div className="flex items-center gap-3 mb-8">
+                <Clock className="w-5 h-5 text-[#71BF44]" />
+                <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
+                  Tendencia de Actividad por Hora
+                </h3>
               </div>
 
               <div className="h-[300px]">
@@ -1066,41 +1281,11 @@ export default function MySatcomMonitoreoPage() {
 
             {/* Gráfico 2: Top Emisores */}
             <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
-                <div className="flex items-center gap-3">
-                  <Building2 className="w-5 h-5 text-[#71BF44]" />
-                  <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
-                    Top 10 Emisores con Incidencias
-                  </h3>
-                </div>
-                
-                {/* Selector de Rango de Top Emisores */}
-                <div className="flex bg-neutral-105 dark:bg-neutral-850 p-0.5 rounded-lg border border-neutral-200 dark:border-neutral-800 text-[9px] font-black uppercase">
-                  <button 
-                    onClick={() => setTopPeriod('hoy')}
-                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${topPeriod === 'hoy' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
-                  >
-                    Hoy
-                  </button>
-                  <button 
-                    onClick={() => setTopPeriod('ayer')}
-                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${topPeriod === 'ayer' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
-                  >
-                    Ayer
-                  </button>
-                  <button 
-                    onClick={() => setTopPeriod('semana')}
-                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${topPeriod === 'semana' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
-                  >
-                    Semana (Exc. Hoy)
-                  </button>
-                  <button 
-                    onClick={() => setTopPeriod('todaSemana')}
-                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${topPeriod === 'todaSemana' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
-                  >
-                    Toda la Semana
-                  </button>
-                </div>
+              <div className="flex items-center gap-3 mb-8">
+                <Building2 className="w-5 h-5 text-[#71BF44]" />
+                <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
+                  Top 10 Emisores con Incidencias
+                </h3>
               </div>
 
               <div className="h-[300px]">
@@ -1186,43 +1371,16 @@ export default function MySatcomMonitoreoPage() {
             
             {/* Gráfico de línea de tiempo con transacciones por Canal */}
             <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+              <div className="flex items-center justify-between mb-6">
                 <div>
                   <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
                     Línea de Tiempo por Canal (Trx)
                   </h3>
-                  <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block mt-0.5">
+                  <span className="text-[9px] font-bold text-neutral-450 uppercase tracking-widest block mt-0.5">
                     Actividad de: <strong className="text-[#71BF44]">{channelTimelineChartData.dateLabel}</strong>
                   </span>
                 </div>
-                
-                {/* Selector de Rango de Canales */}
-                <div className="flex bg-neutral-105 dark:bg-neutral-850 p-0.5 rounded-lg border border-neutral-200 dark:border-neutral-800 text-[9px] font-black uppercase">
-                  <button 
-                    onClick={() => setChannelPeriod('hoy')}
-                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${channelPeriod === 'hoy' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
-                  >
-                    Hoy
-                  </button>
-                  <button 
-                    onClick={() => setChannelPeriod('ayer')}
-                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${channelPeriod === 'ayer' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
-                  >
-                    Ayer
-                  </button>
-                  <button 
-                    onClick={() => setChannelPeriod('semana')}
-                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${channelPeriod === 'semana' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
-                  >
-                    Semana (Exc. Hoy)
-                  </button>
-                  <button 
-                    onClick={() => setChannelPeriod('todaSemana')}
-                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${channelPeriod === 'todaSemana' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
-                  >
-                    Toda la Semana
-                  </button>
-                </div>
+                <span className="text-[8px] font-bold text-neutral-400 uppercase tracking-widest">Haz clic en la leyenda para ocultar/mostrar</span>
               </div>
               <div className="h-[250px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -1231,8 +1389,18 @@ export default function MySatcomMonitoreoPage() {
                     <XAxis dataKey="label" tick={{ fill: '#888', fontSize: 8 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fill: '#888', fontSize: 9 }} axisLine={false} tickLine={false} />
                     <Tooltip contentStyle={{ backgroundColor: '#1a1a1a', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '10px' }} />
-                    <Legend iconType="circle" wrapperStyle={{ fontSize: '9px', textTransform: 'uppercase' }} />
+                    <Legend 
+                      onClick={(props) => toggleChannelVisibility(props.value as string)}
+                      iconType="circle" 
+                      wrapperStyle={{ fontSize: '9px', textTransform: 'uppercase', cursor: 'pointer' }}
+                      formatter={(value) => (
+                        <span style={{ opacity: hiddenChannels.includes(value) ? 0.35 : 1, textDecoration: hiddenChannels.includes(value) ? 'line-through' : 'none' }}>
+                          {value}
+                        </span>
+                      )}
+                    />
                     {channelTimelineChartData.channels.map((ch, idx) => {
+                      if (hiddenChannels.includes(ch)) return null;
                       const colors = ['#71BF44', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4', '#10b981', '#ef4444'];
                       const color = colors[idx % colors.length];
                       return (
