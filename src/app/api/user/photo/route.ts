@@ -6,7 +6,6 @@ const SUPABASE_URL = process.env.SUPABASE_URL || 'https://wpzfbpvtxrfyejoqjecu.s
 const BUCKET = 'chat-uploads';
 const AVATAR_FOLDER = 'avatars';
 
-// Lazy-loaded para evitar errores en build sin variables de entorno
 let supabaseAdminInstance: ReturnType<typeof createClient> | null = null;
 function getSupabaseAdmin() {
   if (!supabaseAdminInstance) {
@@ -17,7 +16,6 @@ function getSupabaseAdmin() {
   return supabaseAdminInstance;
 }
 
-// SVG de iniciales como fallback (nunca devuelve error a un <img>)
 function initialsAvatar(initial: string): NextResponse {
   const letter = initial.toUpperCase();
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
@@ -26,10 +24,7 @@ function initialsAvatar(initial: string): NextResponse {
 </svg>`;
   return new NextResponse(svg, {
     status: 200,
-    headers: {
-      'Content-Type': 'image/svg+xml',
-      'Cache-Control': 'public, max-age=86400',
-    },
+    headers: { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' },
   });
 }
 
@@ -37,38 +32,79 @@ export async function GET() {
   const session = await auth();
   const email = session?.user?.email;
 
-  if (!email) {
-    return initialsAvatar('?');
-  }
+  if (!email) return initialsAvatar('?');
 
   const avatarPath = `${AVATAR_FOLDER}/${email}`;
   const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${avatarPath}`;
 
   try {
-    // Verificar si el avatar ya está cacheado en Supabase
+    // 1. Buscar en Supabase Storage
     const { data: files, error: listError } = await getSupabaseAdmin().storage
       .from(BUCKET)
       .list(AVATAR_FOLDER, { search: email });
 
-    if (listError) {
-      console.warn('[photo] Error al listar en Storage:', listError.message);
-    }
+    if (listError) console.warn('[photo] Error al listar Storage:', listError.message);
 
-    const fileExists = files?.some(file => file.name === email);
-
-    if (fileExists) {
-      // Redirigir directamente al archivo público de Supabase
+    if (files?.some(f => f.name === email)) {
       return NextResponse.redirect(publicUrl, {
         headers: { 'Cache-Control': 'public, max-age=86400' },
       });
     }
 
-    // Avatar aún no cacheado — el login lo cachea en el próximo inicio de sesión
-    // Devolver iniciales como fallback hasta que se cachee
-    const initial = email.charAt(0);
-    return initialsAvatar(initial);
+    // 2. No está en Supabase → intentar descargar de Zoho si hay token activo
+    const accessToken = (session as any)?.accessToken as string | undefined;
+    if (!accessToken) {
+      // Token expirado o no disponible → mostrar inicial
+      return initialsAvatar(email.charAt(0));
+    }
+
+    // Obtener URL de foto desde userinfo de Zoho
+    let photoUrl: string | null = null;
+    const userInfoRes = await fetch('https://accounts.zoho.com/oauth/v2/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (userInfoRes.ok) {
+      const info = await userInfoRes.json();
+      photoUrl = info.picture || info.photo || null;
+      if (!photoUrl && (info.sub || info.ZUID)) {
+        photoUrl = `https://contacts.zoho.com/file?fs=thumb&ID=${info.sub || info.ZUID}`;
+      }
+    }
+
+    if (!photoUrl) return initialsAvatar(email.charAt(0));
+
+    // Descargar imagen (3 métodos de autenticación)
+    let photoRes = await fetch(photoUrl, {
+      headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
+    });
+    if (!photoRes.ok) {
+      photoRes = await fetch(photoUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+    }
+    if (!photoRes.ok) photoRes = await fetch(photoUrl);
+    if (!photoRes.ok) return initialsAvatar(email.charAt(0));
+
+    // 3. Subir a Supabase Storage y redirigir
+    const contentType = photoRes.headers.get('Content-Type') || 'image/jpeg';
+    const buffer = Buffer.from(await photoRes.arrayBuffer());
+
+    const { error: uploadError } = await getSupabaseAdmin().storage
+      .from(BUCKET)
+      .upload(avatarPath, buffer, { contentType, upsert: true });
+
+    if (uploadError) {
+      console.error('[photo] Error al subir a Supabase:', uploadError.message);
+      // Servir imagen directamente como fallback si falla la subida
+      return new NextResponse(buffer, {
+        status: 200,
+        headers: { 'Content-Type': contentType, 'Cache-Control': 'private, max-age=300' },
+      });
+    }
+
+    return NextResponse.redirect(publicUrl, {
+      headers: { 'Cache-Control': 'public, max-age=86400' },
+    });
   } catch (error) {
-    console.error('[photo] Error en ruta de foto:', error);
+    console.error('[photo] Error inesperado:', error);
     return initialsAvatar(email?.charAt(0) || '?');
   }
 }
