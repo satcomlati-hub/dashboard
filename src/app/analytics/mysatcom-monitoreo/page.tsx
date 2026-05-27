@@ -153,6 +153,9 @@ export default function MySatcomMonitoreoPage() {
   // Rango de periodo para el gráfico de Canales (hoy, ayer, semana, todaSemana)
   const [channelPeriod, setChannelPeriod] = useState<'hoy' | 'ayer' | 'semana' | 'todaSemana'>('hoy');
 
+  // Rango de periodo para el gráfico de Top Emisores (hoy, ayer, semana, todaSemana)
+  const [topPeriod, setTopPeriod] = useState<'hoy' | 'ayer' | 'semana' | 'todaSemana'>('hoy');
+
   // Control para limitar la comparación hasta la hora actual
   const [limitToCurrentHour, setLimitToCurrentHour] = useState<boolean>(false);
 
@@ -620,7 +623,26 @@ export default function MySatcomMonitoreoPage() {
   const topEmisoresChartData = useMemo(() => {
     const emisorSummary: Record<string, { name: string, razonSocial: string, autorizados: number, duplicados: number, no_autorizados: number }> = {};
     
-    filteredRecords.forEach(r => {
+    const filteredForTop = filteredRecordsWithoutDateRange.filter(r => {
+      if (topPeriod === 'hoy') {
+        return r.fecha === datesInfo.todayStr;
+      } else if (topPeriod === 'ayer') {
+        return r.fecha === datesInfo.yesterdayStr;
+      } else if (topPeriod === 'semana') {
+        return r.fecha >= datesInfo.weekStartStr && r.fecha < datesInfo.todayStr;
+      } else if (topPeriod === 'todaSemana') {
+        return r.fecha >= datesInfo.weekStartStr && r.fecha <= datesInfo.todayStr;
+      }
+      return true;
+    }).filter(r => {
+      if (limitToCurrentHour) {
+        const hInt = parseInt(r.hora.split(':')[0], 10);
+        return hInt <= currentHour;
+      }
+      return true;
+    });
+
+    filteredForTop.forEach(r => {
       const key = r.nemonico;
       if (!emisorSummary[key]) {
         emisorSummary[key] = { name: key, razonSocial: r.razonSocial, autorizados: 0, duplicados: 0, no_autorizados: 0 };
@@ -641,7 +663,7 @@ export default function MySatcomMonitoreoPage() {
       }))
       .sort((a, b) => b.no_autorizados - a.no_autorizados)
       .slice(0, 10);
-  }, [filteredRecords]);
+  }, [filteredRecordsWithoutDateRange, topPeriod, datesInfo, limitToCurrentHour, currentHour]);
 
   // Pestañas locales para gráficos
   const [activeChartTab, setActiveChartTab] = useState<'acumulado' | 'historial' | 'comparador'>('acumulado');
@@ -1044,14 +1066,41 @@ export default function MySatcomMonitoreoPage() {
 
             {/* Gráfico 2: Top Emisores */}
             <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
-              <div className="flex items-center justify-between mb-8">
+              <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
                 <div className="flex items-center gap-3">
                   <Building2 className="w-5 h-5 text-[#71BF44]" />
                   <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
                     Top 10 Emisores con Incidencias
                   </h3>
                 </div>
-                <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Filtrar al hacer clic</span>
+                
+                {/* Selector de Rango de Top Emisores */}
+                <div className="flex bg-neutral-105 dark:bg-neutral-850 p-0.5 rounded-lg border border-neutral-200 dark:border-neutral-800 text-[9px] font-black uppercase">
+                  <button 
+                    onClick={() => setTopPeriod('hoy')}
+                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${topPeriod === 'hoy' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
+                  >
+                    Hoy
+                  </button>
+                  <button 
+                    onClick={() => setTopPeriod('ayer')}
+                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${topPeriod === 'ayer' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
+                  >
+                    Ayer
+                  </button>
+                  <button 
+                    onClick={() => setTopPeriod('semana')}
+                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${topPeriod === 'semana' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
+                  >
+                    Semana (Exc. Hoy)
+                  </button>
+                  <button 
+                    onClick={() => setTopPeriod('todaSemana')}
+                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${topPeriod === 'todaSemana' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
+                  >
+                    Toda la Semana
+                  </button>
+                </div>
               </div>
 
               <div className="h-[300px]">
