@@ -7,6 +7,7 @@ declare module "next-auth" {
       id?: string
       role?: string
       permissions?: string[]
+      image?: string | null
     }
   }
 }
@@ -15,5 +16,7 @@ declare module "next-auth/jwt" {
   interface JWT {
     role?: string
     permissions?: string[]
+    pictureUrl?: string
+    accessToken?: string
   }
 }
