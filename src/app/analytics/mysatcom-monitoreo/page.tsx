@@ -147,8 +147,19 @@ export default function MySatcomMonitoreoPage() {
   const [channelSortField, setChannelSortField] = useState<'canal' | 'autorizados' | 'duplicados' | 'noAutorizados' | 'total'>('total');
   const [channelSortOrder, setChannelSortOrder] = useState<'asc' | 'desc'>('desc');
 
-  // Rango de periodo para el gráfico de Tendencia Horaria (hoy, ayer, semana)
-  const [trendPeriod, setTrendPeriod] = useState<'hoy' | 'ayer' | 'semana'>('hoy');
+  // Rango de periodo para el gráfico de Tendencia Horaria (hoy, ayer, semana, todaSemana)
+  const [trendPeriod, setTrendPeriod] = useState<'hoy' | 'ayer' | 'semana' | 'todaSemana'>('hoy');
+
+  // Rango de periodo para el gráfico de Canales (hoy, ayer, semana, todaSemana)
+  const [channelPeriod, setChannelPeriod] = useState<'hoy' | 'ayer' | 'semana' | 'todaSemana'>('hoy');
+
+  // Control para limitar la comparación hasta la hora actual
+  const [limitToCurrentHour, setLimitToCurrentHour] = useState<boolean>(false);
+
+  // Obtener la hora actual en la zona horaria local
+  const currentHour = useMemo(() => {
+    return new Date().getHours();
+  }, []);
 
   // Obtener fecha local actual de forma robusta YYYY-MM-DD
   const todayStr = useMemo(() => {
@@ -508,53 +519,71 @@ export default function MySatcomMonitoreoPage() {
     return data;
   }, [channelSummaryData, channelSortField, channelSortOrder]);
 
-  // Determinar el día objetivo a mostrar en el gráfico de canales (HOY)
-  const targetDateForChannels = todayStr;
-
-  // Línea de tiempo transaccional agrupada por Canal (exclusivamente para el día de HOY)
+  // Línea de tiempo transaccional agrupada por Canal
   const channelTimelineChartData = useMemo(() => {
-    const targetDate = targetDateForChannels;
-    const dayRecords = filteredRecordsWithoutDateRange.filter(r => r.fecha === targetDate);
+    const dayRecords = filteredRecordsWithoutDateRange.filter(r => {
+      if (channelPeriod === 'hoy') {
+        return r.fecha === datesInfo.todayStr;
+      } else if (channelPeriod === 'ayer') {
+        return r.fecha === datesInfo.yesterdayStr;
+      } else if (channelPeriod === 'semana') {
+        return r.fecha >= datesInfo.weekStartStr && r.fecha < datesInfo.todayStr;
+      } else if (channelPeriod === 'todaSemana') {
+        return r.fecha >= datesInfo.weekStartStr && r.fecha <= datesInfo.todayStr;
+      }
+      return true;
+    });
+
     const uniqueChannels = Array.from(new Set(normalizedRecords.map(r => r.canalNombre))).filter(Boolean);
     const points: Record<string, any> = {};
     
-    // Inicializar las 24 horas del día seleccionado
-    for (let h = 0; h < 24; h++) {
+    // Inicializar las horas del gráfico (hasta 23:00, o limitadas hasta la hora actual si limitToCurrentHour es true)
+    const maxHour = limitToCurrentHour ? currentHour : 23;
+    
+    for (let h = 0; h <= maxHour; h++) {
       const hStr = String(h).padStart(2, '0') + ':00';
-      const key = `${targetDate} ${hStr}`;
       
-      points[key] = {
-        key,
+      points[hStr] = {
+        key: hStr,
         label: hStr,
-        fecha: targetDate,
         hora: hStr,
       };
       
       uniqueChannels.forEach(ch => {
-        points[key][ch] = 0;
+        points[hStr][ch] = 0;
       });
     }
     
     // Poblar con la suma transaccional real de cada canal
     dayRecords.forEach(r => {
-      const key = `${r.fecha} ${r.hora}`;
-      if (points[key]) {
-        points[key][r.canalNombre] = (points[key][r.canalNombre] || 0) + r.totalHora;
+      const hh = r.hora;
+      if (points[hh]) {
+        const hInt = parseInt(hh.split(':')[0], 10);
+        if (!limitToCurrentHour || hInt <= currentHour) {
+          points[hh][r.canalNombre] = (points[hh][r.canalNombre] || 0) + r.totalHora;
+        }
       }
     });
+
+    let dateLabel = '';
+    if (channelPeriod === 'hoy') dateLabel = datesInfo.todayStr;
+    else if (channelPeriod === 'ayer') dateLabel = datesInfo.yesterdayStr;
+    else if (channelPeriod === 'semana') dateLabel = `Semana (Sin Hoy: ${datesInfo.weekStartStr} al ${datesInfo.yesterdayStr})`;
+    else if (channelPeriod === 'todaSemana') dateLabel = `Semana (Con Hoy: ${datesInfo.weekStartStr} al ${datesInfo.todayStr})`;
 
     return {
       data: Object.values(points).sort((a, b) => a.key.localeCompare(b.key)),
       channels: uniqueChannels,
-      dateLabel: targetDate
+      dateLabel
     };
-  }, [filteredRecordsWithoutDateRange, normalizedRecords, targetDateForChannels]);
+  }, [filteredRecordsWithoutDateRange, normalizedRecords, channelPeriod, datesInfo, limitToCurrentHour, currentHour]);
 
-  // Gráfica 1: Tendencia Horaria Consolidada (filtro temporal: hoy, ayer, semana)
+  // Gráfica 1: Tendencia Horaria Consolidada (filtro temporal: hoy, ayer, semana, todaSemana)
   const hourlyChartData = useMemo(() => {
     const hoursSummary: Record<string, { hora: string, autorizados: number, duplicados: number, noAutorizados: number }> = {};
     
-    for (let i = 0; i < 24; i++) {
+    const maxHour = limitToCurrentHour ? currentHour : 23;
+    for (let i = 0; i <= maxHour; i++) {
       const hh = String(i).padStart(2, '0') + ':00';
       hoursSummary[hh] = { hora: hh, autorizados: 0, duplicados: 0, noAutorizados: 0 };
     }
@@ -566,6 +595,8 @@ export default function MySatcomMonitoreoPage() {
         return r.fecha === datesInfo.yesterdayStr;
       } else if (trendPeriod === 'semana') {
         return r.fecha >= datesInfo.weekStartStr && r.fecha < datesInfo.todayStr;
+      } else if (trendPeriod === 'todaSemana') {
+        return r.fecha >= datesInfo.weekStartStr && r.fecha <= datesInfo.todayStr;
       }
       return true;
     });
@@ -573,14 +604,17 @@ export default function MySatcomMonitoreoPage() {
     filteredForTrend.forEach(r => {
       const hh = r.hora;
       if (hoursSummary[hh]) {
-        hoursSummary[hh].autorizados += r.autorizados;
-        hoursSummary[hh].duplicados += r.duplicados;
-        hoursSummary[hh].noAutorizados += r.noAutorizados;
+        const hInt = parseInt(hh.split(':')[0], 10);
+        if (!limitToCurrentHour || hInt <= currentHour) {
+          hoursSummary[hh].autorizados += r.autorizados;
+          hoursSummary[hh].duplicados += r.duplicados;
+          hoursSummary[hh].noAutorizados += r.noAutorizados;
+        }
       }
     });
 
     return Object.values(hoursSummary).sort((a, b) => a.hora.localeCompare(b.hora));
-  }, [filteredRecordsWithoutDateRange, trendPeriod, datesInfo]);
+  }, [filteredRecordsWithoutDateRange, trendPeriod, datesInfo, limitToCurrentHour, currentHour]);
 
   // Gráfica 2: Top Emisores Afectados
   const topEmisoresChartData = useMemo(() => {
@@ -921,6 +955,21 @@ export default function MySatcomMonitoreoPage() {
       {/* Renderizado de Visualizaciones según pestaña activa */}
       {activeChartTab === 'acumulado' && (
         <div className="flex flex-col gap-8 mb-10">
+          {/* Opciones globales de comparación */}
+          <div className="flex items-center justify-end gap-3 bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-2xl px-6 py-3.5 shadow-sm">
+            <label className="flex items-center gap-3 cursor-pointer select-none">
+              <input 
+                type="checkbox" 
+                checked={limitToCurrentHour} 
+                onChange={(e) => setLimitToCurrentHour(e.target.checked)}
+                className="w-4.5 h-4.5 text-[#71BF44] bg-neutral-100 border-neutral-300 rounded focus:ring-[#71BF44] focus:ring-2 dark:focus:ring-offset-neutral-900 focus:ring-offset-2 dark:bg-neutral-800 dark:border-neutral-700 cursor-pointer"
+              />
+              <span className="text-xs font-bold text-neutral-750 dark:text-neutral-300 uppercase tracking-wider">
+                Comparar solo hasta la hora actual ({String(currentHour).padStart(2, '0')}:00)
+              </span>
+            </label>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Gráfico 1: Tendencia Horaria (Filtros: Hoy, Ayer, Semana) */}
             <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
@@ -951,6 +1000,12 @@ export default function MySatcomMonitoreoPage() {
                     className={`px-3 py-1.5 rounded transition-all cursor-pointer ${trendPeriod === 'semana' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
                   >
                     Semana (Exc. Hoy)
+                  </button>
+                  <button 
+                    onClick={() => setTrendPeriod('todaSemana')}
+                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${trendPeriod === 'todaSemana' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
+                  >
+                    Toda la Semana
                   </button>
                 </div>
               </div>
@@ -1080,9 +1135,9 @@ export default function MySatcomMonitoreoPage() {
               </div>
             </div>
             
-            {/* Gráfico de línea de tiempo con transacciones por Canal (exclusivo para HOY / TargetDate) */}
+            {/* Gráfico de línea de tiempo con transacciones por Canal */}
             <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm">
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
                 <div>
                   <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-widest">
                     Línea de Tiempo por Canal (Trx)
@@ -1091,7 +1146,34 @@ export default function MySatcomMonitoreoPage() {
                     Actividad de: <strong className="text-[#71BF44]">{channelTimelineChartData.dateLabel}</strong>
                   </span>
                 </div>
-                <span className="text-[9px] font-bold text-neutral-450 uppercase tracking-widest">Trx por Hora (Hoy)</span>
+                
+                {/* Selector de Rango de Canales */}
+                <div className="flex bg-neutral-105 dark:bg-neutral-850 p-0.5 rounded-lg border border-neutral-200 dark:border-neutral-800 text-[9px] font-black uppercase">
+                  <button 
+                    onClick={() => setChannelPeriod('hoy')}
+                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${channelPeriod === 'hoy' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
+                  >
+                    Hoy
+                  </button>
+                  <button 
+                    onClick={() => setChannelPeriod('ayer')}
+                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${channelPeriod === 'ayer' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
+                  >
+                    Ayer
+                  </button>
+                  <button 
+                    onClick={() => setChannelPeriod('semana')}
+                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${channelPeriod === 'semana' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
+                  >
+                    Semana (Exc. Hoy)
+                  </button>
+                  <button 
+                    onClick={() => setChannelPeriod('todaSemana')}
+                    className={`px-3 py-1.5 rounded transition-all cursor-pointer ${channelPeriod === 'todaSemana' ? 'bg-[#71BF44] text-white dark:text-[#111]' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'}`}
+                  >
+                    Toda la Semana
+                  </button>
+                </div>
               </div>
               <div className="h-[250px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
