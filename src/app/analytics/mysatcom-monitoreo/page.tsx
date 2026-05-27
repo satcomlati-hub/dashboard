@@ -156,6 +156,14 @@ export default function MySatcomMonitoreoPage() {
   // Canales que el usuario ha decidido ocultar en el gráfico de canales
   const [hiddenChannels, setHiddenChannels] = useState<string[]>([]);
 
+  const toggleChannelVisibility = (channelName: string) => {
+    setHiddenChannels(prev => 
+      prev.includes(channelName) 
+        ? prev.filter(c => c !== channelName) 
+        : [...prev, channelName]
+    );
+  };
+
   // Obtener la hora actual en la zona horaria local
   const currentHour = useMemo(() => {
     return new Date().getHours();
@@ -614,7 +622,7 @@ export default function MySatcomMonitoreoPage() {
       }
     });
 
-    return Object.values(hoursSummary).sort((a, b) => a.hora.hora.localeCompare(b.hora));
+    return Object.values(hoursSummary).sort((a, b) => a.hora.localeCompare(b.hora));
   }, [filteredRecordsWithoutDateRange, globalPeriod, datesInfo, limitToCurrentHour, currentHour]);
 
   // Gráfica 2: Top Emisores Afectados
