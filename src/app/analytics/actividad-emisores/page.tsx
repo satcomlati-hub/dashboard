@@ -135,9 +135,13 @@ export default function ActividadEmisoresPage() {
           json.forEach(item => {
             const p = item.data ? (typeof item.data === 'string' ? JSON.parse(item.data) : item.data) : item;
             if (Array.isArray(p)) {
-              p.forEach(x => { if (x.IdEmisor) catalog.push({ ...x, ambiente: amb }); });
-            } else if (p.IdEmisor) {
-              catalog.push({ ...p, ambiente: amb });
+              p.forEach(x => {
+                const id = x.IdEmisor ?? x.ID_Emisor ?? x.co_id_emisor;
+                if (id) catalog.push({ ...x, IdEmisor: Number(id), ambiente: amb });
+              });
+            } else {
+              const id = p.IdEmisor ?? p.ID_Emisor ?? p.co_id_emisor;
+              if (id) catalog.push({ ...p, IdEmisor: Number(id), ambiente: amb });
             }
           });
         }
@@ -149,9 +153,13 @@ export default function ActividadEmisoresPage() {
           json.forEach(item => {
             const p = item.data ? (typeof item.data === 'string' ? JSON.parse(item.data) : item.data) : item;
             if (Array.isArray(p)) {
-              p.forEach(x => { if (x.IdEmisor) activity.push({ ...x, ambiente: amb }); });
-            } else if (p.IdEmisor) {
-              activity.push({ ...p, ambiente: amb });
+              p.forEach(x => {
+                const id = x.IdEmisor ?? x.ID_Emisor ?? x.co_id_emisor;
+                if (id) activity.push({ ...x, IdEmisor: Number(id), ambiente: amb });
+              });
+            } else {
+              const id = p.IdEmisor ?? p.ID_Emisor ?? p.co_id_emisor;
+              if (id) activity.push({ ...p, IdEmisor: Number(id), ambiente: amb });
             }
           });
         }
@@ -181,7 +189,8 @@ export default function ActividadEmisoresPage() {
     if (rawCatalog.length === 0) return [];
 
     return rawCatalog.map(c => {
-      const emisorActivities = rawActivity.filter(a => Number(a.IdEmisor) === Number(c.IdEmisor) && a.ambiente === c.ambiente);
+      const emisorId = Number(c.IdEmisor);
+      const emisorActivities = rawActivity.filter(a => Number(a.IdEmisor) === emisorId && a.ambiente === c.ambiente);
       const totalOk = emisorActivities.reduce((acc, curr) => acc + (Number(curr.TotalAutorizados) || 0), 0);
       const totalError = emisorActivities.reduce((acc, curr) => acc + (Number(curr.TotalErrores) || 0), 0);
       
@@ -207,7 +216,10 @@ export default function ActividadEmisoresPage() {
       };
 
       const paisId = c.CodigoPais || c.IdPais;
-      const nombrePais = c.NombrePais || COUNTRY_MAP[paisId] || 'Ecuador';
+      let nombrePais = c.NombrePais || COUNTRY_MAP[paisId];
+      if (!nombrePais) {
+        nombrePais = c.ambiente === 'Colombia' ? 'Colombia' : 'Ecuador';
+      }
 
       // Lógica de Alertas (Desconexiones)
       // Hoy es 29 de Abril 2026
@@ -236,7 +248,7 @@ export default function ActividadEmisoresPage() {
       const isDisconnected = estado === 'ACTIVO' && disconnectedEstabs.length > 0;
 
       return {
-        ID_Emisor: c.IdEmisor,
+        ID_Emisor: emisorId,
         Nemonico: c.Nemonico,
         Identificacion: c.Identificacion,
         RazonSocial: c.RazonSocial,
