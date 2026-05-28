@@ -39,6 +39,15 @@ AS
               
 -- sp_recompile spct_reproceso_resumen_by_pais                
 Begin    
+    -- CONTROL DE EMERGENCIA BDD
+    DECLARE @aux_emergencia_1 VARCHAR(100), @aux_emergencia_2 VARCHAR(100);
+    EXEC sat_catalogo.dbo.sp_get_valor_variable_app 'emergencia_bdd', @aux_emergencia_1 OUT, @aux_emergencia_2 OUT, 'false';
+    IF UPPER(LTRIM(RTRIM(ISNULL(@aux_emergencia_1, '')))) IN ('SI', 'TRUE')
+    BEGIN
+        PRINT '>>> CONTROL DE EMERGENCIA BDD ACTIVO: Se cancela la ejecucion de spct_reproceso_resumen_by_pais_hosting.';
+        RETURN 0;
+    END
+
     -- 1. Intentar obtener el bloqueo de aplicación (AppLock)
     -- @LockTimeout = 0: No espera; si está ocupado, falla de inmediato.
     DECLARE @res_lock INT;

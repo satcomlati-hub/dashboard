@@ -29,10 +29,13 @@ import {
   FilterX,
   Copy,
   Check,
-  Plus
+  Plus,
+  Edit2,
+  FileJson
 } from 'lucide-react';
 import { formatDate } from '@/lib/formatters';
 import RegistroManualModal from './RegistroManualModal';
+import EditEstadoModal from './EditEstadoModal';
 import { 
   LineChart, 
   Line, 
@@ -201,6 +204,15 @@ export default function EventHistoryPage() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<EventoRabbit | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const copyEventJSON = (ev: EventoRabbit) => {
+    navigator.clipboard.writeText(JSON.stringify(ev, null, 2));
+    setCopiedKey(ev.key);
+    setTimeout(() => setCopiedKey(null), 2000);
+  };
 
   const { data: session } = useSession();
   const canDelete = session?.user?.email === 'kleber.toapanta@satcomla.com' || session?.user?.email === 'kleber.toapanta@satcola.com';
@@ -783,7 +795,7 @@ export default function EventHistoryPage() {
                         { label: 'Mensaje', key: 'mensaje', minWidth: '150px' },
                         { label: 'Caso #', key: 'numero_caso', minWidth: '120px' },
                         { label: 'Created At', key: 'created_at', minWidth: '180px' },
-                        ...(canDelete ? [{ label: 'Acciones', key: 'actions', minWidth: '80px' }] : [])
+                        { label: 'Acciones', key: 'actions', minWidth: '150px' }
                       ].map((col) => (
                         <th key={col.key} className="px-6 py-4" style={{ minWidth: col.minWidth }}>
                           <div className="flex flex-col gap-3">
@@ -869,13 +881,31 @@ export default function EventHistoryPage() {
                         <td className="px-6 py-5 whitespace-nowrap text-[10px] text-neutral-500 uppercase font-bold">
                            {formatDate(ev.created_at, true)}
                         </td>
-                        {canDelete && (
-                          <td className="px-6 py-5 whitespace-nowrap text-right">
-                            <button onClick={() => handleDelete(ev.key)} className="text-red-500 hover:text-red-600 p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                        <td className="px-6 py-5 whitespace-nowrap text-right flex items-center justify-end gap-1">
+                          <button 
+                            onClick={() => { setEditingEvent(ev); setIsEditModalOpen(true); }} 
+                            className="text-blue-500 hover:text-blue-600 p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                            title="Editar Estado"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => copyEventJSON(ev)} 
+                            className="text-neutral-500 hover:text-[#71BF44] p-2 hover:bg-neutral-50 dark:hover:bg-neutral-800 rounded-lg transition-colors"
+                            title="Copiar JSON"
+                          >
+                            {copiedKey === ev.key ? <Check className="w-4 h-4 text-[#71BF44]" /> : <FileJson className="w-4 h-4" />}
+                          </button>
+                          {canDelete && (
+                            <button 
+                              onClick={() => handleDelete(ev.key)} 
+                              className="text-red-500 hover:text-red-600 p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                              title="Eliminar Evento"
+                            >
                               <Trash2 className="w-4 h-4" />
                             </button>
-                          </td>
-                        )}
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -895,6 +925,12 @@ export default function EventHistoryPage() {
         isOpen={isManualModalOpen} 
         onClose={() => setIsManualModalOpen(false)} 
         onSuccess={() => fetchData(true)} 
+      />
+      <EditEstadoModal
+        isOpen={isEditModalOpen}
+        onClose={() => { setIsEditModalOpen(false); setEditingEvent(null); }}
+        event={editingEvent}
+        onSuccess={() => fetchData(true)}
       />
     </div>
   );
