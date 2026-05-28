@@ -555,6 +555,30 @@ export default function MySatcomMonitoreoPage() {
         return em;
       });
       
+      // Ordenar los emisores dentro de cada país según el criterio de ordenamiento activo
+      emisores.sort((a, b) => {
+        let valA: any = a.totalHora;
+        let valB: any = b.totalHora;
+        
+        if (sortField === 'autorizados') {
+          valA = a.autorizados;
+          valB = b.autorizados;
+        } else if (sortField === 'duplicados') {
+          valA = a.duplicados;
+          valB = b.duplicados;
+        } else if (sortField === 'noAutorizados') {
+          valA = a.noAutorizados;
+          valB = b.noAutorizados;
+        } else if (sortField === 'nemonico') {
+          valA = a.nemonico.toLowerCase();
+          valB = b.nemonico.toLowerCase();
+        }
+        
+        if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+        if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+        return 0;
+      });
+      
       const auts = emisores.reduce((sum, em) => sum + em.autorizados, 0);
       const dups = emisores.reduce((sum, em) => sum + em.duplicados, 0);
       const noAuts = emisores.reduce((sum, em) => sum + em.noAutorizados, 0);
@@ -566,12 +590,36 @@ export default function MySatcomMonitoreoPage() {
         duplicados: dups,
         noAutorizados: noAuts,
         totalHora: total,
-        emisores: emisores.sort((a, b) => b.totalHora - a.totalHora)
+        emisores: emisores
       };
     });
     
-    return result.sort((a, b) => b.totalHora - a.totalHora);
-  }, [filteredRecords]);
+    // Ordenar los países según el criterio de ordenamiento activo
+    result.sort((a, b) => {
+      let valA: any = a.totalHora;
+      let valB: any = b.totalHora;
+      
+      if (sortField === 'autorizados') {
+        valA = a.autorizados;
+        valB = b.autorizados;
+      } else if (sortField === 'duplicados') {
+        valA = a.duplicados;
+        valB = b.duplicados;
+      } else if (sortField === 'noAutorizados') {
+        valA = a.noAutorizados;
+        valB = b.noAutorizados;
+      } else if (sortField === 'nemonico') {
+        valA = a.paisNombre.toLowerCase();
+        valB = b.paisNombre.toLowerCase();
+      }
+      
+      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+    
+    return result;
+  }, [filteredRecords, sortField, sortOrder]);
 
   // KPIs actualizados
   const kpis = useMemo(() => {
@@ -1947,11 +1995,25 @@ export default function MySatcomMonitoreoPage() {
                         <td className="px-8 py-4 text-right text-sm font-black text-[#71BF44]">
                           {pais.autorizados.toLocaleString()}
                         </td>
-                        <td className="px-8 py-4 text-right text-sm font-black text-blue-500">
-                          {pais.duplicados.toLocaleString()}
+                        <td className="px-8 py-4 text-right">
+                          <div className="flex flex-col items-end">
+                            <span className="text-sm font-black text-blue-500">{pais.duplicados.toLocaleString()}</span>
+                            {pais.totalHora > 0 && (
+                              <span className="text-[10px] text-neutral-450 font-bold">
+                                {((pais.duplicados / pais.totalHora) * 100).toFixed(1)}%
+                              </span>
+                            )}
+                          </div>
                         </td>
-                        <td className="px-8 py-4 text-right text-sm font-black text-red-500">
-                          {pais.noAutorizados.toLocaleString()}
+                        <td className="px-8 py-4 text-right">
+                          <div className="flex flex-col items-end">
+                            <span className="text-sm font-black text-red-500">{pais.noAutorizados.toLocaleString()}</span>
+                            {pais.totalHora > 0 && (
+                              <span className="text-[10px] text-neutral-450 font-bold">
+                                {((pais.noAutorizados / pais.totalHora) * 100).toFixed(1)}%
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-8 py-4 text-right text-sm font-black text-neutral-800 dark:text-neutral-250">
                           {pais.totalHora.toLocaleString()}
@@ -1995,11 +2057,25 @@ export default function MySatcomMonitoreoPage() {
                               <td className="px-8 py-4 text-right font-bold text-xs text-[#71BF44]">
                                 {em.autorizados.toLocaleString()}
                               </td>
-                              <td className="px-8 py-4 text-right font-bold text-xs text-blue-500">
-                                {em.duplicados.toLocaleString()}
+                              <td className="px-8 py-4 text-right">
+                                <div className="flex flex-col items-end">
+                                  <span className="font-bold text-xs text-blue-500">{em.duplicados.toLocaleString()}</span>
+                                  {em.totalHora > 0 && (
+                                    <span className="text-[9px] text-neutral-450 font-bold">
+                                      {((em.duplicados / em.totalHora) * 100).toFixed(1)}%
+                                    </span>
+                                  )}
+                                </div>
                               </td>
-                              <td className="px-8 py-4 text-right font-bold text-xs text-red-500">
-                                {em.noAutorizados.toLocaleString()}
+                              <td className="px-8 py-4 text-right">
+                                <div className="flex flex-col items-end">
+                                  <span className="font-bold text-xs text-red-500">{em.noAutorizados.toLocaleString()}</span>
+                                  {em.totalHora > 0 && (
+                                    <span className="text-[9px] text-neutral-450 font-bold">
+                                      {((em.noAutorizados / em.totalHora) * 100).toFixed(1)}%
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="px-8 py-4 text-right font-bold text-xs text-neutral-700 dark:text-neutral-300">
                                 {em.totalHora.toLocaleString()}
