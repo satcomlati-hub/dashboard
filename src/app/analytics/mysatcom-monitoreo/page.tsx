@@ -95,6 +95,15 @@ interface NormalizedRecord {
   ultimoAutorizado: string;
 }
 
+interface GroupedFecha {
+  fecha: string;
+  autorizados: number;
+  duplicados: number;
+  noAutorizados: number;
+  totalHora: number;
+  records: NormalizedRecord[];
+}
+
 interface GroupedEmisor {
   nemonico: string;
   razonSocial: string;
@@ -104,7 +113,7 @@ interface GroupedEmisor {
   noAutorizados: number;
   totalHora: number;
   ultimoAutorizado: string;
-  records: NormalizedRecord[];
+  fechas: GroupedFecha[];
 }
 
 interface GroupedPais {
@@ -156,6 +165,7 @@ export default function MySatcomMonitoreoPage() {
   const [isGroupedView, setIsGroupedView] = useState(true);
   const [expandedPaises, setExpandedPaises] = useState<Record<string, boolean>>({});
   const [expandedEmisores, setExpandedEmisores] = useState<Record<string, boolean>>({});
+  const [expandedFechas, setExpandedFechas] = useState<Record<string, boolean>>({});
 
   const togglePais = (paisName: string) => {
     setExpandedPaises(prev => ({ ...prev, [paisName]: !prev[paisName] }));
@@ -163,6 +173,10 @@ export default function MySatcomMonitoreoPage() {
 
   const toggleEmisor = (emKey: string) => {
     setExpandedEmisores(prev => ({ ...prev, [emKey]: !prev[emKey] }));
+  };
+
+  const toggleFecha = (fechaKey: string) => {
+    setExpandedFechas(prev => ({ ...prev, [fechaKey]: !prev[fechaKey] }));
   };
 
   const filterByPais = (paisName: string) => {
@@ -510,52 +524,103 @@ export default function MySatcomMonitoreoPage() {
   }, [filteredRecordsWithoutDateRange, startDate, endDate]);
 
   const groupedData = useMemo(() => {
-    const map: Record<string, Record<string, GroupedEmisor>> = {};
-    
+    const map: Record<string, Record<string, Record<string, GroupedFecha>>> = {};
+    const emisorInfoMap: Record<string, { razonSocial: string, idEmisor: number, ultimoAutorizado: string }> = {};
+
     filteredRecords.forEach(r => {
       const pName = r.paisNombre;
       const nem = r.nemonico;
-      
+      const fStr = r.fecha;
+
       if (!map[pName]) {
         map[pName] = {};
       }
-      
       if (!map[pName][nem]) {
-        map[pName][nem] = {
-          nemonico: nem,
+        map[pName][nem] = {};
+        emisorInfoMap[`${pName}_${nem}`] = {
           razonSocial: r.razonSocial,
           idEmisor: r.idEmisor,
+          ultimoAutorizado: '---'
+        };
+      }
+
+      const info = emisorInfoMap[`${pName}_${nem}`];
+      if (r.ultimoAutorizado !== '---') {
+        info.ultimoAutorizado = r.ultimoAutorizado;
+      }
+
+      if (!map[pName][nem][fStr]) {
+        map[pName][nem][fStr] = {
+          fecha: fStr,
           autorizados: 0,
           duplicados: 0,
           noAutorizados: 0,
           totalHora: 0,
-          ultimoAutorizado: '---',
           records: []
         };
       }
-      
-      const em = map[pName][nem];
-      em.autorizados += r.autorizados;
-      em.duplicados += r.duplicados;
-      em.noAutorizados += r.noAutorizados;
-      em.totalHora += r.totalHora;
-      if (r.ultimoAutorizado !== '---') {
-        em.ultimoAutorizado = r.ultimoAutorizado;
-      }
-      em.records.push(r);
+
+      const fGroup = map[pName][nem][fStr];
+      fGroup.autorizados += r.autorizados;
+      fGroup.duplicados += r.duplicados;
+      fGroup.noAutorizados += r.noAutorizados;
+      fGroup.totalHora += r.totalHora;
+      fGroup.records.push(r);
     });
-    
+
     const result: GroupedPais[] = Object.keys(map).map(pName => {
-      const emisores = Object.values(map[pName]).map(em => {
-        em.records.sort((a, b) => {
-          const dateComp = b.fecha.localeCompare(a.fecha);
-          if (dateComp !== 0) return dateComp;
-          return b.hora.localeCompare(a.hora);
+      const emisores: GroupedEmisor[] = Object.keys(map[pName]).map(nem => {
+        const info = emisorInfoMap[`${pName}_${nem}`];
+        
+        const fechas: GroupedFecha[] = Object.values(map[pName][nem]).map(fGroup => {
+          fGroup.records.sort((a, b) => b.hora.localeCompare(a.hora));
+          return fGroup;
         });
-        return em;
+
+        // Ordenar las fechas dentro del emisor
+        fechas.sort((a, b) => {
+          let valA: any = a.totalHora;
+          let valB: any = b.totalHora;
+          
+          if (sortField === 'autorizados') {
+            valA = a.autorizados;
+            valB = b.autorizados;
+          } else if (sortField === 'duplicados') {
+            valA = a.duplicados;
+            valB = b.duplicados;
+          } else if (sortField === 'noAutorizados') {
+            valA = a.noAutorizados;
+            valB = b.noAutorizados;
+          } else if (sortField === 'fecha' || sortField === 'nemonico') {
+            valA = a.fecha;
+            valB = b.fecha;
+            return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+          }
+
+          if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+          if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+          return 0;
+        });
+
+        const auts = fechas.reduce((sum, f) => sum + f.autorizados, 0);
+        const dups = fechas.reduce((sum, f) => sum + f.duplicados, 0);
+        const noAuts = fechas.reduce((sum, f) => sum + f.noAutorizados, 0);
+        const total = fechas.reduce((sum, f) => sum + f.totalHora, 0);
+
+        return {
+          nemonico: nem,
+          razonSocial: info.razonSocial,
+          idEmisor: info.idEmisor,
+          autorizados: auts,
+          duplicados: dups,
+          noAutorizados: noAuts,
+          totalHora: total,
+          ultimoAutorizado: info.ultimoAutorizado,
+          fechas
+        };
       });
-      
-      // Ordenar los emisores dentro de cada país según el criterio de ordenamiento activo
+
+      // Ordenar los emisores dentro de cada país
       emisores.sort((a, b) => {
         let valA: any = a.totalHora;
         let valB: any = b.totalHora;
@@ -578,23 +643,23 @@ export default function MySatcomMonitoreoPage() {
         if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
         return 0;
       });
-      
+
       const auts = emisores.reduce((sum, em) => sum + em.autorizados, 0);
       const dups = emisores.reduce((sum, em) => sum + em.duplicados, 0);
       const noAuts = emisores.reduce((sum, em) => sum + em.noAutorizados, 0);
       const total = emisores.reduce((sum, em) => sum + em.totalHora, 0);
-      
+
       return {
         paisNombre: pName,
         autorizados: auts,
         duplicados: dups,
         noAutorizados: noAuts,
         totalHora: total,
-        emisores: emisores
+        emisores
       };
     });
     
-    // Ordenar los países según el criterio de ordenamiento activo
+    // Ordenar los países
     result.sort((a, b) => {
       let valA: any = a.totalHora;
       let valB: any = b.totalHora;
@@ -1992,8 +2057,15 @@ export default function MySatcomMonitoreoPage() {
                         <td className="px-8 py-4 text-xs font-bold text-neutral-400 uppercase">
                           País • {pais.emisores.length} Emisores
                         </td>
-                        <td className="px-8 py-4 text-right text-sm font-black text-[#71BF44]">
-                          {pais.autorizados.toLocaleString()}
+                        <td className="px-8 py-4 text-right">
+                          <div className="flex flex-col items-end">
+                            <span className="text-sm font-black text-[#71BF44]">{pais.autorizados.toLocaleString()}</span>
+                            {pais.totalHora > 0 && (
+                              <span className="text-[10px] text-[#71BF44] font-bold">
+                                {((pais.autorizados / pais.totalHora) * 100).toFixed(1)}%
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-8 py-4 text-right">
                           <div className="flex flex-col items-end">
@@ -2048,14 +2120,22 @@ export default function MySatcomMonitoreoPage() {
                                 >
                                   {em.razonSocial}
                                 </span>
+                                <span className="text-[9px] text-neutral-400 font-bold ml-2">ID: {em.idEmisor}</span>
                               </td>
                               <td className="px-8 py-4">
                                 <span className="text-[9px] font-black text-[#71BF44] bg-[#71BF44]/5 px-2 py-0.5 rounded border border-[#71BF44]/10 uppercase tracking-widest">
                                   {em.nemonico}
                                 </span>
                               </td>
-                              <td className="px-8 py-4 text-right font-bold text-xs text-[#71BF44]">
-                                {em.autorizados.toLocaleString()}
+                              <td className="px-8 py-4 text-right">
+                                <div className="flex flex-col items-end">
+                                  <span className="font-bold text-xs text-[#71BF44]">{em.autorizados.toLocaleString()}</span>
+                                  {em.totalHora > 0 && (
+                                    <span className="text-[9px] text-[#71BF44] font-bold">
+                                      {((em.autorizados / em.totalHora) * 100).toFixed(1)}%
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="px-8 py-4 text-right">
                                 <div className="flex flex-col items-end">
@@ -2085,45 +2165,106 @@ export default function MySatcomMonitoreoPage() {
                               </td>
                             </tr>
 
-                            {/* Hourly Details Rows under this Emisor */}
-                            {isEmExpanded && em.records.map((row, rIdx) => {
-                              const hasErrors = row.noAutorizados > 0;
+                            {/* Fechas Rows under this Emisor */}
+                            {isEmExpanded && em.fechas.map((f, fIdx) => {
+                              const fechaKey = `${emKey}_${f.fecha}`;
+                              const isFechaExpanded = !!expandedFechas[fechaKey];
                               return (
-                                <tr key={`detail-${emKey}-${rIdx}`} className="bg-white dark:bg-[#111] hover:bg-[#71BF44]/[0.02] border-b border-neutral-100/30 dark:border-neutral-800/20">
-                                  <td className="px-8 py-3.5 pl-20 font-mono text-[11px] text-neutral-500">
-                                    <div className="flex items-center gap-2">
-                                      <span>{row.fecha}</span>
-                                      <span className="text-[10px] text-[#71BF44] font-bold">{row.hora}</span>
-                                    </div>
-                                  </td>
-                                  <td className="px-8 py-3.5">
-                                    <span className="text-[9px] text-blue-500 bg-blue-50 dark:bg-blue-950/20 px-2 py-0.5 rounded border border-blue-500/10 font-bold uppercase">
-                                      {row.canalNombre} <span className="text-[8px] font-mono text-blue-400">({row.canalCodigo})</span>
-                                    </span>
-                                  </td>
-                                  <td className="px-8 py-3.5 text-right text-xs text-[#71BF44] font-medium">
-                                    {row.autorizados.toLocaleString()}
-                                  </td>
-                                  <td className="px-8 py-3.5 text-right text-xs text-blue-500 font-medium">
-                                    {row.duplicados.toLocaleString()}
-                                  </td>
-                                  <td className="px-8 py-3.5 text-right text-xs font-medium">
-                                    <span className={hasErrors ? 'text-red-500 font-bold' : 'text-neutral-400'}>
-                                      {row.noAutorizados.toLocaleString()}
-                                    </span>
-                                  </td>
-                                  <td className="px-8 py-3.5 text-right text-xs font-bold text-neutral-600 dark:text-neutral-450">
-                                    {row.totalHora.toLocaleString()}
-                                  </td>
-                                  <td className="px-8 py-3.5">
-                                    <div className="flex items-center gap-1.5 text-[11px]">
-                                      <CheckCircle2 className={`w-3 h-3 ${row.ultimoAutorizado !== '---' ? 'text-[#71BF44]' : 'text-neutral-350 dark:text-neutral-700'}`} />
-                                      <span className={row.ultimoAutorizado !== '---' ? 'text-neutral-500 dark:text-neutral-400' : 'text-neutral-350 dark:text-neutral-600 italic'}>
-                                        {row.ultimoAutorizado}
+                                <Fragment key={`fecha-${fechaKey}-${fIdx}`}>
+                                  {/* Fecha Row */}
+                                  <tr
+                                    className="bg-neutral-50/20 dark:bg-white/[0.001] hover:bg-[#71BF44]/5 transition-all cursor-pointer border-b border-neutral-100/30 dark:border-neutral-800/10"
+                                    onClick={() => toggleFecha(fechaKey)}
+                                  >
+                                    <td className="px-8 py-3 pl-16 font-mono text-[11px] text-neutral-600 dark:text-neutral-400">
+                                      <span className="inline-block w-4 text-center mr-1 text-xs text-neutral-400">
+                                        {isFechaExpanded ? '▼' : '▶'}
                                       </span>
-                                    </div>
-                                  </td>
-                                </tr>
+                                      {f.fecha}
+                                    </td>
+                                    <td className="px-8 py-3 text-[10px] font-bold text-neutral-400 uppercase">
+                                      Fecha • {f.records.length} Horas
+                                    </td>
+                                    <td className="px-8 py-3 text-right">
+                                      <div className="flex flex-col items-end">
+                                        <span className="font-bold text-xs text-[#71BF44]">{f.autorizados.toLocaleString()}</span>
+                                        {f.totalHora > 0 && (
+                                          <span className="text-[9px] text-[#71BF44] font-bold">
+                                            {((f.autorizados / f.totalHora) * 100).toFixed(1)}%
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="px-8 py-3 text-right">
+                                      <div className="flex flex-col items-end">
+                                        <span className="font-bold text-xs text-blue-500">{f.duplicados.toLocaleString()}</span>
+                                        {f.totalHora > 0 && (
+                                          <span className="text-[9px] text-neutral-450 font-bold">
+                                            {((f.duplicados / f.totalHora) * 100).toFixed(1)}%
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="px-8 py-3 text-right">
+                                      <div className="flex flex-col items-end">
+                                        <span className="font-bold text-xs text-red-500">{f.noAutorizados.toLocaleString()}</span>
+                                        {f.totalHora > 0 && (
+                                          <span className="text-[9px] text-neutral-450 font-bold">
+                                            {((f.noAutorizados / f.totalHora) * 100).toFixed(1)}%
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="px-8 py-3 text-right font-bold text-xs text-neutral-700 dark:text-neutral-350">
+                                      {f.totalHora.toLocaleString()}
+                                    </td>
+                                    <td className="px-8 py-3 text-xs font-semibold text-neutral-500 italic">
+                                      Total Fecha
+                                    </td>
+                                  </tr>
+
+                                  {/* Hourly Details Rows under this Fecha */}
+                                  {isFechaExpanded && f.records.map((row, rIdx) => {
+                                    const hasErrors = row.noAutorizados > 0;
+                                    return (
+                                      <tr key={`detail-${fechaKey}-${rIdx}`} className="bg-white dark:bg-[#111] hover:bg-[#71BF44]/[0.02] border-b border-neutral-100/30 dark:border-neutral-800/20">
+                                        <td className="px-8 py-3.5 pl-24 font-mono text-[11px] text-neutral-500">
+                                          <div className="flex items-center gap-2">
+                                            <span>{row.fecha}</span>
+                                            <span className="text-[10px] text-[#71BF44] font-bold">{row.hora}</span>
+                                          </div>
+                                        </td>
+                                        <td className="px-8 py-3.5">
+                                          <span className="text-[9px] text-blue-500 bg-blue-50 dark:bg-blue-950/20 px-2 py-0.5 rounded border border-blue-500/10 font-bold uppercase">
+                                            {row.canalNombre} <span className="text-[8px] font-mono text-blue-400">({row.canalCodigo})</span>
+                                          </span>
+                                        </td>
+                                        <td className="px-8 py-3.5 text-right text-xs text-[#71BF44] font-medium">
+                                          {row.autorizados.toLocaleString()}
+                                        </td>
+                                        <td className="px-8 py-3.5 text-right text-xs text-blue-500 font-medium">
+                                          {row.duplicados.toLocaleString()}
+                                        </td>
+                                        <td className="px-8 py-3.5 text-right text-xs font-medium">
+                                          <span className={hasErrors ? 'text-red-500 font-bold' : 'text-neutral-400'}>
+                                            {row.noAutorizados.toLocaleString()}
+                                          </span>
+                                        </td>
+                                        <td className="px-8 py-3.5 text-right text-xs font-bold text-neutral-600 dark:text-neutral-455">
+                                          {row.totalHora.toLocaleString()}
+                                        </td>
+                                        <td className="px-8 py-3.5">
+                                          <div className="flex items-center gap-1.5 text-[11px]">
+                                            <CheckCircle2 className={`w-3 h-3 ${row.ultimoAutorizado !== '---' ? 'text-[#71BF44]' : 'text-neutral-350 dark:text-neutral-700'}`} />
+                                            <span className={row.ultimoAutorizado !== '---' ? 'text-neutral-500 dark:text-neutral-400' : 'text-neutral-350 dark:text-neutral-600 italic'}>
+                                              {row.ultimoAutorizado}
+                                            </span>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </Fragment>
                               );
                             })}
                           </Fragment>
