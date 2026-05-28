@@ -36,6 +36,7 @@ interface CatalogEmisor {
   IdPais: number;
   NombrePais?: string;
   CodigoPais?: number;
+  ambiente: 'V5' | 'Colombia';
 }
 
 interface ActivityRecord {
@@ -49,6 +50,7 @@ interface ActivityRecord {
   UltimoNoAutorizado: string;
   CodigoTipoDocumento: string;
   FechaSincronizacion: string;
+  ambiente: 'V5' | 'Colombia';
 }
 
 interface EmitterGroup {
@@ -68,6 +70,7 @@ interface EmitterGroup {
   isDisconnected: boolean;
   disconnectedEstabs: string[];
   details: ActivityRecord[];
+  ambiente: 'V5' | 'Colombia';
 }
 
 type SortKey = 'ID_Emisor' | 'RazonSocial' | 'ultimaAutorizacion' | 'ultimaError' | 'totalOk' | 'estabCount' | 'puntosCount';
@@ -81,17 +84,17 @@ export default function ActividadEmisoresPage() {
   
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  const [expandedEmisores, setExpandedEmisores] = useState<Set<number>>(new Set());
-  const [selectedEmisorId, setSelectedEmisorId] = useState<number | null>(null);
+  const [expandedEmisores, setExpandedEmisores] = useState<Set<string>>(new Set());
+  const [selectedEmisorId, setSelectedEmisorId] = useState<string | null>(null);
   const [countryFilter, setCountryFilter] = useState<string | null>(null);
   const [alertFilter, setAlertFilter] = useState(false);
   const [inactivityDays, setInactivityDays] = useState(3);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey, direction: 'asc' | 'desc' } | null>({ key: 'ultimaAutorizacion', direction: 'desc' });
 
-  const toggleExpand = (id: number) => {
+  const toggleExpand = (key: string) => {
     const newSet = new Set(expandedEmisores);
-    if (newSet.has(id)) newSet.delete(id);
-    else newSet.add(id);
+    if (newSet.has(key)) newSet.delete(key);
+    else newSet.add(key);
     setExpandedEmisores(newSet);
   };
 
@@ -108,32 +111,56 @@ export default function ActividadEmisoresPage() {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       
-      const [resCatalog, resActivity] = await Promise.all([
+      const [resCatalogV5, resActivityV5, resCatalogCol, resActivityCol] = await Promise.all([
         fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=V5&Proceso=consulta_tablero_emisores_2026`),
-        fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=V5&Proceso=consulta_tablero_actividad_emisor_2026`)
+        fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=V5&Proceso=consulta_tablero_actividad_emisor_2026`),
+        fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=Colombia&Proceso=consulta_tablero_emisores_2026`),
+        fetch(`https://sara.mysatcomla.com/webhook/GetData?Ambiente=Colombia&Proceso=consulta_tablero_actividad_emisor_2026`)
       ]);
 
-      if (!resCatalog.ok || !resActivity.ok) throw new Error('Error al obtener datos');
+      if (!resCatalogV5.ok || !resActivityV5.ok || !resCatalogCol.ok || !resActivityCol.ok) {
+        throw new Error('Error al obtener datos de uno o más ambientes');
+      }
       
-      const [jsonCatalog, jsonActivity] = await Promise.all([resCatalog.json(), resActivity.json()]);
+      const [jsonCatalogV5, jsonActivityV5, jsonCatalogCol, jsonActivityCol] = await Promise.all([
+        resCatalogV5.json(),
+        resActivityV5.json(),
+        resCatalogCol.json(),
+        resActivityCol.json()
+      ]);
 
       let catalog: CatalogEmisor[] = [];
-      if (Array.isArray(jsonCatalog)) {
-        jsonCatalog.forEach(item => {
-          const p = item.data ? (typeof item.data === 'string' ? JSON.parse(item.data) : item.data) : item;
-          if (Array.isArray(p)) catalog = [...catalog, ...p];
-          else if (p.IdEmisor) catalog.push(p);
-        });
-      }
+      const processCatalog = (json: any, amb: 'V5' | 'Colombia') => {
+        if (Array.isArray(json)) {
+          json.forEach(item => {
+            const p = item.data ? (typeof item.data === 'string' ? JSON.parse(item.data) : item.data) : item;
+            if (Array.isArray(p)) {
+              p.forEach(x => { if (x.IdEmisor) catalog.push({ ...x, ambiente: amb }); });
+            } else if (p.IdEmisor) {
+              catalog.push({ ...p, ambiente: amb });
+            }
+          });
+        }
+      };
 
       let activity: ActivityRecord[] = [];
-      if (Array.isArray(jsonActivity)) {
-        jsonActivity.forEach(item => {
-          const p = item.data ? (typeof item.data === 'string' ? JSON.parse(item.data) : item.data) : item;
-          if (Array.isArray(p)) activity = [...activity, ...p];
-          else if (p.IdEmisor) activity.push(p);
-        });
-      }
+      const processActivity = (json: any, amb: 'V5' | 'Colombia') => {
+        if (Array.isArray(json)) {
+          json.forEach(item => {
+            const p = item.data ? (typeof item.data === 'string' ? JSON.parse(item.data) : item.data) : item;
+            if (Array.isArray(p)) {
+              p.forEach(x => { if (x.IdEmisor) activity.push({ ...x, ambiente: amb }); });
+            } else if (p.IdEmisor) {
+              activity.push({ ...p, ambiente: amb });
+            }
+          });
+        }
+      };
+
+      processCatalog(jsonCatalogV5, 'V5');
+      processCatalog(jsonCatalogCol, 'Colombia');
+      processActivity(jsonActivityV5, 'V5');
+      processActivity(jsonActivityCol, 'Colombia');
 
       setRawCatalog(catalog);
       setRawActivity(activity);
@@ -154,7 +181,7 @@ export default function ActividadEmisoresPage() {
     if (rawCatalog.length === 0) return [];
 
     return rawCatalog.map(c => {
-      const emisorActivities = rawActivity.filter(a => Number(a.IdEmisor) === Number(c.IdEmisor));
+      const emisorActivities = rawActivity.filter(a => Number(a.IdEmisor) === Number(c.IdEmisor) && a.ambiente === c.ambiente);
       const totalOk = emisorActivities.reduce((acc, curr) => acc + (Number(curr.TotalAutorizados) || 0), 0);
       const totalError = emisorActivities.reduce((acc, curr) => acc + (Number(curr.TotalErrores) || 0), 0);
       
@@ -224,7 +251,8 @@ export default function ActividadEmisoresPage() {
         estadoReporte: estado,
         isDisconnected,
         disconnectedEstabs,
-        details: emisorActivities
+        details: emisorActivities,
+        ambiente: c.ambiente
       };
     });
   }, [rawCatalog, rawActivity, inactivityDays]);
@@ -239,7 +267,7 @@ export default function ActividadEmisoresPage() {
       const matchStatus = !statusFilter || g.estadoReporte === statusFilter;
       const matchCountry = !countryFilter || g.NombrePais === countryFilter;
       const matchAlert = !alertFilter || g.isDisconnected;
-      const matchSelected = !selectedEmisorId || g.ID_Emisor === selectedEmisorId;
+      const matchSelected = !selectedEmisorId || `${g.ID_Emisor}_${g.ambiente}` === selectedEmisorId;
 
       return matchSearch && matchStatus && matchCountry && matchAlert && matchSelected;
     });
@@ -545,94 +573,101 @@ export default function ActividadEmisoresPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/50">
-              {sortedAndFilteredGroups.map(g => (
-                <Fragment key={g.ID_Emisor}>
-                  <tr 
-                    className={`group transition-all cursor-pointer ${selectedEmisorId === g.ID_Emisor ? 'bg-[#71BF44]/5' : 'hover:bg-neutral-50/50 dark:hover:bg-white/[0.01]'}`}
-                    onClick={() => setSelectedEmisorId(g.ID_Emisor)}
-                  >
-                    <td className="px-8 py-8">
-                       <span className="text-[11px] font-black text-neutral-400 group-hover:text-neutral-900 dark:group-hover:text-white transition-colors">#{g.ID_Emisor}</span>
-                    </td>
-                    <td className="px-8 py-8">
-                      <div className="flex items-center gap-5">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all group-hover:scale-110 group-hover:rotate-3 shadow-sm ${g.estadoReporte === 'ACTIVO' ? 'bg-[#71BF44]/10 text-[#71BF44]' : g.estadoReporte === 'AÑOS ANTERIOR' ? 'bg-orange-400/10 text-orange-400' : 'bg-red-500/10 text-red-500'}`}>
-                          <Globe className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs font-black uppercase text-neutral-800 dark:text-neutral-100 tracking-tight leading-none group-hover:text-[#71BF44] transition-colors">{g.RazonSocial}</span>
-                            <span className="text-[10px] font-black text-[#71BF44] bg-[#71BF44]/5 px-2 py-0.5 rounded-md border border-[#71BF44]/10">{g.Nemonico}</span>
+              {sortedAndFilteredGroups.map(g => {
+                const emisorKey = `${g.ID_Emisor}_${g.ambiente}`;
+                return (
+                  <Fragment key={emisorKey}>
+                    <tr 
+                      className={`group transition-all cursor-pointer ${selectedEmisorId === emisorKey ? 'bg-[#71BF44]/5' : 'hover:bg-neutral-50/50 dark:hover:bg-white/[0.01]'}`}
+                      onClick={() => setSelectedEmisorId(emisorKey)}
+                    >
+                      <td className="px-8 py-8">
+                         <span className="text-[11px] font-black text-neutral-400 group-hover:text-neutral-900 dark:group-hover:text-white transition-colors">#{g.ID_Emisor}</span>
+                      </td>
+                      <td className="px-8 py-8">
+                        <div className="flex items-center gap-5">
+                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all group-hover:scale-110 group-hover:rotate-3 shadow-sm ${g.estadoReporte === 'ACTIVO' ? 'bg-[#71BF44]/10 text-[#71BF44]' : g.estadoReporte === 'AÑOS ANTERIOR' ? 'bg-orange-400/10 text-orange-400' : 'bg-red-500/10 text-red-500'}`}>
+                            <Globe className="w-6 h-6" />
                           </div>
-                          <div className="flex items-center gap-3">
-                             <p className="text-[9px] font-black text-neutral-400 uppercase tracking-[0.25em]">{g.NombrePais}</p>
-                             <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${g.estadoReporte === 'ACTIVO' ? 'bg-[#71BF44]/10 text-[#71BF44]' : g.estadoReporte === 'AÑOS ANTERIOR' ? 'bg-orange-400/10 text-orange-400' : 'bg-red-500/10 text-red-500'}`}>
-                                {g.estadoReporte}
-                             </span>
-                             {g.isDisconnected && (
-                                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-red-500/10 border border-red-500/20 rounded-md animate-pulse">
-                                  <AlertCircle className="w-3 h-3 text-red-500" />
-                                  <span className="text-[8px] font-black text-red-500 uppercase tracking-tighter">Posible Desconexión</span>
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-xs font-black uppercase text-neutral-800 dark:text-neutral-100 tracking-tight leading-none group-hover:text-[#71BF44] transition-colors">{g.RazonSocial}</span>
+                              <span className="text-[10px] font-black text-[#71BF44] bg-[#71BF44]/5 px-2 py-0.5 rounded-md border border-[#71BF44]/10">{g.Nemonico}</span>
+                              <span className={`text-[9px] font-black px-2 py-0.5 rounded border uppercase tracking-wider ${g.ambiente === 'V5' ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/25' : 'bg-amber-500/10 text-amber-600 border-amber-500/25'}`}>
+                                {g.ambiente}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                               <p className="text-[9px] font-black text-neutral-400 uppercase tracking-[0.25em]">{g.NombrePais}</p>
+                               <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${g.estadoReporte === 'ACTIVO' ? 'bg-[#71BF44]/10 text-[#71BF44]' : g.estadoReporte === 'AÑOS ANTERIOR' ? 'bg-orange-400/10 text-orange-400' : 'bg-red-500/10 text-red-500'}`}>
+                                  {g.estadoReporte}
+                               </span>
+                               {g.isDisconnected && (
+                                  <div className="flex items-center gap-1.5 px-2 py-0.5 bg-red-500/10 border border-red-500/20 rounded-md animate-pulse">
+                                    <AlertCircle className="w-3 h-3 text-red-500" />
+                                    <span className="text-[8px] font-black text-red-500 uppercase tracking-tighter">Posible Desconexión</span>
+                                  </div>
+                               )}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-8 py-8">
+                         <div className="flex items-center gap-2">
+                            <Layers className="w-3.5 h-3.5 text-neutral-300" />
+                            <span className="text-[14px] font-black text-neutral-700 dark:text-neutral-300 tracking-tighter">{g.estabCount}</span>
+                         </div>
+                      </td>
+                      <td className="px-8 py-8">
+                         <div className="flex items-center gap-2">
+                            <MapPin className="w-3.5 h-3.5 text-neutral-300" />
+                            <span className="text-[14px] font-black text-neutral-700 dark:text-neutral-300 tracking-tighter">{g.puntosCount}</span>
+                         </div>
+                      </td>
+                      <td className="px-8 py-8">
+                        <div className="flex items-center gap-2.5">
+                          <CheckCircle2 className={`w-4 h-4 ${g.ultimaAutorizacion !== '---' ? 'text-[#71BF44]' : 'text-neutral-200'}`} />
+                          <span className={`text-[11px] font-black ${g.ultimaAutorizacion !== '---' ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-300 italic opacity-50'}`}>
+                            {g.ultimaAutorizacion}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-8 py-8">
+                        <div className="flex items-center gap-2.5">
+                          <XCircle className={`w-4 h-4 ${g.ultimaError !== '---' ? 'text-red-500' : 'text-neutral-200'}`} />
+                          <span className={`text-[11px] font-black ${g.ultimaError !== '---' ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-300 italic opacity-50'}`}>
+                            {g.ultimaError}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-8 py-8 text-right">
+                         <div className="flex flex-col items-end">
+                           <span className="text-2xl font-black text-neutral-900 dark:text-white tracking-tighter group-hover:scale-105 transition-transform">{g.totalOk.toLocaleString()}</span>
+                           <span className="text-[9px] font-black text-neutral-400 uppercase tracking-[0.2em] opacity-40">Docs Autorizados</span>
+                         </div>
+                      </td>
+                      <td className="px-8 py-8">
+                         <button onClick={(e) => { e.stopPropagation(); toggleExpand(emisorKey); }} className="p-3 hover:bg-[#71BF44]/10 rounded-2xl transition-all hover:scale-110 active:scale-90 ring-1 ring-transparent hover:ring-[#71BF44]/20">
+                           {expandedEmisores.has(emisorKey) ? <ChevronUp className="w-6 h-6 text-[#71BF44]" /> : <ChevronDown className="w-6 h-6 text-neutral-300 group-hover:text-neutral-600" />}
+                         </button>
+                      </td>
+                    </tr>
+                    
+                    {expandedEmisores.has(emisorKey) && (
+                      <tr className="bg-neutral-50/50 dark:bg-neutral-900/60 shadow-inner">
+                        <td colSpan={8} className="px-12 py-12 border-b border-neutral-100 dark:border-neutral-800">
+                          <div className="max-w-[1400px] animate-in fade-in slide-in-from-top-6 duration-700 zoom-in-95">
+                             <div className="flex items-center gap-6 mb-12">
+                                <div className="p-4 bg-white dark:bg-neutral-800 rounded-3xl shadow-xl shadow-[#71BF44]/5 border border-[#71BF44]/10">
+                                   <LayoutGrid className="w-6 h-6 text-[#71BF44]" />
                                 </div>
-                             )}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-8 py-8">
-                       <div className="flex items-center gap-2">
-                          <Layers className="w-3.5 h-3.5 text-neutral-300" />
-                          <span className="text-[14px] font-black text-neutral-700 dark:text-neutral-300 tracking-tighter">{g.estabCount}</span>
-                       </div>
-                    </td>
-                    <td className="px-8 py-8">
-                       <div className="flex items-center gap-2">
-                          <MapPin className="w-3.5 h-3.5 text-neutral-300" />
-                          <span className="text-[14px] font-black text-neutral-700 dark:text-neutral-300 tracking-tighter">{g.puntosCount}</span>
-                       </div>
-                    </td>
-                    <td className="px-8 py-8">
-                      <div className="flex items-center gap-2.5">
-                        <CheckCircle2 className={`w-4 h-4 ${g.ultimaAutorizacion !== '---' ? 'text-[#71BF44]' : 'text-neutral-200'}`} />
-                        <span className={`text-[11px] font-black ${g.ultimaAutorizacion !== '---' ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-300 italic opacity-50'}`}>
-                          {g.ultimaAutorizacion}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-8 py-8">
-                      <div className="flex items-center gap-2.5">
-                        <XCircle className={`w-4 h-4 ${g.ultimaError !== '---' ? 'text-red-500' : 'text-neutral-200'}`} />
-                        <span className={`text-[11px] font-black ${g.ultimaError !== '---' ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-300 italic opacity-50'}`}>
-                          {g.ultimaError}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-8 py-8 text-right">
-                       <div className="flex flex-col items-end">
-                         <span className="text-2xl font-black text-neutral-900 dark:text-white tracking-tighter group-hover:scale-105 transition-transform">{g.totalOk.toLocaleString()}</span>
-                         <span className="text-[9px] font-black text-neutral-400 uppercase tracking-[0.2em] opacity-40">Docs Autorizados</span>
-                       </div>
-                    </td>
-                    <td className="px-8 py-8">
-                       <button onClick={(e) => { e.stopPropagation(); toggleExpand(g.ID_Emisor); }} className="p-3 hover:bg-[#71BF44]/10 rounded-2xl transition-all hover:scale-110 active:scale-90 ring-1 ring-transparent hover:ring-[#71BF44]/20">
-                         {expandedEmisores.has(g.ID_Emisor) ? <ChevronUp className="w-6 h-6 text-[#71BF44]" /> : <ChevronDown className="w-6 h-6 text-neutral-300 group-hover:text-neutral-600" />}
-                       </button>
-                    </td>
-                  </tr>
-                  
-                  {expandedEmisores.has(g.ID_Emisor) && (
-                    <tr className="bg-neutral-50/50 dark:bg-neutral-900/60 shadow-inner">
-                      <td colSpan={8} className="px-12 py-12 border-b border-neutral-100 dark:border-neutral-800">
-                        <div className="max-w-[1400px] animate-in fade-in slide-in-from-top-6 duration-700 zoom-in-95">
-                           <div className="flex items-center gap-6 mb-12">
-                              <div className="p-4 bg-white dark:bg-neutral-800 rounded-3xl shadow-xl shadow-[#71BF44]/5 border border-[#71BF44]/10">
-                                 <LayoutGrid className="w-6 h-6 text-[#71BF44]" />
-                              </div>
-                              <div>
-                                 <h4 className="text-base font-black text-neutral-900 dark:text-neutral-100 uppercase tracking-widest leading-none mb-1">Estructura Operativa de {g.Nemonico}</h4>
-                                 <p className="text-[11px] font-black text-neutral-400 uppercase tracking-[0.3em] opacity-60 italic">Auditoría Transaccional por Punto de Emisión y Tipo Documental</p>
-                              </div>
-                           </div>
+                                <div>
+                                   <h4 className="text-base font-black text-neutral-900 dark:text-neutral-100 uppercase tracking-widest leading-none mb-1">
+                                     Estructura Operativa de {g.Nemonico} (ID: {g.ID_Emisor} - {g.ambiente})
+                                   </h4>
+                                   <p className="text-[11px] font-black text-neutral-400 uppercase tracking-[0.3em] opacity-60 italic">Auditoría Transaccional por Punto de Emisión y Tipo Documental</p>
+                                </div>
+                             </div>
                            
                            <div className="space-y-16">
                              {Object.entries(g.details.reduce((acc, d) => {
@@ -745,7 +780,7 @@ export default function ActividadEmisoresPage() {
                     </tr>
                   )}
                 </Fragment>
-              ))}
+              ); })}
             </tbody>
           </table>
         </div>

@@ -44,9 +44,19 @@ CREATE PROCEDURE [dbo].[spco_get_comprobantes_full]
     @i_fecha_fin datetime = null,                  
     @i_num_reprocesos int = 10,
     @i_control_ejecucion bit = 1                
-AS                    
+AS
 BEGIN                    
     SET NOCOUNT ON;
+
+    -- CONTROL DE EMERGENCIA BDD
+    DECLARE @aux_emergencia_1 VARCHAR(100), @aux_emergencia_2 VARCHAR(100);
+    EXEC sat_catalogo.dbo.sp_get_valor_variable_app 'emergencia_bdd', @aux_emergencia_1 OUT, @aux_emergencia_2 OUT, 'false';
+    IF UPPER(LTRIM(RTRIM(ISNULL(@aux_emergencia_1, '')))) IN ('SI', 'TRUE')
+    BEGIN
+        PRINT '>>> CONTROL DE EMERGENCIA BDD ACTIVO: Se cancela la ejecucion de spco_get_comprobantes_full.';
+        RETURN 0;
+    END
+
     -- AISLAMIENTO: READ UNCOMMITTED para evitar bloqueos y mejorar throughput (No transaccional para lectura)
     SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 

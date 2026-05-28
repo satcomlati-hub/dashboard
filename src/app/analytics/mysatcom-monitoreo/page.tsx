@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react';
 import Link from 'next/link';
 import { 
   ChevronLeft, 
@@ -95,6 +95,36 @@ interface NormalizedRecord {
   ultimoAutorizado: string;
 }
 
+interface GroupedFecha {
+  fecha: string;
+  autorizados: number;
+  duplicados: number;
+  noAutorizados: number;
+  totalHora: number;
+  records: NormalizedRecord[];
+}
+
+interface GroupedEmisor {
+  nemonico: string;
+  razonSocial: string;
+  idEmisor: number;
+  autorizados: number;
+  duplicados: number;
+  noAutorizados: number;
+  totalHora: number;
+  ultimoAutorizado: string;
+  fechas: GroupedFecha[];
+}
+
+interface GroupedPais {
+  paisNombre: string;
+  autorizados: number;
+  duplicados: number;
+  noAutorizados: number;
+  totalHora: number;
+  emisores: GroupedEmisor[];
+}
+
 const PAIS_MAP: Record<number, string> = {
   593: 'Ecuador',
   57: 'Colombia',
@@ -130,6 +160,34 @@ export default function MySatcomMonitoreoPage() {
   const [filterStatus, setFilterStatus] = useState<'Todos' | 'Con Incidencias' | 'Sin Incidencias'>('Todos');
   const [searchTerm, setSearchTerm] = useState('');
   const [localSearchTerm, setLocalSearchTerm] = useState('');
+
+  // Grouped View States
+  const [isGroupedView, setIsGroupedView] = useState(true);
+  const [expandedPaises, setExpandedPaises] = useState<Record<string, boolean>>({});
+  const [expandedEmisores, setExpandedEmisores] = useState<Record<string, boolean>>({});
+  const [expandedFechas, setExpandedFechas] = useState<Record<string, boolean>>({});
+
+  const togglePais = (paisName: string) => {
+    setExpandedPaises(prev => ({ ...prev, [paisName]: !prev[paisName] }));
+  };
+
+  const toggleEmisor = (emKey: string) => {
+    setExpandedEmisores(prev => ({ ...prev, [emKey]: !prev[emKey] }));
+  };
+
+  const toggleFecha = (fechaKey: string) => {
+    setExpandedFechas(prev => ({ ...prev, [fechaKey]: !prev[fechaKey] }));
+  };
+
+  const filterByPais = (paisName: string) => {
+    setSelectedPaises([paisName]);
+    setCurrentPage(1);
+  };
+
+  const filterByEmisor = (nemonico: string) => {
+    setSelectedNemonicos([nemonico]);
+    setCurrentPage(1);
+  };
 
   // Filtros de rango de fechas globales
   const [startDate, setStartDate] = useState<string>('');
@@ -464,6 +522,169 @@ export default function MySatcomMonitoreoPage() {
       return item.fecha >= startDate && item.fecha <= endDate;
     });
   }, [filteredRecordsWithoutDateRange, startDate, endDate]);
+
+  const groupedData = useMemo(() => {
+    const map: Record<string, Record<string, Record<string, GroupedFecha>>> = {};
+    const emisorInfoMap: Record<string, { razonSocial: string, idEmisor: number, ultimoAutorizado: string }> = {};
+
+    filteredRecords.forEach(r => {
+      const pName = r.paisNombre;
+      const nem = r.nemonico;
+      const fStr = r.fecha;
+
+      if (!map[pName]) {
+        map[pName] = {};
+      }
+      if (!map[pName][nem]) {
+        map[pName][nem] = {};
+        emisorInfoMap[`${pName}_${nem}`] = {
+          razonSocial: r.razonSocial,
+          idEmisor: r.idEmisor,
+          ultimoAutorizado: '---'
+        };
+      }
+
+      const info = emisorInfoMap[`${pName}_${nem}`];
+      if (r.ultimoAutorizado !== '---') {
+        info.ultimoAutorizado = r.ultimoAutorizado;
+      }
+
+      if (!map[pName][nem][fStr]) {
+        map[pName][nem][fStr] = {
+          fecha: fStr,
+          autorizados: 0,
+          duplicados: 0,
+          noAutorizados: 0,
+          totalHora: 0,
+          records: []
+        };
+      }
+
+      const fGroup = map[pName][nem][fStr];
+      fGroup.autorizados += r.autorizados;
+      fGroup.duplicados += r.duplicados;
+      fGroup.noAutorizados += r.noAutorizados;
+      fGroup.totalHora += r.totalHora;
+      fGroup.records.push(r);
+    });
+
+    const result: GroupedPais[] = Object.keys(map).map(pName => {
+      const emisores: GroupedEmisor[] = Object.keys(map[pName]).map(nem => {
+        const info = emisorInfoMap[`${pName}_${nem}`];
+        
+        const fechas: GroupedFecha[] = Object.values(map[pName][nem]).map(fGroup => {
+          fGroup.records.sort((a, b) => b.hora.localeCompare(a.hora));
+          return fGroup;
+        });
+
+        // Ordenar las fechas dentro del emisor
+        fechas.sort((a, b) => {
+          let valA: any = a.totalHora;
+          let valB: any = b.totalHora;
+          
+          if (sortField === 'autorizados') {
+            valA = a.autorizados;
+            valB = b.autorizados;
+          } else if (sortField === 'duplicados') {
+            valA = a.duplicados;
+            valB = b.duplicados;
+          } else if (sortField === 'noAutorizados') {
+            valA = a.noAutorizados;
+            valB = b.noAutorizados;
+          } else if (sortField === 'fecha' || sortField === 'nemonico') {
+            valA = a.fecha;
+            valB = b.fecha;
+            return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+          }
+
+          if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+          if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+          return 0;
+        });
+
+        const auts = fechas.reduce((sum, f) => sum + f.autorizados, 0);
+        const dups = fechas.reduce((sum, f) => sum + f.duplicados, 0);
+        const noAuts = fechas.reduce((sum, f) => sum + f.noAutorizados, 0);
+        const total = fechas.reduce((sum, f) => sum + f.totalHora, 0);
+
+        return {
+          nemonico: nem,
+          razonSocial: info.razonSocial,
+          idEmisor: info.idEmisor,
+          autorizados: auts,
+          duplicados: dups,
+          noAutorizados: noAuts,
+          totalHora: total,
+          ultimoAutorizado: info.ultimoAutorizado,
+          fechas
+        };
+      });
+
+      // Ordenar los emisores dentro de cada país
+      emisores.sort((a, b) => {
+        let valA: any = a.totalHora;
+        let valB: any = b.totalHora;
+        
+        if (sortField === 'autorizados') {
+          valA = a.autorizados;
+          valB = b.autorizados;
+        } else if (sortField === 'duplicados') {
+          valA = a.duplicados;
+          valB = b.duplicados;
+        } else if (sortField === 'noAutorizados') {
+          valA = a.noAutorizados;
+          valB = b.noAutorizados;
+        } else if (sortField === 'nemonico') {
+          valA = a.nemonico.toLowerCase();
+          valB = b.nemonico.toLowerCase();
+        }
+        
+        if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+        if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+        return 0;
+      });
+
+      const auts = emisores.reduce((sum, em) => sum + em.autorizados, 0);
+      const dups = emisores.reduce((sum, em) => sum + em.duplicados, 0);
+      const noAuts = emisores.reduce((sum, em) => sum + em.noAutorizados, 0);
+      const total = emisores.reduce((sum, em) => sum + em.totalHora, 0);
+
+      return {
+        paisNombre: pName,
+        autorizados: auts,
+        duplicados: dups,
+        noAutorizados: noAuts,
+        totalHora: total,
+        emisores
+      };
+    });
+    
+    // Ordenar los países
+    result.sort((a, b) => {
+      let valA: any = a.totalHora;
+      let valB: any = b.totalHora;
+      
+      if (sortField === 'autorizados') {
+        valA = a.autorizados;
+        valB = b.autorizados;
+      } else if (sortField === 'duplicados') {
+        valA = a.duplicados;
+        valB = b.duplicados;
+      } else if (sortField === 'noAutorizados') {
+        valA = a.noAutorizados;
+        valB = b.noAutorizados;
+      } else if (sortField === 'nemonico') {
+        valA = a.paisNombre.toLowerCase();
+        valB = b.paisNombre.toLowerCase();
+      }
+      
+      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+    
+    return result;
+  }, [filteredRecords, sortField, sortOrder]);
 
   // KPIs actualizados
   const kpis = useMemo(() => {
@@ -1755,6 +1976,17 @@ export default function MySatcomMonitoreoPage() {
 
           <div className="flex items-center gap-3">
              <button 
+              onClick={() => setIsGroupedView(!isGroupedView)}
+              className={`h-12 px-6 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-3 border ${
+                isGroupedView 
+                  ? 'bg-[#71BF44] text-white border-[#71BF44] shadow-md shadow-[#71BF44]/20' 
+                  : 'bg-white dark:bg-[#1a1a1a] border-neutral-200 dark:border-neutral-800 text-neutral-750 dark:text-neutral-300'
+              }`}
+             >
+                <TableIcon className="w-4 h-4" />
+                {isGroupedView ? 'Vista: Agrupada' : 'Vista: Plana'}
+             </button>
+             <button 
               onClick={clearFilters}
               className="h-12 px-5 bg-neutral-100 dark:bg-neutral-850 text-neutral-500 hover:text-red-500 rounded-2xl transition-all flex items-center justify-center border border-neutral-200 dark:border-neutral-750"
               title="Limpiar filtros"
@@ -1796,61 +2028,322 @@ export default function MySatcomMonitoreoPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/50">
-              {paginatedRecords.map((row, i) => {
-                const hasErrors = row.noAutorizados > 0;
-                return (
-                  <tr key={i} className="group hover:bg-neutral-50 dark:hover:bg-white/[0.01] transition-all">
-                    <td className="px-8 py-5 font-mono text-xs text-neutral-600 dark:text-neutral-400">
-                      <div className="flex flex-col">
-                        <span>{row.fecha}</span>
-                        <span className="text-[10px] text-[#71BF44] font-bold">{row.hora}</span>
-                      </div>
-                    </td>
-                    <td className="px-8 py-5">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-black text-neutral-900 dark:text-white uppercase tracking-tighter line-clamp-1">{row.razonSocial}</span>
-                        <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                          <span className="text-[9px] font-black text-[#71BF44] bg-[#71BF44]/5 px-2 py-0.5 rounded border border-[#71BF44]/10 uppercase tracking-widest">{row.nemonico}</span>
-                          <span className="text-[9px] text-neutral-500 bg-neutral-100 dark:bg-neutral-800/50 px-2 py-0.5 rounded border border-neutral-200 dark:border-neutral-700 font-mono font-bold">ID: {row.idEmisor}</span>
-                          <span className="text-[9px] text-neutral-450 dark:text-neutral-555 flex items-center gap-1 uppercase">
-                            <Globe className="w-2.5 h-2.5" />
-                            {row.paisNombre}
+              {isGroupedView ? (
+                // Grouped View (Pais -> Emisor -> Horas)
+                groupedData.map((pais, pIdx) => {
+                  const isPaisExpanded = !!expandedPaises[pais.paisNombre];
+                  return (
+                    <Fragment key={`pais-${pais.paisNombre}-${pIdx}`}>
+                      {/* Pais Row */}
+                      <tr 
+                        className="bg-neutral-50/50 dark:bg-white/[0.01] hover:bg-[#71BF44]/5 transition-all cursor-pointer border-b border-neutral-100 dark:border-neutral-800"
+                        onClick={() => togglePais(pais.paisNombre)}
+                      >
+                        <td className="px-8 py-4 font-black text-sm text-neutral-800 dark:text-neutral-200">
+                          <span className="inline-block w-4 text-center mr-1 text-xs text-neutral-400">
+                            {isPaisExpanded ? '▼' : '▶'}
                           </span>
-                          <span className="text-[9px] text-blue-500 bg-blue-50 dark:bg-blue-950/20 px-2 py-0.5 rounded border border-blue-500/10 font-bold uppercase tracking-wider">
-                            {row.canalNombre} <span className="text-[8px] font-mono text-blue-400 font-bold">({row.canalCodigo})</span>
+                          <span 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              filterByPais(pais.paisNombre);
+                            }}
+                            className="hover:underline hover:text-[#71BF44] transition-colors"
+                            title="Filtrar por este país"
+                          >
+                            {pais.paisNombre}
+                          </span>
+                        </td>
+                        <td className="px-8 py-4 text-xs font-bold text-neutral-400 uppercase">
+                          País • {pais.emisores.length} Emisores
+                        </td>
+                        <td className="px-8 py-4 text-right">
+                          <div className="flex flex-col items-end">
+                            <span className="text-sm font-black text-[#71BF44]">{pais.autorizados.toLocaleString()}</span>
+                            {pais.totalHora > 0 && (
+                              <span className="text-[10px] text-[#71BF44] font-bold">
+                                {((pais.autorizados / pais.totalHora) * 100).toFixed(1)}%
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-8 py-4 text-right">
+                          <div className="flex flex-col items-end">
+                            <span className="text-sm font-black text-blue-500">{pais.duplicados.toLocaleString()}</span>
+                            {pais.totalHora > 0 && (
+                              <span className="text-[10px] text-neutral-450 font-bold">
+                                {((pais.duplicados / pais.totalHora) * 100).toFixed(1)}%
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-8 py-4 text-right">
+                          <div className="flex flex-col items-end">
+                            <span className="text-sm font-black text-red-500">{pais.noAutorizados.toLocaleString()}</span>
+                            {pais.totalHora > 0 && (
+                              <span className="text-[10px] text-neutral-450 font-bold">
+                                {((pais.noAutorizados / pais.totalHora) * 100).toFixed(1)}%
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-8 py-4 text-right text-sm font-black text-neutral-800 dark:text-neutral-250">
+                          {pais.totalHora.toLocaleString()}
+                        </td>
+                        <td className="px-8 py-4 text-xs font-bold text-neutral-400 italic">
+                          Total País
+                        </td>
+                      </tr>
+
+                      {/* Emisores Rows under this Pais */}
+                      {isPaisExpanded && pais.emisores.map((em, eIdx) => {
+                        const emKey = `${pais.paisNombre}_${em.nemonico}`;
+                        const isEmExpanded = !!expandedEmisores[emKey];
+                        return (
+                          <Fragment key={`emisor-${emKey}-${eIdx}`}>
+                            {/* Emisor Row */}
+                            <tr 
+                              className="bg-neutral-100/30 dark:bg-white/[0.002] hover:bg-[#71BF44]/5 transition-all cursor-pointer border-b border-neutral-100/50 dark:border-neutral-800/30"
+                              onClick={() => toggleEmisor(emKey)}
+                            >
+                              <td className="px-8 py-4 pl-12 font-black text-xs text-neutral-700 dark:text-neutral-300">
+                                <span className="inline-block w-4 text-center mr-1 text-xs text-neutral-400">
+                                  {isEmExpanded ? '▼' : '▶'}
+                                </span>
+                                <span 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    filterByEmisor(em.nemonico);
+                                  }}
+                                  className="hover:underline hover:text-[#71BF44] transition-colors"
+                                  title="Filtrar por este emisor"
+                                >
+                                  {em.razonSocial}
+                                </span>
+                                <span className="text-[9px] text-neutral-400 font-bold ml-2">ID: {em.idEmisor}</span>
+                              </td>
+                              <td className="px-8 py-4">
+                                <span className="text-[9px] font-black text-[#71BF44] bg-[#71BF44]/5 px-2 py-0.5 rounded border border-[#71BF44]/10 uppercase tracking-widest">
+                                  {em.nemonico}
+                                </span>
+                              </td>
+                              <td className="px-8 py-4 text-right">
+                                <div className="flex flex-col items-end">
+                                  <span className="font-bold text-xs text-[#71BF44]">{em.autorizados.toLocaleString()}</span>
+                                  {em.totalHora > 0 && (
+                                    <span className="text-[9px] text-[#71BF44] font-bold">
+                                      {((em.autorizados / em.totalHora) * 100).toFixed(1)}%
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-8 py-4 text-right">
+                                <div className="flex flex-col items-end">
+                                  <span className="font-bold text-xs text-blue-500">{em.duplicados.toLocaleString()}</span>
+                                  {em.totalHora > 0 && (
+                                    <span className="text-[9px] text-neutral-450 font-bold">
+                                      {((em.duplicados / em.totalHora) * 100).toFixed(1)}%
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-8 py-4 text-right">
+                                <div className="flex flex-col items-end">
+                                  <span className="font-bold text-xs text-red-500">{em.noAutorizados.toLocaleString()}</span>
+                                  {em.totalHora > 0 && (
+                                    <span className="text-[9px] text-neutral-450 font-bold">
+                                      {((em.noAutorizados / em.totalHora) * 100).toFixed(1)}%
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-8 py-4 text-right font-bold text-xs text-neutral-700 dark:text-neutral-300">
+                                {em.totalHora.toLocaleString()}
+                              </td>
+                              <td className="px-8 py-4 text-xs font-semibold text-neutral-500">
+                                Último OK: {em.ultimoAutorizado}
+                              </td>
+                            </tr>
+
+                            {/* Fechas Rows under this Emisor */}
+                            {isEmExpanded && em.fechas.map((f, fIdx) => {
+                              const fechaKey = `${emKey}_${f.fecha}`;
+                              const isFechaExpanded = !!expandedFechas[fechaKey];
+                              return (
+                                <Fragment key={`fecha-${fechaKey}-${fIdx}`}>
+                                  {/* Fecha Row */}
+                                  <tr
+                                    className="bg-neutral-50/20 dark:bg-white/[0.001] hover:bg-[#71BF44]/5 transition-all cursor-pointer border-b border-neutral-100/30 dark:border-neutral-800/10"
+                                    onClick={() => toggleFecha(fechaKey)}
+                                  >
+                                    <td className="px-8 py-3 pl-16 font-mono text-[11px] text-neutral-600 dark:text-neutral-400">
+                                      <span className="inline-block w-4 text-center mr-1 text-xs text-neutral-400">
+                                        {isFechaExpanded ? '▼' : '▶'}
+                                      </span>
+                                      {f.fecha}
+                                    </td>
+                                    <td className="px-8 py-3 text-[10px] font-bold text-neutral-400 uppercase">
+                                      Fecha • {f.records.length} Horas
+                                    </td>
+                                    <td className="px-8 py-3 text-right">
+                                      <div className="flex flex-col items-end">
+                                        <span className="font-bold text-xs text-[#71BF44]">{f.autorizados.toLocaleString()}</span>
+                                        {f.totalHora > 0 && (
+                                          <span className="text-[9px] text-[#71BF44] font-bold">
+                                            {((f.autorizados / f.totalHora) * 100).toFixed(1)}%
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="px-8 py-3 text-right">
+                                      <div className="flex flex-col items-end">
+                                        <span className="font-bold text-xs text-blue-500">{f.duplicados.toLocaleString()}</span>
+                                        {f.totalHora > 0 && (
+                                          <span className="text-[9px] text-neutral-450 font-bold">
+                                            {((f.duplicados / f.totalHora) * 100).toFixed(1)}%
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="px-8 py-3 text-right">
+                                      <div className="flex flex-col items-end">
+                                        <span className="font-bold text-xs text-red-500">{f.noAutorizados.toLocaleString()}</span>
+                                        {f.totalHora > 0 && (
+                                          <span className="text-[9px] text-neutral-450 font-bold">
+                                            {((f.noAutorizados / f.totalHora) * 100).toFixed(1)}%
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="px-8 py-3 text-right font-bold text-xs text-neutral-700 dark:text-neutral-350">
+                                      {f.totalHora.toLocaleString()}
+                                    </td>
+                                    <td className="px-8 py-3 text-xs font-semibold text-neutral-500 italic">
+                                      Total Fecha
+                                    </td>
+                                  </tr>
+
+                                  {/* Hourly Details Rows under this Fecha */}
+                                  {isFechaExpanded && f.records.map((row, rIdx) => {
+                                    const hasErrors = row.noAutorizados > 0;
+                                    return (
+                                      <tr key={`detail-${fechaKey}-${rIdx}`} className="bg-white dark:bg-[#111] hover:bg-[#71BF44]/[0.02] border-b border-neutral-100/30 dark:border-neutral-800/20">
+                                        <td className="px-8 py-3.5 pl-24 font-mono text-[11px] text-neutral-500">
+                                          <div className="flex items-center gap-2">
+                                            <span>{row.fecha}</span>
+                                            <span className="text-[10px] text-[#71BF44] font-bold">{row.hora}</span>
+                                          </div>
+                                        </td>
+                                        <td className="px-8 py-3.5">
+                                          <span className="text-[9px] text-blue-500 bg-blue-50 dark:bg-blue-950/20 px-2 py-0.5 rounded border border-blue-500/10 font-bold uppercase">
+                                            {row.canalNombre} <span className="text-[8px] font-mono text-blue-400">({row.canalCodigo})</span>
+                                          </span>
+                                        </td>
+                                        <td className="px-8 py-3.5 text-right text-xs text-[#71BF44] font-medium">
+                                          {row.autorizados.toLocaleString()}
+                                        </td>
+                                        <td className="px-8 py-3.5 text-right text-xs text-blue-500 font-medium">
+                                          {row.duplicados.toLocaleString()}
+                                        </td>
+                                        <td className="px-8 py-3.5 text-right text-xs font-medium">
+                                          <span className={hasErrors ? 'text-red-500 font-bold' : 'text-neutral-400'}>
+                                            {row.noAutorizados.toLocaleString()}
+                                          </span>
+                                        </td>
+                                        <td className="px-8 py-3.5 text-right text-xs font-bold text-neutral-600 dark:text-neutral-455">
+                                          {row.totalHora.toLocaleString()}
+                                        </td>
+                                        <td className="px-8 py-3.5">
+                                          <div className="flex items-center gap-1.5 text-[11px]">
+                                            <CheckCircle2 className={`w-3 h-3 ${row.ultimoAutorizado !== '---' ? 'text-[#71BF44]' : 'text-neutral-350 dark:text-neutral-700'}`} />
+                                            <span className={row.ultimoAutorizado !== '---' ? 'text-neutral-500 dark:text-neutral-400' : 'text-neutral-350 dark:text-neutral-600 italic'}>
+                                              {row.ultimoAutorizado}
+                                            </span>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </Fragment>
+                              );
+                            })}
+                          </Fragment>
+                        );
+                      })}
+                    </Fragment>
+                  );
+                })
+              ) : (
+                // Flat View (original table body code)
+                paginatedRecords.map((row, i) => {
+                  const hasErrors = row.noAutorizados > 0;
+                  return (
+                    <tr key={i} className="group hover:bg-neutral-50 dark:hover:bg-white/[0.01] transition-all">
+                      <td className="px-8 py-5 font-mono text-xs text-neutral-600 dark:text-neutral-400">
+                        <div className="flex flex-col">
+                          <span>{row.fecha}</span>
+                          <span className="text-[10px] text-[#71BF44] font-bold">{row.hora}</span>
+                        </div>
+                      </td>
+                      <td className="px-8 py-5">
+                        <div className="flex flex-col">
+                          <span 
+                            onClick={() => filterByEmisor(row.nemonico)}
+                            className="text-xs font-black text-neutral-900 dark:text-white uppercase tracking-tighter line-clamp-1 hover:underline hover:text-[#71BF44] cursor-pointer"
+                          >
+                            {row.razonSocial}
+                          </span>
+                          <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                            <span 
+                              onClick={() => filterByEmisor(row.nemonico)}
+                              className="text-[9px] font-black text-[#71BF44] bg-[#71BF44]/5 px-2 py-0.5 rounded border border-[#71BF44]/10 uppercase tracking-widest hover:bg-[#71BF44]/20 cursor-pointer"
+                            >
+                              {row.nemonico}
+                            </span>
+                            <span className="text-[9px] text-neutral-500 bg-neutral-100 dark:bg-neutral-800/50 px-2 py-0.5 rounded border border-neutral-200 dark:border-neutral-700 font-mono font-bold">ID: {row.idEmisor}</span>
+                            <span 
+                              onClick={() => filterByPais(row.paisNombre)}
+                              className="text-[9px] text-neutral-455 dark:text-neutral-555 flex items-center gap-1 uppercase hover:underline cursor-pointer"
+                            >
+                              <Globe className="w-2.5 h-2.5" />
+                              {row.paisNombre}
+                            </span>
+                            <span className="text-[9px] text-blue-500 bg-blue-50 dark:bg-blue-950/20 px-2 py-0.5 rounded border border-blue-500/10 font-bold uppercase tracking-wider">
+                              {row.canalNombre} <span className="text-[8px] font-mono text-blue-400 font-bold">({row.canalCodigo})</span>
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-8 py-5 text-right">
+                        <span className="text-sm font-black text-[#71BF44] tracking-tighter">
+                          {row.autorizados.toLocaleString()}
+                        </span>
+                      </td>
+                      <td className="px-8 py-5 text-right">
+                        <span className="text-sm font-black text-blue-500 tracking-tighter">
+                          {row.duplicados.toLocaleString()}
+                        </span>
+                      </td>
+                      <td className="px-8 py-5 text-right">
+                        <span className={`text-sm font-black tracking-tighter ${hasErrors ? 'text-red-500 font-bold' : 'text-neutral-400'}`}>
+                          {row.noAutorizados.toLocaleString()}
+                        </span>
+                      </td>
+                      <td className="px-8 py-5 text-right font-bold text-neutral-800 dark:text-neutral-200">
+                        {row.totalHora.toLocaleString()}
+                      </td>
+                      <td className="px-8 py-5">
+                        <div className="flex items-center gap-2 text-xs">
+                          <CheckCircle2 className={`w-3.5 h-3.5 ${row.ultimoAutorizado !== '---' ? 'text-[#71BF44]' : 'text-neutral-350 dark:text-neutral-700'}`} />
+                          <span className={`font-medium ${row.ultimoAutorizado !== '---' ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-350 dark:text-neutral-600 italic'}`}>
+                            {row.ultimoAutorizado}
                           </span>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-8 py-5 text-right">
-                      <span className="text-sm font-black text-[#71BF44] tracking-tighter">
-                        {row.autorizados.toLocaleString()}
-                      </span>
-                    </td>
-                    <td className="px-8 py-5 text-right">
-                      <span className="text-sm font-black text-blue-500 tracking-tighter">
-                        {row.duplicados.toLocaleString()}
-                      </span>
-                    </td>
-                    <td className="px-8 py-5 text-right">
-                      <span className={`text-sm font-black tracking-tighter ${hasErrors ? 'text-red-500 font-bold' : 'text-neutral-400'}`}>
-                        {row.noAutorizados.toLocaleString()}
-                      </span>
-                    </td>
-                    <td className="px-8 py-5 text-right font-bold text-neutral-800 dark:text-neutral-200">
-                      {row.totalHora.toLocaleString()}
-                    </td>
-                    <td className="px-8 py-5">
-                      <div className="flex items-center gap-2 text-xs">
-                        <CheckCircle2 className={`w-3.5 h-3.5 ${row.ultimoAutorizado !== '---' ? 'text-[#71BF44]' : 'text-neutral-350 dark:text-neutral-700'}`} />
-                        <span className={`font-medium ${row.ultimoAutorizado !== '---' ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-350 dark:text-neutral-600 italic'}`}>
-                          {row.ultimoAutorizado}
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
               {filteredRecords.length === 0 && (
                 <tr>
                   <td colSpan={7} className="py-24 text-center">
