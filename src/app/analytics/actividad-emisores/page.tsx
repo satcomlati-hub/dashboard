@@ -87,6 +87,7 @@ export default function ActividadEmisoresPage() {
   const [expandedEmisores, setExpandedEmisores] = useState<Set<string>>(new Set());
   const [selectedEmisorId, setSelectedEmisorId] = useState<string | null>(null);
   const [countryFilter, setCountryFilter] = useState<string | null>(null);
+  const [ambienteFilter, setAmbienteFilter] = useState<'Todos' | 'V5' | 'Colombia'>('Todos');
   const [alertFilter, setAlertFilter] = useState(false);
   const [inactivityDays, setInactivityDays] = useState(3);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey, direction: 'asc' | 'desc' } | null>({ key: 'ultimaAutorizacion', direction: 'desc' });
@@ -274,14 +275,16 @@ export default function ActividadEmisoresPage() {
       const matchSearch = !searchTerm || 
         g.Nemonico?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         g.RazonSocial?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        g.Identificacion?.includes(searchTerm);
+        g.Identificacion?.includes(searchTerm) ||
+        String(g.ID_Emisor).includes(searchTerm);
       
       const matchStatus = !statusFilter || g.estadoReporte === statusFilter;
       const matchCountry = !countryFilter || g.NombrePais === countryFilter;
+      const matchAmbiente = ambienteFilter === 'Todos' || g.ambiente === ambienteFilter;
       const matchAlert = !alertFilter || g.isDisconnected;
       const matchSelected = !selectedEmisorId || `${g.ID_Emisor}_${g.ambiente}` === selectedEmisorId;
 
-      return matchSearch && matchStatus && matchCountry && matchAlert && matchSelected;
+      return matchSearch && matchStatus && matchCountry && matchAmbiente && matchAlert && matchSelected;
     });
 
     if (sortConfig) {
@@ -307,7 +310,7 @@ export default function ActividadEmisoresPage() {
     }
 
     return result;
-  }, [emitterGroups, searchTerm, statusFilter, countryFilter, alertFilter, selectedEmisorId, sortConfig]);
+  }, [emitterGroups, searchTerm, statusFilter, countryFilter, ambienteFilter, alertFilter, selectedEmisorId, sortConfig]);
 
   const countries = useMemo(() => {
     const set = new Set(emitterGroups.map(g => g.NombrePais));
@@ -492,8 +495,31 @@ export default function ActividadEmisoresPage() {
         </div>
       </div>
 
-      {/* Filtro de País y Configuración */}
+      {/* Filtro de Ambiente, País y Configuración */}
       <div className="flex flex-wrap items-center gap-3 mb-10 overflow-x-auto pb-2 no-scrollbar">
+         {/* Filtros de Ambiente */}
+         <button 
+           onClick={() => setAmbienteFilter('Todos')}
+           className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${ambienteFilter === 'Todos' ? 'bg-neutral-900 text-white border-neutral-900 dark:bg-white dark:text-neutral-900' : 'bg-white dark:bg-neutral-800 text-neutral-400 border-neutral-100 dark:border-neutral-700 hover:border-neutral-300'}`}
+         >
+           Todos los Ambientes
+         </button>
+         <button 
+           onClick={() => setAmbienteFilter('V5')}
+           className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${ambienteFilter === 'V5' ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-600/20' : 'bg-white dark:bg-neutral-800 text-neutral-400 border-neutral-100 dark:border-neutral-700 hover:border-neutral-300'}`}
+         >
+           Ambiente V5
+         </button>
+         <button 
+           onClick={() => setAmbienteFilter('Colombia')}
+           className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${ambienteFilter === 'Colombia' ? 'bg-amber-600 text-white border-amber-600 shadow-lg shadow-amber-600/20' : 'bg-white dark:bg-neutral-800 text-neutral-400 border-neutral-100 dark:border-neutral-700 hover:border-neutral-300'}`}
+         >
+           Ambiente Colombia
+         </button>
+
+         <div className="h-8 w-px bg-neutral-200 dark:bg-neutral-700 mx-2 hidden md:block"></div>
+
+         {/* Filtros de País */}
          <button 
            onClick={() => setCountryFilter(null)}
            className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${!countryFilter ? 'bg-neutral-900 text-white border-neutral-900 dark:bg-white dark:text-neutral-900' : 'bg-white dark:bg-neutral-800 text-neutral-400 border-neutral-100 dark:border-neutral-700 hover:border-neutral-300'}`}
@@ -549,8 +575,8 @@ export default function ActividadEmisoresPage() {
               className="w-full bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl pl-12 pr-4 py-4 text-xs font-bold focus:ring-4 focus:ring-[#71BF44]/10 outline-none transition-all placeholder:text-neutral-300 placeholder:italic"
             />
           </div>
-          {(selectedEmisorId || statusFilter || countryFilter || alertFilter) && (
-            <button onClick={() => { setSelectedEmisorId(null); setStatusFilter(null); setCountryFilter(null); setAlertFilter(false); }} className="text-[10px] font-black text-red-500 uppercase flex items-center gap-2 px-6 py-3 bg-red-50 dark:bg-red-500/10 rounded-2xl transition-all hover:scale-105 active:scale-95 border border-red-100 dark:border-red-500/20 shadow-lg shadow-red-500/5">
+          {(selectedEmisorId || statusFilter || countryFilter || ambienteFilter !== 'Todos' || alertFilter) && (
+            <button onClick={() => { setSelectedEmisorId(null); setStatusFilter(null); setCountryFilter(null); setAmbienteFilter('Todos'); setAlertFilter(false); }} className="text-[10px] font-black text-red-500 uppercase flex items-center gap-2 px-6 py-3 bg-red-50 dark:bg-red-500/10 rounded-2xl transition-all hover:scale-105 active:scale-95 border border-red-100 dark:border-red-500/20 shadow-lg shadow-red-500/5">
               Reiniciar Auditoría <X className="w-4 h-4" />
             </button>
           )}
@@ -591,10 +617,10 @@ export default function ActividadEmisoresPage() {
                   <Fragment key={emisorKey}>
                     <tr 
                       className={`group transition-all cursor-pointer ${selectedEmisorId === emisorKey ? 'bg-[#71BF44]/5' : 'hover:bg-neutral-50/50 dark:hover:bg-white/[0.01]'}`}
-                      onClick={() => setSelectedEmisorId(emisorKey)}
+                      onClick={() => setSelectedEmisorId(selectedEmisorId === emisorKey ? null : emisorKey)}
                     >
-                      <td className="px-8 py-8">
-                         <span className="text-[11px] font-black text-neutral-400 group-hover:text-neutral-900 dark:group-hover:text-white transition-colors">#{g.ID_Emisor}</span>
+                      <td className="px-8 py-8" onClick={(e) => { e.stopPropagation(); setSelectedEmisorId(selectedEmisorId === emisorKey ? null : emisorKey); }}>
+                         <span className="text-[11px] font-black text-neutral-400 group-hover:text-neutral-900 dark:group-hover:text-white transition-colors hover:underline hover:text-[#71BF44]">#{g.ID_Emisor}</span>
                       </td>
                       <td className="px-8 py-8">
                         <div className="flex items-center gap-5">
@@ -603,14 +629,40 @@ export default function ActividadEmisoresPage() {
                           </div>
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <span className="text-xs font-black uppercase text-neutral-800 dark:text-neutral-100 tracking-tight leading-none group-hover:text-[#71BF44] transition-colors">{g.RazonSocial}</span>
-                              <span className="text-[10px] font-black text-[#71BF44] bg-[#71BF44]/5 px-2 py-0.5 rounded-md border border-[#71BF44]/10">{g.Nemonico}</span>
-                              <span className={`text-[9px] font-black px-2 py-0.5 rounded border uppercase tracking-wider ${g.ambiente === 'V5' ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/25' : 'bg-amber-500/10 text-amber-600 border-amber-500/25'}`}>
+                              <span 
+                                onClick={(e) => { e.stopPropagation(); setSelectedEmisorId(selectedEmisorId === emisorKey ? null : emisorKey); }}
+                                className="text-xs font-black uppercase text-neutral-800 dark:text-neutral-100 tracking-tight leading-none group-hover:text-[#71BF44] transition-colors hover:underline cursor-pointer"
+                              >
+                                {g.RazonSocial}
+                              </span>
+                              <span 
+                                onClick={(e) => { e.stopPropagation(); setSelectedEmisorId(selectedEmisorId === emisorKey ? null : emisorKey); }}
+                                className="text-[10px] font-black text-[#71BF44] bg-[#71BF44]/5 px-2 py-0.5 rounded-md border border-[#71BF44]/10 hover:bg-[#71BF44]/20 cursor-pointer"
+                              >
+                                {g.Nemonico}
+                              </span>
+                              <span 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAmbienteFilter(g.ambiente);
+                                }}
+                                className={`text-[9px] font-black px-2 py-0.5 rounded border uppercase tracking-wider hover:bg-neutral-200 transition-colors cursor-pointer ${g.ambiente === 'V5' ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/25' : 'bg-amber-500/10 text-amber-600 border-amber-500/25'}`}
+                                title={`Filtrar por ambiente ${g.ambiente}`}
+                              >
                                 {g.ambiente}
                               </span>
                             </div>
                             <div className="flex items-center gap-3">
-                               <p className="text-[9px] font-black text-neutral-400 uppercase tracking-[0.25em]">{g.NombrePais}</p>
+                               <p 
+                                 onClick={(e) => {
+                                   e.stopPropagation();
+                                   setCountryFilter(g.NombrePais);
+                                 }}
+                                 className="text-[9px] font-black text-neutral-400 uppercase tracking-[0.25em] hover:underline hover:text-[#71BF44] cursor-pointer"
+                                 title={`Filtrar por país ${g.NombrePais}`}
+                               >
+                                 {g.NombrePais}
+                               </p>
                                <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${g.estadoReporte === 'ACTIVO' ? 'bg-[#71BF44]/10 text-[#71BF44]' : g.estadoReporte === 'AÑOS ANTERIOR' ? 'bg-orange-400/10 text-orange-400' : 'bg-red-500/10 text-red-500'}`}>
                                   {g.estadoReporte}
                                </span>
