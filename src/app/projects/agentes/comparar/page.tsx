@@ -14,6 +14,23 @@ function makePanel(agentId = ''): PanelState {
   return { agentId, conversationId: uuid(), messages: [], loading: false };
 }
 
+// Agente "virtual" — apunta al webhook viejo de SARA (n8n).
+// El frontend lo trata como cualquier otro agente; el fetch se desvía en
+// streamOnePanel cuando el id empieza con `legacy:`.
+const LEGACY_SARA_ID = 'legacy:sara-webhook-v5';
+const LEGACY_SARA_AGENT: PanelAgent = {
+  id: LEGACY_SARA_ID,
+  name: 'SARA Legacy — webhook n8n (anterior)',
+  description: 'Versión anterior de SARA vía sara.mysatcomla.com/webhook/sara-chat',
+  model: 'n8n webhook · legacy',
+  enabled: true,
+};
+
+function endpointForAgent(agentId: string): string {
+  if (agentId === LEGACY_SARA_ID) return '/api/agentes/legacy/sara-chat';
+  return `/api/agentes/v1/agents/${agentId}/invoke/stream`;
+}
+
 export default function CompararPage() {
   const [agents, setAgents] = useState<PanelAgent[]>([]);
   const [panels, setPanels] = useState<PanelState[]>([makePanel()]);
@@ -24,14 +41,21 @@ export default function CompararPage() {
       .then(r => r.json())
       .then((arr: PanelAgent[]) => {
         const list = Array.isArray(arr) ? arr : [];
-        setAgents(list);
+        // Anexamos el agente legacy al final para que aparezca como opción
+        // adicional sin desplazar al agente por defecto del selector.
+        const combined = [...list, LEGACY_SARA_AGENT];
+        setAgents(combined);
         setPanels(prev => prev.map(p => {
           if (p.agentId) return p;
-          const first = list.find(a => a.enabled !== false);
-          return first ? { ...p, agentId: first.id } : p;
+          const first = list.find(a => a.enabled !== false) ?? LEGACY_SARA_AGENT;
+          return { ...p, agentId: first.id };
         }));
       })
-      .catch(() => {});
+      .catch(() => {
+        // Aún sin conexión al backend mostramos el agente legacy.
+        setAgents([LEGACY_SARA_AGENT]);
+        setPanels(prev => prev.map(p => (p.agentId ? p : { ...p, agentId: LEGACY_SARA_ID })));
+      });
   }, []);
 
   const setPanelAt = (i: number, updater: (p: PanelState) => PanelState) => {
@@ -76,10 +100,11 @@ export default function CompararPage() {
     // assistantIdx = el índice del placeholder assistant que ya se agregó en setPanels al iniciar send()
     // Lo derivamos dinámicamente leyendo el último mensaje del panel cada vez.
     try {
-      const res = await fetch(`/api/agentes/v1/agents/${agentId}/invoke/stream`, {
+      const res = await fetch(endpointForAgent(agentId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Sin Authorization → el proxy server-side inyecta AGENTES_API_TOKEN (admin bypass)
+        // Sin Authorization → el proxy server-side inyecta AGENTES_API_TOKEN (admin bypass).
+        // El endpoint legacy ignora Authorization y reenvía al webhook n8n con FormData.
         body: JSON.stringify({ prompt, conversation_id: conversationId }),
       });
 
