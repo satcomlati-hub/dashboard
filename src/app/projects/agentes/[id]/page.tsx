@@ -28,6 +28,8 @@ export default function AgentEditorPage() {
   const [allSkills, setAllSkills] = useState<any[]>([]);
   const [mcpServers, setMcpServers] = useState<any[]>([]);
   const [allMcp, setAllMcp] = useState<any[]>([]);
+  const [httpTools, setHttpTools] = useState<any[]>([]);
+  const [allHttpTools, setAllHttpTools] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -36,9 +38,11 @@ export default function AgentEditorPage() {
       fetch(`/api/agentes/v1/agents/${id}`).then(r => r.json()).then(setAgent);
       fetch(`/api/agentes/v1/agents/${id}/skills`).then(r => r.json()).then(setSkills);
       fetch(`/api/agentes/v1/agents/${id}/mcp-servers`).then(r => r.json()).then(setMcpServers);
+      fetch(`/api/agentes/v1/agents/${id}/http-tools`).then(r => r.json()).then(setHttpTools);
     }
     fetch('/api/agentes/v1/skills').then(r => r.json()).then(setAllSkills);
     fetch('/api/agentes/v1/mcp-servers').then(r => r.json()).then(setAllMcp);
+    fetch('/api/agentes/v1/http-tools').then(r => r.json()).then(setAllHttpTools);
   }, [id, isNew]);
 
   const save = async () => {
@@ -80,6 +84,17 @@ export default function AgentEditorPage() {
       await fetch(`/api/agentes/v1/agents/${id}/mcp-servers/${serverId}`, { method: 'POST' });
       const m = allMcp.find((x: any) => x.id === serverId);
       if (m) setMcpServers(s => [...s, m]);
+    }
+  };
+
+  const toggleHttpTool = async (toolId: string, assigned: boolean) => {
+    if (assigned) {
+      await fetch(`/api/agentes/v1/agents/${id}/http-tools/${toolId}`, { method: 'DELETE' });
+      setHttpTools(s => s.filter((x: any) => x.id !== toolId));
+    } else {
+      await fetch(`/api/agentes/v1/agents/${id}/http-tools/${toolId}`, { method: 'POST' });
+      const t = allHttpTools.find((x: any) => x.id === toolId);
+      if (t) setHttpTools(s => [...s, t]);
     }
   };
 
@@ -284,6 +299,61 @@ export default function AgentEditorPage() {
                       <div>
                         <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">{m.name}</span>
                         <span className="text-xs text-neutral-400 ml-2">[{m.transport}]</span>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Herramientas HTTP */}
+        {!isNew && (
+          <section className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-neutral-800 dark:text-neutral-200">Herramientas</h3>
+              <Link
+                href="/projects/agentes/herramientas"
+                className="text-xs text-[#71BF44] hover:underline"
+              >
+                Gestionar →
+              </Link>
+            </div>
+            {allHttpTools.length === 0 ? (
+              <p className="text-sm text-neutral-400">No hay herramientas HTTP creadas aún.</p>
+            ) : (
+              <div className="space-y-2">
+                {allHttpTools.map((t: any) => {
+                  const assigned = httpTools.some((x: any) => x.id === t.id);
+                  const methodColor: Record<string, string> = {
+                    GET: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400',
+                    POST: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
+                    PUT: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
+                    PATCH: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400',
+                    DELETE: 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400',
+                  };
+                  return (
+                    <label key={t.id} className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 accent-[#71BF44]"
+                        checked={assigned}
+                        onChange={() => toggleHttpTool(t.id, assigned)}
+                      />
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${methodColor[t.http_method] ?? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600'}`}>
+                        {t.http_method}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">{t.name}</span>
+                          {!t.enabled && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-500">inactiva</span>
+                          )}
+                        </div>
+                        {t.description && (
+                          <span className="text-xs text-neutral-400 block truncate">{t.description}</span>
+                        )}
                       </div>
                     </label>
                   );
