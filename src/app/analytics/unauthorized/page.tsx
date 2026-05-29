@@ -338,14 +338,26 @@ export default function UnauthorizedVouchersPage() {
       // Filtro de ambiente
       if (rule.ambiente !== 'Todos' && rule.ambiente !== selectedAmbiente) return false;
 
-      // Match de Estado
-      const statusMatch = rule.expresion_estado === '*' || 
-                         (v.DescripcionEstatus && v.DescripcionEstatus.toLowerCase().includes(rule.expresion_estado.toLowerCase()));
+      // Match de Estado (intenta usar Regex, fallback a includes tradicional)
+      let statusMatch = rule.expresion_estado === '*';
+      if (!statusMatch && v.DescripcionEstatus) {
+        try {
+          statusMatch = new RegExp(rule.expresion_estado, 'i').test(v.DescripcionEstatus);
+        } catch (e) {
+          statusMatch = v.DescripcionEstatus.toLowerCase().includes(rule.expresion_estado.toLowerCase());
+        }
+      }
       
-      // Match de Motivo
-      const reasonMatch = rule.expresion_motivo === '*' || 
-                         (v.co_detalle && v.co_detalle.toLowerCase().includes(rule.expresion_motivo.toLowerCase()));
-                         
+      // Match de Motivo (intenta usar Regex, fallback a includes tradicional)
+      let reasonMatch = rule.expresion_motivo === '*';
+      if (!reasonMatch && v.co_detalle) {
+        try {
+          reasonMatch = new RegExp(rule.expresion_motivo, 'i').test(v.co_detalle);
+        } catch (e) {
+          reasonMatch = v.co_detalle.toLowerCase().includes(rule.expresion_motivo.toLowerCase());
+        }
+      }
+                          
       return statusMatch && reasonMatch;
     });
   }, [rules, selectedAmbiente]);
