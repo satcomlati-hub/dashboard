@@ -50,7 +50,7 @@ BEGIN
             co_motivo,
             co_pais,
             co_nemonico,
-            --co_id_emisor,
+            co_id_emisor,
             CAST(co_id_comprobante AS varchar(30)) AS Column1,
             CAST(co_id_comprobante AS varchar(30)) AS co_id_comprobante,
             co_hora_in,
