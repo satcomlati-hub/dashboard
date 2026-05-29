@@ -35,7 +35,9 @@ import {
   FileText,
   AlertTriangle,
   Download,
-  LifeBuoy
+  LifeBuoy,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { supabase } from '@/lib/supabaseClient';
@@ -61,6 +63,7 @@ interface Voucher {
   co_hora_reproceso: string;
   DescripcionEstatus: string;
   DescripcionTipoDocumento: string;
+  co_id_emisor?: number | string;
 }
 
 const AMBIENTE_DOMAINS: Record<string, string> = {
@@ -160,19 +163,7 @@ export default function UnauthorizedVouchersPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-
-  // Global but hidden from top UI (driven by column filters)
-  const [filters, setFilters] = useState({
-    co_num_comprobante: '',
-    co_detalle: '',
-    co_nemonico: '',
-    co_pais: '',
-    ambiente: '',
-    DescripcionEstatus: '',
-    DescripcionTipoDocumento: '',
-    co_establecimiento: '',
-    co_punto_emision: '',
-  });
+  const [hiddenGroups, setHiddenGroups] = useState<Set<string>>(new Set());
 
   const fetchCountries = useCallback(async (ambiente: string) => {
     if (!ambiente) return;
@@ -296,14 +287,10 @@ export default function UnauthorizedVouchersPage() {
       const found = priority.find(p => codesInAvailable.includes(p));
       if (found) {
         setSelectedCountryCode(found);
-        const name = PAIS_MAP[found] || String(found);
-        setFilters(f => ({ ...f, co_pais: name }));
       } else if (codesInAvailable.length > 0) {
         // Fallback al primer país disponible si ninguno de la prioridad existe
         const firstCode = codesInAvailable[0];
         setSelectedCountryCode(firstCode);
-        const name = PAIS_MAP[firstCode] || String(firstCode);
-        setFilters(f => ({ ...f, co_pais: name }));
       }
     }
   }, [availableCountries, selectedCountryCode]);
@@ -328,7 +315,9 @@ export default function UnauthorizedVouchersPage() {
   }, [fetchData]);
 
 
-  const anyFilterActive = useMemo(() => Object.values(filters).some(v => v !== '') || selectedDate !== '' || showUnmappedOnly, [filters, selectedDate, showUnmappedOnly]);
+  const anyFilterActive = useMemo(() => {
+    return selectedCountryCode !== null || searchQuery.trim() !== '' || selectedDate !== '' || showUnmappedOnly;
+  }, [selectedCountryCode, searchQuery, selectedDate, showUnmappedOnly]);
 
   const isVoucherMapped = useCallback((v: Voucher) => {
     if (rules.length === 0) return false;
@@ -369,16 +358,23 @@ export default function UnauthorizedVouchersPage() {
     }, {} as Record<number, number>);
 
     const byTime = data.filter(item => {
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      const idVal = item.Column1 || (item as any).co_id_comprobante || '';
+      const emisorVal = item.co_id_emisor ? String(item.co_id_emisor) : '';
+      const paisVal = PAIS_MAP[item.co_pais] || String(item.co_pais);
       return (
-        (!filters.co_num_comprobante || item.co_num_comprobante.toLowerCase().includes(filters.co_num_comprobante.toLowerCase())) &&
-        (!filters.co_detalle || item.co_detalle.toLowerCase().includes(filters.co_detalle.toLowerCase())) &&
-        (!filters.co_nemonico || item.co_nemonico.toLowerCase().includes(filters.co_nemonico.toLowerCase())) &&
-        (!filters.co_pais || (PAIS_MAP[item.co_pais] || item.co_pais.toString()).toLowerCase().includes(filters.co_pais.toLowerCase())) &&
-        (!filters.ambiente || item.ambiente.toLowerCase().includes(filters.ambiente.toLowerCase())) &&
-        (!filters.DescripcionEstatus || item.DescripcionEstatus.toLowerCase().includes(filters.DescripcionEstatus.toLowerCase())) &&
-        (!filters.DescripcionTipoDocumento || item.DescripcionTipoDocumento.toLowerCase().includes(filters.DescripcionTipoDocumento.toLowerCase())) &&
-        (!filters.co_establecimiento || item.co_establecimiento.toLowerCase().includes(filters.co_establecimiento.toLowerCase())) &&
-        (!filters.co_punto_emision || item.co_punto_emision.toLowerCase().includes(filters.co_punto_emision.toLowerCase()))
+        idVal.toLowerCase().includes(q) ||
+        emisorVal.toLowerCase().includes(q) ||
+        paisVal.toLowerCase().includes(q) ||
+        (item.co_num_comprobante || '').toLowerCase().includes(q) ||
+        (item.co_detalle || '').toLowerCase().includes(q) ||
+        (item.co_nemonico || '').toLowerCase().includes(q) ||
+        (item.ambiente || '').toLowerCase().includes(q) ||
+        (item.DescripcionEstatus || '').toLowerCase().includes(q) ||
+        (item.DescripcionTipoDocumento || '').toLowerCase().includes(q) ||
+        (item.co_establecimiento || '').toLowerCase().includes(q) ||
+        (item.co_punto_emision || '').toLowerCase().includes(q)
       );
     }).reduce((acc, d) => {
       const field = d.co_hora_in;
@@ -394,7 +390,7 @@ export default function UnauthorizedVouchersPage() {
     }).slice(-15);
 
     return { byPais, sortedDates };
-  }, [data, filters]);
+  }, [data, searchQuery]);
 
   const maxDateCount = useMemo(() => Math.max(...stats.sortedDates.map(d => d[1]), 1), [stats.sortedDates]);
 
@@ -432,17 +428,26 @@ export default function UnauthorizedVouchersPage() {
 
   const filteredData = useMemo(() => {
     let result = data.filter(item => {
+      const matchesDate = !selectedDate || (item.co_hora_in && item.co_hora_in.split('T')[0] === selectedDate);
+      if (!matchesDate) return false;
+      
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      const idVal = item.Column1 || (item as any).co_id_comprobante || '';
+      const emisorVal = item.co_id_emisor ? String(item.co_id_emisor) : '';
+      const paisVal = PAIS_MAP[item.co_pais] || String(item.co_pais);
       return (
-        (!filters.co_num_comprobante || item.co_num_comprobante.toLowerCase().includes(filters.co_num_comprobante.toLowerCase())) &&
-        (!filters.co_detalle || item.co_detalle.toLowerCase().includes(filters.co_detalle.toLowerCase())) &&
-        (!filters.co_nemonico || item.co_nemonico.toLowerCase().includes(filters.co_nemonico.toLowerCase())) &&
-        (!filters.co_pais || (PAIS_MAP[item.co_pais] || item.co_pais.toString()).toLowerCase().includes(filters.co_pais.toLowerCase())) &&
-        (!filters.ambiente || item.ambiente.toLowerCase().includes(filters.ambiente.toLowerCase())) &&
-        (!filters.DescripcionEstatus || item.DescripcionEstatus.toLowerCase().includes(filters.DescripcionEstatus.toLowerCase())) &&
-        (!filters.DescripcionTipoDocumento || item.DescripcionTipoDocumento.toLowerCase().includes(filters.DescripcionTipoDocumento.toLowerCase())) &&
-        (!filters.co_establecimiento || item.co_establecimiento.toLowerCase().includes(filters.co_establecimiento.toLowerCase())) &&
-        (!filters.co_punto_emision || item.co_punto_emision.toLowerCase().includes(filters.co_punto_emision.toLowerCase())) &&
-        (!selectedDate || (item.co_hora_in && item.co_hora_in.split('T')[0] === selectedDate))
+        idVal.toLowerCase().includes(q) ||
+        emisorVal.toLowerCase().includes(q) ||
+        paisVal.toLowerCase().includes(q) ||
+        (item.co_num_comprobante || '').toLowerCase().includes(q) ||
+        (item.co_detalle || '').toLowerCase().includes(q) ||
+        (item.co_nemonico || '').toLowerCase().includes(q) ||
+        (item.ambiente || '').toLowerCase().includes(q) ||
+        (item.DescripcionEstatus || '').toLowerCase().includes(q) ||
+        (item.DescripcionTipoDocumento || '').toLowerCase().includes(q) ||
+        (item.co_establecimiento || '').toLowerCase().includes(q) ||
+        (item.co_punto_emision || '').toLowerCase().includes(q)
       );
     });
 
@@ -463,7 +468,7 @@ export default function UnauthorizedVouchersPage() {
     }
 
     return result;
-  }, [data, filters, sortField, sortOrder, selectedDate, showUnmappedOnly, isVoucherMapped]);
+  }, [data, searchQuery, sortField, sortOrder, selectedDate, showUnmappedOnly, isVoucherMapped]);
 
   const groupedData = useMemo(() => {
     if (!anyFilterActive) return [];
@@ -531,6 +536,11 @@ export default function UnauthorizedVouchersPage() {
 
           const vouchers = getAllVouchers(item);
 
+          // Si el grupo está en hiddenGroups, no lo mostramos ni a sus hijos
+          if (hiddenGroups.has(currentPath)) {
+            return;
+          }
+
           flat.push({ 
             type: 'header', 
             label: item.key, 
@@ -563,7 +573,7 @@ export default function UnauthorizedVouchersPage() {
     }
     
     return flat;
-  }, [groupedData, groupBy, expandedGroups, anyFilterActive, filteredData]);
+  }, [groupedData, groupBy, expandedGroups, hiddenGroups, anyFilterActive, filteredData]);
 
   const totalPages = Math.ceil(displayItems.length / pageSize);
   const paginatedItems = useMemo(() => {
@@ -642,7 +652,7 @@ export default function UnauthorizedVouchersPage() {
     setModalTab('caso');
 
     const userName = session?.user?.name || 'Usuario Satcom';
-    const activeFilters = Object.entries(filters).filter(([_, v]) => v).map(([k, v]) => `${k}: ${v}`).join(', ');
+    const activeFilters = searchQuery ? `Búsqueda global: ${searchQuery}` : 'Ninguno';
 
     setCaseSubject(`Incidencia ${selectedAmbiente}: [${mainStatus}] - ${mainReason}`);
     setCaseDescription(`
@@ -788,6 +798,7 @@ export default function UnauthorizedVouchersPage() {
       'Establecimiento',
       'Punto Emisión',
       'Nemónico',
+      'ID Emisor',
       'Ambiente',
       'País',
       'Fecha Ingreso',
@@ -815,6 +826,7 @@ export default function UnauthorizedVouchersPage() {
         sanitize(v.co_establecimiento),
         sanitize(v.co_punto_emision),
         sanitize(v.co_nemonico),
+        sanitize(v.co_id_emisor),
         sanitize(v.ambiente),
         sanitize(PAIS_MAP[v.co_pais] || v.co_pais),
         sanitize(v.co_hora_in ? formatDate(v.co_hora_in, true) : ''),
@@ -928,17 +940,7 @@ export default function UnauthorizedVouchersPage() {
                     setAvailableCountries([]);
                     setCurrentPage(1); 
                     setData([]); 
-                    setFilters({
-                      co_num_comprobante: '',
-                      co_detalle: '',
-                      co_nemonico: '',
-                      co_pais: '',
-                      ambiente: '',
-                      DescripcionEstatus: '',
-                      DescripcionTipoDocumento: '',
-                      co_establecimiento: '',
-                      co_punto_emision: '',
-                    });
+                    setSearchQuery('');
                   }}
                   className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all whitespace-nowrap ${selectedAmbiente === amb ? 'bg-[#71BF44] text-white shadow-lg shadow-[#71BF44]/20' : 'text-neutral-500 hover:text-white hover:bg-neutral-800'}`}
                  >
@@ -1036,8 +1038,6 @@ export default function UnauthorizedVouchersPage() {
               onChange={(e) => {
                 const val = e.target.value ? Number(e.target.value) : null;
                 setSelectedCountryCode(val);
-                const countryName = val ? (PAIS_MAP[val] || String(val)) : '';
-                setFilters(f => ({ ...f, co_pais: countryName }));
                 setCurrentPage(1);
               }}
               className="bg-transparent text-[9px] font-black uppercase text-[#71BF44] outline-none cursor-pointer hover:text-white transition-colors h-6 w-full sm:w-auto"
@@ -1062,6 +1062,36 @@ export default function UnauthorizedVouchersPage() {
               <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] whitespace-nowrap">Última Actualización:</span>
               <span className={`text-[10px] font-black uppercase tracking-widest ${isOutdated ? 'text-red-500' : 'text-[#71BF44]'}`}>{lastUpdate}</span>
             </div>
+          )}
+
+          {/* Filtro de Búsqueda Global */}
+          <div className="relative flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-4 py-2.5 rounded-2xl shadow-xl w-full sm:w-[300px]">
+            <Search className="w-4 h-4 text-[#71BF44] shrink-0" />
+            <input 
+              placeholder="Buscar en todo..."
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+              className="bg-transparent text-[11px] font-black uppercase text-white outline-none w-full placeholder-neutral-500"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="text-neutral-500 hover:text-white transition-colors">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Restaurar Ocultos */}
+          {hiddenGroups.size > 0 && (
+            <button
+              onClick={() => {
+                setHiddenGroups(new Set());
+                showNotification('Todos los grupos ocultos han sido restaurados', 'success');
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white rounded-2xl shadow-xl whitespace-nowrap"
+            >
+              <Eye className="w-4 h-4 text-[#71BF44]" />
+              <span className="text-[10px] font-black uppercase tracking-widest">Restaurar Ocultos ({hiddenGroups.size})</span>
+            </button>
           )}
 
           {/* Group Selector "Agrupar" (Now Second) */}
@@ -1191,61 +1221,32 @@ export default function UnauthorizedVouchersPage() {
             <table className="w-full text-sm">
                <thead>
                   <tr className="bg-neutral-50 dark:bg-[#0c0c0c] border-b border-neutral-200 dark:border-neutral-800">
-                     <th className="px-6 py-4 min-w-[300px]">
-                        <div className="space-y-4">
-                           <button onClick={() => toggleSort('co_num_comprobante')} className="flex items-center gap-2 text-[10px] font-black text-neutral-400 uppercase tracking-widest hover:text-[#71BF44] transition-colors group">
-                              Comprobante
-                              {sortField === 'co_num_comprobante' ? (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3 text-[#71BF44]"/> : <ArrowDown className="w-3 h-3 text-[#71BF44]"/>) : <ArrowUpDown className="w-3 h-3 opacity-20 group-hover:opacity-100"/>}
-                           </button>
-                           <div className="relative group">
-                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-700" />
-                              <input 
-                                placeholder="Filtrar por Número..."
-                                value={filters.co_num_comprobante}
-                                onChange={(e) => { setFilters(f => ({ ...f, co_num_comprobante: e.target.value })); setCurrentPage(1); }}
-                                className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-xl pl-10 pr-4 py-2 text-[10px] font-medium outline-none transition-all focus:ring-1 focus:ring-[#71BF44]/30"
-                              />
-                           </div>
-                        </div>
+                     <th className="px-6 py-6 min-w-[300px] text-left">
+                        <button onClick={() => toggleSort('co_num_comprobante')} className="flex items-center gap-2 text-[10px] font-black text-neutral-400 uppercase tracking-widest hover:text-[#71BF44] transition-colors group">
+                           Comprobante
+                           {sortField === 'co_num_comprobante' ? (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3 text-[#71BF44]"/> : <ArrowDown className="w-3 h-3 text-[#71BF44]"/>) : <ArrowUpDown className="w-3 h-3 opacity-20 group-hover:opacity-100"/>}
+                        </button>
                      </th>
-                     <th className="px-6 py-6 min-w-[200px]">
-                        <div className="space-y-4">
-                           <button onClick={() => toggleSort('co_establecimiento')} className="flex items-center gap-2 text-[10px] font-black text-neutral-400 uppercase tracking-widest hover:text-[#71BF44] transition-colors group">
-                              Establecimiento
-                              {sortField === 'co_establecimiento' ? (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3 text-[#71BF44]"/> : <ArrowDown className="w-3 h-3 text-[#71BF44]"/>) : <ArrowUpDown className="w-3 h-3 opacity-20 group-hover:opacity-100"/>}
-                           </button>
-                           <div className="grid grid-cols-2 gap-2">
-                             <input placeholder="Est." value={filters.co_establecimiento} onChange={(e) => setFilters(f => ({ ...f, co_establecimiento: e.target.value }))} className="w-full bg-white dark:bg-black border border-neutral-800 rounded-lg px-2 py-1.5 text-[9px] outline-none" />
-                             <input placeholder="Pto." value={filters.co_punto_emision} onChange={(e) => setFilters(f => ({ ...f, co_punto_emision: e.target.value }))} className="w-full bg-white dark:bg-black border border-neutral-800 rounded-lg px-2 py-1.5 text-[9px] outline-none" />
-                           </div>
-                        </div>
+                     <th className="px-6 py-6 min-w-[200px] text-left">
+                        <button onClick={() => toggleSort('co_establecimiento')} className="flex items-center gap-2 text-[10px] font-black text-neutral-400 uppercase tracking-widest hover:text-[#71BF44] transition-colors group">
+                           Establecimiento
+                           {sortField === 'co_establecimiento' ? (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3 text-[#71BF44]"/> : <ArrowDown className="w-3 h-3 text-[#71BF44]"/>) : <ArrowUpDown className="w-3 h-3 opacity-20 group-hover:opacity-100"/>}
+                        </button>
                      </th>
-                     <th className="px-6 py-6 min-w-[200px]">
-                        <div className="space-y-4">
-                           <button onClick={() => toggleSort('co_nemonico')} className="flex items-center gap-2 text-[10px] font-black text-neutral-400 uppercase tracking-widest hover:text-[#71BF44] transition-colors group">
-                              Origen
-                              {sortField === 'co_nemonico' ? (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3 text-[#71BF44]"/> : <ArrowDown className="w-3 h-3 text-[#71BF44]"/>) : <ArrowUpDown className="w-3 h-3 opacity-20 group-hover:opacity-100"/>}
-                           </button>
-                           <div className="space-y-2">
-                              <input placeholder="Nemónico..." value={filters.co_nemonico} onChange={(e) => setFilters(f => ({ ...f, co_nemonico: e.target.value }))} className="w-full bg-white dark:bg-black border border-neutral-800 rounded-lg px-2 py-1.5 text-[9px] outline-none" />
-                              <input placeholder="País/Amb..." value={filters.ambiente} onChange={(e) => setFilters(f => ({ ...f, ambiente: e.target.value }))} className="w-full bg-white dark:bg-black border border-neutral-800 rounded-lg px-2 py-1.5 text-[9px] outline-none" />
-                           </div>
-                        </div>
+                     <th className="px-6 py-6 min-w-[200px] text-left">
+                        <button onClick={() => toggleSort('co_nemonico')} className="flex items-center gap-2 text-[10px] font-black text-neutral-400 uppercase tracking-widest hover:text-[#71BF44] transition-colors group">
+                           Origen
+                           {sortField === 'co_nemonico' ? (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3 text-[#71BF44]"/> : <ArrowDown className="w-3 h-3 text-[#71BF44]"/>) : <ArrowUpDown className="w-3 h-3 opacity-20 group-hover:opacity-100"/>}
+                        </button>
                      </th>
-                     <th className="px-6 py-6 min-w-[150px]">
+                     <th className="px-6 py-6 min-w-[150px] text-left">
                         <button onClick={() => toggleSort('co_hora_in')} className="flex items-center gap-2 text-[10px] font-black text-neutral-400 uppercase tracking-widest hover:text-[#71BF44] transition-colors group">
                            Ingreso
                            {sortField === 'co_hora_in' ? (sortOrder === 'asc' ? <ArrowUp className="w-3 h-3 text-[#71BF44]"/> : <ArrowDown className="w-3 h-3 text-[#71BF44]"/>) : <ArrowUpDown className="w-3 h-3 opacity-20 group-hover:opacity-100"/>}
                         </button>
                      </th>
-                     <th className="px-6 py-6 min-w-[350px]">
-                        <div className="space-y-4">
-                           <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Información de Reproceso</span>
-                           <div className="grid grid-cols-2 gap-2">
-                              <input placeholder="Motivo/Detalle..." value={filters.co_detalle} onChange={(e) => setFilters(f => ({ ...f, co_detalle: e.target.value }))} className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-xl px-3 py-2 text-[10px] outline-none" />
-                              <input placeholder="Estado..." value={filters.DescripcionEstatus} onChange={(e) => setFilters(f => ({ ...f, DescripcionEstatus: e.target.value }))} className="w-full bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-xl px-3 py-2 text-[10px] outline-none" />
-                           </div>
-                        </div>
+                     <th className="px-6 py-6 min-w-[350px] text-left">
+                        <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Información de Reproceso</span>
                      </th>
                   </tr>
                </thead>
@@ -1293,6 +1294,22 @@ export default function UnauthorizedVouchersPage() {
                                       </div>
                                    </div>
                                     <div className="flex flex-wrap items-center gap-2 sm:gap-3 lg:mr-4">
+                                        {item.vouchers.length > 0 && (
+                                          <button
+                                             onClick={(e) => {
+                                                e.stopPropagation();
+                                                const next = new Set(hiddenGroups);
+                                                next.add(item.path);
+                                                setHiddenGroups(next);
+                                                showNotification(`Grupo "${item.label}" ocultado temporalmente`, 'info');
+                                             }}
+                                             className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all border bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500 hover:text-white hover:border-red-500 shadow-lg shadow-black/20"
+                                             title="Ocultar temporalmente este grupo analizado"
+                                          >
+                                             <EyeOff className="w-3 h-3" />
+                                             <span>Ocultar</span>
+                                          </button>
+                                        )}
                                         {item.vouchers.length > 0 && (
                                           <button
                                              onClick={(e) => {
@@ -1390,14 +1407,19 @@ export default function UnauthorizedVouchersPage() {
                               </div>
                            </td>
                            <td className="px-6 py-6">
-                              <div className="space-y-2">
-                                 <div className="text-[11px] font-black text-neutral-900 dark:text-white tracking-widest">{v.co_nemonico}</div>
-                                 <div className="flex flex-wrap gap-2">
-                                    <span className="text-[9px] font-black px-2 py-0.5 rounded bg-blue-600/10 text-blue-600 border border-blue-600/20">{v.ambiente}</span>
-                                    <span className="text-[9px] font-black px-2 py-0.5 rounded bg-amber-600/10 text-amber-600 border border-amber-600/20">{PAIS_MAP[v.co_pais] || v.co_pais}</span>
-                                 </div>
-                              </div>
-                           </td>
+                               <div className="space-y-2">
+                                  <div className="text-[11px] font-black text-neutral-900 dark:text-white tracking-widest">{v.co_nemonico}</div>
+                                  {v.co_id_emisor && (
+                                     <div className="text-[9px] font-bold text-neutral-500 uppercase">
+                                        ID Emisor: <span className="font-mono text-neutral-400">{v.co_id_emisor}</span>
+                                     </div>
+                                  )}
+                                  <div className="flex flex-wrap gap-2">
+                                     <span className="text-[9px] font-black px-2 py-0.5 rounded bg-blue-600/10 text-blue-600 border border-blue-600/20">{v.ambiente}</span>
+                                     <span className="text-[9px] font-black px-2 py-0.5 rounded bg-amber-600/10 text-amber-600 border border-amber-600/20">{PAIS_MAP[v.co_pais] || v.co_pais}</span>
+                                  </div>
+                               </div>
+                            </td>
                            <td className="px-6 py-6">
                               <div className="flex flex-col font-mono">
                                  <span className="text-[11px] font-black text-neutral-800 dark:text-neutral-200">{v.co_hora_in ? formatDate(v.co_hora_in) : '--'}</span>
