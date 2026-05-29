@@ -76,7 +76,7 @@ export async function GET() {
 
     const grouped: Record<string, {
       articulos: Array<{
-        articulo: string; source_url: string; created_at: string;
+        articulo: string; manual: string; source_url: string; created_at: string;
         created_by: string | null; modified_at: string | null;
         modified_by: string | null; is_public: boolean; is_active: boolean;
         can_edit: boolean; allowed_editors: string[];
@@ -87,6 +87,7 @@ export async function GET() {
       if (!grouped[row.manual]) grouped[row.manual] = { articulos: [] };
       grouped[row.manual].articulos.push({
         articulo:         row.articulo,
+        manual:           row.manual,
         source_url:       row.source_url,
         created_at:       row.created_at,
         created_by:       row.created_by,

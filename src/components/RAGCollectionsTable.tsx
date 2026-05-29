@@ -12,6 +12,7 @@ import {
 
 interface Articulo {
   articulo: string;
+  manual: string;
   source_url: string;
   created_at: string;
   created_by: string | null;
@@ -65,7 +66,7 @@ function PdfUpdateModal({ art, userEmail, onClose }: {
       const fd = new FormData();
       fd.append('data', file, file.name);
       fd.append('user', userEmail);
-      fd.append('manual', art.articulo);
+      fd.append('manual', art.manual);
       fd.append('articulo', art.articulo);
       fd.append('action', 'update');
       const res = await fetch('https://sara.mysatcomla.com/webhook/ingesta-documentos', { method: 'POST', body: fd });

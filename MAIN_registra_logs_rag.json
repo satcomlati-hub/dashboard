@@ -27,7 +27,7 @@
       "parameters": {
         "operation": "push",
         "list": "=logs:rag:{{ $workflow.id }}",
-        "messageData": "={\n  \"message\": \"{{ $json.body.message }}\", \n  \"level\": \"{{ $json.body.level }}\", \n  \"timestamp\": new Date().toISOString()\n}\n"
+        "messageData": "={\n  \"message\": \"{{ $json.body.message }}\", \n  \"level\": \"{{ $json.body.level }}\", \n  \"timestamp\": \"{{ new Date($json.body.timestamp * 1000).toISOString() }}\"\n}\n"
       },
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
@@ -148,7 +148,7 @@
         "parameters": {
           "operation": "push",
           "list": "=logs:rag:{{ $workflow.id }}",
-          "messageData": "={\n  \"message\": \"{{ $json.body.message }}\", \n  \"level\": \"{{ $json.body.level }}\", \n  \"timestamp\": new Date().toISOString()\n}\n"
+          "messageData": "={\n  \"message\": \"{{ $json.body.message }}\", \n  \"level\": \"{{ $json.body.level }}\", \n  \"timestamp\": \"{{ new Date($json.body.timestamp * 1000).toISOString() }}\"\n}\n"
         },
         "type": "n8n-nodes-base.redis",
         "typeVersion": 1,
