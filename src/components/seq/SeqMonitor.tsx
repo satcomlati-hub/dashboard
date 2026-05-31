@@ -565,6 +565,38 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     return trimmed;
   };
 
+  // Formatea el filtro para que Seq lo entienda. Si es texto libre y no contiene operadores estructurados ni es SQL, lo envuelve en comillas dobles.
+  const formatFilterForSeq = (filterStr: string): string => {
+    if (!filterStr) return '';
+    const trimmed = filterStr.trim();
+    
+    // Si es consulta SQL, dejar intacta
+    if (trimmed.toLowerCase().startsWith('select ')) {
+      return trimmed;
+    }
+    
+    // Si ya está envuelta en comillas dobles, dejar intacta
+    if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+      return trimmed;
+    }
+    
+    // Si ya está envuelta en comillas simples, dejar intacta
+    if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+      return trimmed;
+    }
+    
+    // Lista de operadores o palabras clave de filtro en Seq
+    const operators = ['=', '!=', '<', '<=', '>', '>=', ' like ', ' contains ', 'has(', 'not('];
+    const hasOperator = operators.some(op => trimmed.toLowerCase().includes(op));
+    
+    if (!hasOperator) {
+      // Seq requiere que las búsquedas libres de palabras estén rodeadas por comillas dobles en su API
+      return `"${trimmed.replace(/"/g, '\\"')}"`;
+    }
+    
+    return trimmed;
+  };
+
   // Obtener logs de Seq
   const fetchLogs = async (isAutoRefresh = false) => {
     const { seqUrl, apiKey, currentFilter: filterExpr, limit: maxCount, queryStartTime: startTime, queryEndTime: endTime } = stateRef.current;
@@ -589,7 +621,8 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
       });
       
       const cleanFilter = cleanFilterPrefix(filterExpr);
-      let finalFilter = cleanFilter;
+      const formattedFilter = formatFilterForSeq(cleanFilter);
+      let finalFilter = formattedFilter;
 
       // Inyectar límites de fecha/hora si no es query SQL (porque las SQL ya la llevan inyectada en su where)
       const isSql = cleanFilter && cleanFilter.trim().toLowerCase().startsWith('select ');
