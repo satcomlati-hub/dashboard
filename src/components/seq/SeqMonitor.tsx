@@ -43,6 +43,8 @@ interface SeqConnection {
   name: string;
   url: string;
   apiKey?: string;
+  usuario?: string;
+  clave?: string;
 }
 
 interface SeqTask {
@@ -116,7 +118,7 @@ const LEVEL_TEXT_CLASSES: { [key: string]: string } = {
   Fatal: 'text-pink-400 bg-pink-500/10 border-pink-500/20'
 };
 
-export default function SeqMonitor() {
+export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
   const [activeTab, setActiveTab] = useState<'monitor' | 'tasks' | 'connections'>('monitor');
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [showChart, setShowChart] = useState(true);
@@ -180,7 +182,9 @@ export default function SeqMonitor() {
   const [connectionForm, setConnectionForm] = useState({
     name: '',
     url: '',
-    apiKey: ''
+    apiKey: '',
+    usuario: '',
+    clave: ''
   });
 
   // Logs expandidos
@@ -343,7 +347,9 @@ export default function SeqMonitor() {
         id: editingConnection?.id,
         name: connectionForm.name,
         url: connectionForm.url,
-        apiKey: connectionForm.apiKey
+        apiKey: connectionForm.apiKey,
+        usuario: connectionForm.usuario,
+        clave: connectionForm.clave
       };
 
       const res = await fetch('/api/seq/connections', {
@@ -356,7 +362,7 @@ export default function SeqMonitor() {
         showToast('Conexión guardada con éxito', 'success');
         setIsConnectionModalOpen(false);
         setEditingConnection(null);
-        setConnectionForm({ name: '', url: '', apiKey: '' });
+        setConnectionForm({ name: '', url: '', apiKey: '', usuario: '', clave: '' });
         fetchConnections();
       } else {
         const err = await res.json();
@@ -472,6 +478,20 @@ export default function SeqMonitor() {
     }
   };
 
+  // Limpiar título/prefijo de la consulta si incluye un select precedido de ":"
+  const cleanFilterPrefix = (filterStr: string): string => {
+    if (!filterStr) return '';
+    const trimmed = filterStr.trim();
+    const colonIndex = trimmed.indexOf(':');
+    if (colonIndex !== -1) {
+      const afterColon = trimmed.substring(colonIndex + 1).trim();
+      if (afterColon.toLowerCase().startsWith('select ')) {
+        return afterColon;
+      }
+    }
+    return trimmed;
+  };
+
   // Obtener logs de Seq
   const fetchLogs = async (isAutoRefresh = false) => {
     const { seqUrl, apiKey, currentFilter: filterExpr, limit: maxCount } = stateRef.current;
@@ -491,8 +511,9 @@ export default function SeqMonitor() {
         render: 'true'
       });
       
-      if (filterExpr && filterExpr.trim() !== '') {
-        queryParams.append('filter', filterExpr);
+      const cleanFilter = cleanFilterPrefix(filterExpr);
+      if (cleanFilter && cleanFilter.trim() !== '') {
+        queryParams.append('filter', cleanFilter);
       }
 
       const response = await fetch(`/api/seq/events?${queryParams}`, {
@@ -760,13 +781,22 @@ export default function SeqMonitor() {
 
   // Modifica el script si es necesario agregando el filtro de tiempo de 3 horas por defecto y ejecuta
   const handleExecuteQuery = () => {
-    let queryToRun = currentFilter;
+    const cleanedQuery = cleanFilterPrefix(currentFilter);
+    let queryToRun = cleanedQuery;
     if (queryToRun && queryToRun.trim().toLowerCase().startsWith('select ')) {
       const modifiedQuery = addDefaultTimeFilter(queryToRun);
       if (modifiedQuery !== queryToRun) {
         queryToRun = modifiedQuery;
-        setCurrentFilter(modifiedQuery);
-        stateRef.current.currentFilter = modifiedQuery;
+        // Si originalmente tenía prefijo, mantenerlo al guardar en el estado
+        const colonIndex = currentFilter.indexOf(':');
+        if (colonIndex !== -1 && currentFilter.substring(colonIndex + 1).trim().toLowerCase().startsWith('select ')) {
+          const prefix = currentFilter.substring(0, colonIndex + 1);
+          setCurrentFilter(`${prefix} ${modifiedQuery}`);
+          stateRef.current.currentFilter = `${prefix} ${modifiedQuery}`;
+        } else {
+          setCurrentFilter(modifiedQuery);
+          stateRef.current.currentFilter = modifiedQuery;
+        }
       }
     }
     fetchLogs(false);
@@ -2084,10 +2114,61 @@ export default function SeqMonitor() {
                         <h4 className="text-sm font-bold text-neutral-900 dark:text-white">{conn.name}</h4>
                         <Server className="w-4 h-4 text-[#71BF44] opacity-80" />
                       </div>
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2 font-mono break-all">{conn.url}</p>
-                      <span className="inline-block mt-3 text-[10px] font-bold bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-850 px-2 py-0.5 rounded text-neutral-600 dark:text-neutral-450">
-                        {conn.apiKey ? 'API Key Configurada' : 'Sin API Key'}
-                      </span>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2 font-mono break-all flex items-center gap-1">
+                        <a 
+                          href={conn.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="hover:text-[#71BF44] hover:underline flex items-center gap-1.5"
+                        >
+                          {conn.url}
+                          <ExternalLink className="w-3 h-3 shrink-0" />
+                        </a>
+                      </p>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-3">
+                        <span className="inline-block text-[10px] font-bold bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-850 px-2 py-0.5 rounded text-neutral-600 dark:text-neutral-450">
+                          {conn.apiKey ? 'API Key Configurada' : 'Sin API Key'}
+                        </span>
+                        {isAdmin && (conn.usuario || conn.clave) && (
+                          <span className="inline-block text-[10px] font-bold bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/30 px-2 py-0.5 rounded text-blue-600 dark:text-blue-400">
+                            Credenciales Guardadas
+                          </span>
+                        )}
+                      </div>
+
+                      {isAdmin && (
+                        <div className="mt-3 space-y-2 border-t border-neutral-100 dark:border-neutral-900 pt-3">
+                          {conn.usuario && (
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-neutral-400">Usuario:</span>
+                              <span className="font-mono text-neutral-700 dark:text-neutral-300 bg-neutral-50 dark:bg-neutral-900 px-1.5 py-0.5 rounded border border-neutral-200 dark:border-neutral-850 truncate max-w-[150px]">
+                                {conn.usuario}
+                              </span>
+                            </div>
+                          )}
+                          {conn.clave && (
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-neutral-400">Clave:</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-neutral-700 dark:text-neutral-300 bg-neutral-50 dark:bg-neutral-900 px-1.5 py-0.5 rounded border border-neutral-200 dark:border-neutral-850 max-w-[150px] truncate select-all">
+                                  ••••••••
+                                </span>
+                                <button
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(conn.clave || '')
+                                      .then(() => showToast('Clave copiada al portapapeles', 'success'))
+                                      .catch(err => showToast(`Error al copiar: ${err.message}`, 'error'));
+                                  }}
+                                  className="text-neutral-400 hover:text-[#71BF44] p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                                  title="Copiar Clave"
+                                >
+                                  <Copy className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center justify-end gap-2 border-t border-neutral-100 dark:border-neutral-900 pt-3">
@@ -2097,7 +2178,9 @@ export default function SeqMonitor() {
                           setConnectionForm({
                             name: conn.name,
                             url: conn.url,
-                            apiKey: conn.apiKey || ''
+                            apiKey: conn.apiKey || '',
+                            usuario: conn.usuario || '',
+                            clave: conn.clave || ''
                           });
                           setIsConnectionModalOpen(true);
                         }}
@@ -2365,6 +2448,32 @@ export default function SeqMonitor() {
                   className="bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-850 rounded-lg p-2.5 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44]"
                 />
               </div>
+
+              {isAdmin && (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] text-neutral-550 dark:text-neutral-400 font-bold uppercase">Usuario Seq</label>
+                    <input
+                      type="text"
+                      placeholder="Nombre de usuario"
+                      value={connectionForm.usuario}
+                      onChange={(e) => setConnectionForm(prev => ({ ...prev, usuario: e.target.value }))}
+                      className="bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-850 rounded-lg p-2.5 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44]"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] text-neutral-550 dark:text-neutral-400 font-bold uppercase">Clave Seq</label>
+                    <input
+                      type="password"
+                      placeholder="Contraseña de usuario"
+                      value={connectionForm.clave}
+                      onChange={(e) => setConnectionForm(prev => ({ ...prev, clave: e.target.value }))}
+                      className="bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-850 rounded-lg p-2.5 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44]"
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="flex items-center justify-end gap-2 mt-4 border-t border-neutral-100 dark:border-neutral-900 pt-4">
                 <button

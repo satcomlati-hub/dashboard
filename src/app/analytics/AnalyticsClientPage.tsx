@@ -296,7 +296,7 @@ export default function AnalyticsClientPage({ isAdmin }: AnalyticsClientPageProp
           </div>
         </div>
       ) : (
-        <SeqMonitor />
+        <SeqMonitor isAdmin={isAdmin} />
       )}
     </>
   );
