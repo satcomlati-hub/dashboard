@@ -26,8 +26,6 @@ import {
   Save
 } from 'lucide-react';
 import {
-  AreaChart,
-  Area,
   LineChart,
   Line,
   XAxis,
@@ -126,7 +124,6 @@ const LEVEL_TEXT_CLASSES: { [key: string]: string } = {
 export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
   const [activeTab, setActiveTab] = useState<'monitor' | 'tasks' | 'connections'>('monitor');
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [showChart, setShowChart] = useState(true);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -268,14 +265,6 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     }, 4000);
   };
 
-  // Alternar visibilidad de gráfica analítica
-  const toggleShowChart = () => {
-    const nextVal = !showChart;
-    setShowChart(nextVal);
-    localStorage.setItem('seq_monitor_show_chart', String(nextVal));
-    showToast(nextVal ? 'Gráfico analítico visible' : 'Gráfico analítico oculto', 'info');
-  };
-
   // Descargar log en formato archivo .json
   const handleDownloadLog = (log: SeqLog) => {
     const propertiesData: { [key: string]: any } = {};
@@ -313,12 +302,6 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
 
   // Cargar Ajustes y Datos al inicio
   useEffect(() => {
-    // Cargar visualización de gráfico de localStorage
-    const savedShowChart = localStorage.getItem('seq_monitor_show_chart');
-    if (savedShowChart !== null) {
-      setShowChart(savedShowChart === 'true');
-    }
-
     // Cargar queries guardadas de localStorage
     const saved = localStorage.getItem('seq_monitor_queries');
     if (saved) {
@@ -1396,94 +1379,6 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     });
   }, [logs, activeLevels, localSearchQuery]);
 
-  // Agrupamiento de Gráfico (Recharts AreaChart)
-  const chartData = useMemo(() => {
-    const validLogs = logs.filter(log => log.Timestamp && !isNaN(Date.parse(log.Timestamp)));
-    if (validLogs.length === 0) {
-      return [{ timeLabel: 'Sin Datos', Verbose: 0, Debug: 0, Information: 0, Warning: 0, Error: 0, Fatal: 0, startIso: '', endIso: '' }];
-    }
-
-    // Agrupar en intervalos de 10 segundos
-    const intervalMetadata: { [key: number]: { label: string; startIso: string; endIso: string } } = {};
-    validLogs.forEach(log => {
-      const date = new Date(log.Timestamp);
-      const roundedSeconds = Math.floor(date.getSeconds() / 10) * 10;
-      
-      const startOfInterval = new Date(date);
-      startOfInterval.setSeconds(roundedSeconds, 0);
-      
-      const endOfInterval = new Date(startOfInterval);
-      endOfInterval.setSeconds(startOfInterval.getSeconds() + 10);
-
-      const labelTime = startOfInterval.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      const key = startOfInterval.getTime();
-
-      if (!intervalMetadata[key]) {
-        intervalMetadata[key] = {
-          label: labelTime,
-          startIso: startOfInterval.toISOString(),
-          endIso: endOfInterval.toISOString()
-        };
-      }
-    });
-
-    const sortedKeys = Object.keys(intervalMetadata).map(Number).sort((a, b) => a - b);
-
-    // Mapear conteos por nivel en los intervalos temporales definidos
-    return sortedKeys.map(key => {
-      const meta = intervalMetadata[key];
-      const intervalLogs = validLogs.filter(log => {
-        const logTime = new Date(log.Timestamp).getTime();
-        return logTime >= key && logTime < (key + 10000);
-      });
-
-      const row: any = {
-        timeLabel: meta.label,
-        startIso: meta.startIso,
-        endIso: meta.endIso,
-        Verbose: 0,
-        Debug: 0,
-        Information: 0,
-        Warning: 0,
-        Error: 0,
-        Fatal: 0
-      };
-
-      intervalLogs.forEach(log => {
-        const lvl = log.Level || 'Information';
-        if (row[lvl] !== undefined) {
-          row[lvl]++;
-        }
-      });
-
-      return row;
-    });
-  }, [logs]);
-
-  // Aplicar filtros haciendo clic en el gráfico
-  const handleChartClick = (data: any) => {
-    if (data && data.activePayload && data.activePayload.length > 0) {
-      const clickedData = data.activePayload[0].payload;
-      const start = clickedData.startIso;
-      const end = clickedData.endIso;
-      const timeLabel = clickedData.timeLabel;
-      
-      // Aplicar filtro temporal en Seq
-      const filterExpr = `@Timestamp >= DateTime('${start}') and @Timestamp < DateTime('${end}')`;
-      setCurrentFilter(filterExpr);
-      showToast(`Filtrando logs en el intervalo temporal: ${timeLabel}`, 'info');
-      // Forzar recarga con el nuevo filtro
-      setTimeout(() => fetchLogs(false), 50);
-    }
-  };
-
-  const handleLevelClick = (level: string) => {
-    const filterExpr = `@Level = '${level}'`;
-    setCurrentFilter(filterExpr);
-    showToast(`Filtrando logs por nivel: ${level}`, 'info');
-    setTimeout(() => fetchLogs(false), 50);
-  };
-
   // Toggle de nivel en los chips de filtro local
   const toggleLocalLevel = (lvl: string) => {
     setActiveLevels(prev => {
@@ -1989,16 +1884,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 select-none w-full lg:w-auto justify-between lg:justify-end">
-                  <button
-                    onClick={toggleShowChart}
-                    className="flex items-center gap-1.5 px-3 py-1.5 border border-neutral-250 dark:border-neutral-800 bg-neutral-55 dark:bg-[#181818] hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-xs font-bold text-neutral-600 dark:text-neutral-400 transition-colors"
-                    title={showChart ? "Ocultar panel de gráfico" : "Mostrar panel de gráfico"}
-                  >
-                    <Activity className={`w-3.5 h-3.5 ${showChart ? 'text-[#71BF44]' : 'text-neutral-400'}`} />
-                    {showChart ? 'Ocultar Gráfica' : 'Mostrar Gráfica'}
-                  </button>
-
+                <div className="flex items-center gap-2 select-none w-full lg:w-auto justify-end">
                   <div className="relative max-w-xs w-full">
                     <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-neutral-400 dark:text-neutral-500" />
                     <input
@@ -2011,70 +1897,6 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                   </div>
                 </div>
               </div>
-
-              {/* Gráfico Analítico de Eventos (Opcional) */}
-              {showChart && (
-                <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-3 flex flex-col">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-xs font-bold text-neutral-900 dark:text-white">Frecuencia de Eventos por Nivel</h4>
-                    <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                      Haz clic en un punto de la gráfica para filtrar temporalmente en Seq
-                    </span>
-                  </div>
-                  <div className="h-28 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart
-                        data={chartData}
-                        onClick={handleChartClick}
-                        margin={{ top: 5, right: 10, left: -25, bottom: 0 }}
-                      >
-                        <XAxis
-                          dataKey="timeLabel"
-                          tick={{ fill: '#666', fontSize: 8 }}
-                          axisLine={false}
-                          tickLine={false}
-                        />
-                        <YAxis
-                          tick={{ fill: '#666', fontSize: 8 }}
-                          axisLine={false}
-                          tickLine={false}
-                          allowDecimals={false}
-                        />
-                        <RechartsTooltip
-                          contentStyle={{
-                            backgroundColor: isDarkMode ? '#131313' : '#ffffff',
-                            borderColor: isDarkMode ? '#222' : '#e5e5e5',
-                            borderRadius: '8px',
-                            fontSize: '11px',
-                            color: isDarkMode ? '#fff' : '#333'
-                          }}
-                          labelStyle={{ color: isDarkMode ? '#fff' : '#000', fontWeight: 'bold' }}
-                        />
-                        <Legend
-                          verticalAlign="top"
-                          align="right"
-                          iconSize={6}
-                          iconType="circle"
-                          wrapperStyle={{ fontSize: '9px', paddingBottom: '10px' }}
-                          onClick={(props: any) => handleLevelClick(props.dataKey)}
-                        />
-                        {LOG_LEVELS.map(lvl => (
-                          <Area
-                            key={lvl}
-                            type="monotone"
-                            dataKey={lvl}
-                            stroke={LEVEL_COLORS[lvl]}
-                            fill={`${LEVEL_COLORS[lvl]}05`}
-                            strokeWidth={1.5}
-                            dot={{ r: 1.5, strokeWidth: 0.5 }}
-                            activeDot={{ r: 3 }}
-                          />
-                        ))}
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              )}
 
               {/* Visor de Eventos (Consola / Grid / Gráficas) */}
               <div className="flex-1 flex flex-col border border-neutral-200 dark:border-neutral-800 bg-[#0d0d0d] rounded-xl overflow-hidden min-h-0 relative">
