@@ -167,6 +167,10 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
   
   // Inputs Formularios Modales
   const [queryNameInput, setQueryNameInput] = useState('');
+  const [editingQuery, setEditingQuery] = useState<SavedQuery | null>(null);
+  const [queryFilterInput, setQueryFilterInput] = useState<string>('');
+  const [showSavedQueries, setShowSavedQueries] = useState<boolean>(false);
+  const [historyQueries, setHistoryQueries] = useState<string[]>([]);
   
   const [taskForm, setTaskForm] = useState({
     name: '',
@@ -277,6 +281,12 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     } else {
       setSavedQueries(DEFAULT_QUERIES);
       localStorage.setItem('seq_monitor_queries', JSON.stringify(DEFAULT_QUERIES));
+    }
+
+    // Cargar historial de queries de localStorage
+    const savedHistory = localStorage.getItem('seq_monitor_query_history');
+    if (savedHistory) {
+      setHistoryQueries(JSON.parse(savedHistory));
     }
 
     // Cargar límite
@@ -500,6 +510,10 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
       return;
     }
 
+    if (!isAutoRefresh && filterExpr && filterExpr.trim() !== '') {
+      addToHistory(filterExpr);
+    }
+
     if (!isAutoRefresh) {
       setIsLoadingLogs(true);
     }
@@ -688,23 +702,35 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     showToast('Consola e inputs restablecidos', 'info');
   };
 
-  // Guardar consulta personalizada
+  // Guardar/editar consulta personalizada
   const handleSaveQuery = (e: React.FormEvent) => {
     e.preventDefault();
     if (!queryNameInput.trim()) return;
 
-    const newQuery: SavedQuery = {
-      id: 'q-custom-' + Date.now(),
-      name: queryNameInput.trim(),
-      filter: currentFilter
-    };
+    let updated: SavedQuery[];
+    if (editingQuery) {
+      updated = savedQueries.map(q => 
+        q.id === editingQuery.id 
+          ? { ...q, name: queryNameInput.trim(), filter: queryFilterInput }
+          : q
+      );
+      showToast(`Consulta "${queryNameInput.trim()}" actualizada con éxito`, 'success');
+    } else {
+      const newQuery: SavedQuery = {
+        id: 'q-custom-' + Date.now(),
+        name: queryNameInput.trim(),
+        filter: queryFilterInput
+      };
+      updated = [...savedQueries, newQuery];
+      showToast(`Consulta "${newQuery.name}" guardada`, 'success');
+    }
 
-    const updated = [...savedQueries, newQuery];
     setSavedQueries(updated);
     localStorage.setItem('seq_monitor_queries', JSON.stringify(updated));
     setIsSaveQueryModalOpen(false);
+    setEditingQuery(null);
     setQueryNameInput('');
-    showToast(`Consulta "${newQuery.name}" guardada`, 'success');
+    setQueryFilterInput('');
   };
 
   // Borrar consulta guardada
@@ -713,6 +739,28 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     setSavedQueries(updated);
     localStorage.setItem('seq_monitor_queries', JSON.stringify(updated));
     showToast('Consulta guardada eliminada', 'info');
+  };
+
+  // Agregar consulta al historial de ejecuciones (máximo 100, sin duplicados)
+  const addToHistory = (query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    setHistoryQueries(prev => {
+      const filtered = prev.filter(q => q !== trimmed);
+      const newHistory = [trimmed, ...filtered].slice(0, 100);
+      localStorage.setItem('seq_monitor_query_history', JSON.stringify(newHistory));
+      return newHistory;
+    });
+  };
+
+  // Eliminar una consulta del historial rápidamente
+  const handleDeleteHistoryQuery = (queryToDelete: string) => {
+    setHistoryQueries(prev => {
+      const updated = prev.filter(q => q !== queryToDelete);
+      localStorage.setItem('seq_monitor_query_history', JSON.stringify(updated));
+      return updated;
+    });
+    showToast('Consulta eliminada del historial', 'info');
   };
 
   // Copiar log completo (JSON) al portapapeles
@@ -1302,58 +1350,143 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
               </section>
 
               {/* Consultas Guardadas */}
-              <section className="flex-1 flex flex-col min-h-0 gap-2.5">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-[10px] font-bold text-[#71BF44] dark:text-[#71BF44] tracking-wider uppercase">Queries Guardadas</h4>
-                  <button
-                    onClick={() => {
-                      setQueryNameInput('');
-                      setIsSaveQueryModalOpen(true);
-                    }}
-                    className="text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-white transition-colors"
-                    title="Guardar consulta actual"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                </div>
-                
-                <div className="flex-1 overflow-y-auto flex flex-col gap-1.5 pr-1">
-                  {savedQueries.map(q => {
-                    const isActive = currentFilter === q.filter;
-                    return (
-                      <div
-                        key={q.id}
+              <section className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSavedQueries(!showSavedQueries)}
+                  className="w-full border border-neutral-200 dark:border-neutral-850 bg-white dark:bg-[#181818]/60 hover:bg-neutral-50 dark:hover:bg-neutral-800/80 text-neutral-700 dark:text-neutral-300 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-between gap-1.5 shadow-sm"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-[#71BF44]" />
+                    {showSavedQueries ? 'Ocultar Guardadas' : 'Mostrar Guardadas'}
+                  </span>
+                  {showSavedQueries ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                </button>
+
+                {showSavedQueries && (
+                  <div className="flex flex-col min-h-0 gap-2 mt-1 border-t border-neutral-200 dark:border-neutral-800/50 pt-2.5 max-h-[300px] overflow-y-auto animate-scale-in">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-[10px] font-bold text-[#71BF44] dark:text-[#71BF44] tracking-wider uppercase">Queries Guardadas</h4>
+                      <button
                         onClick={() => {
-                          setCurrentFilter(q.filter);
-                          setTimeout(() => fetchLogs(false), 50);
+                          setQueryNameInput('');
+                          setQueryFilterInput(currentFilter);
+                          setEditingQuery(null);
+                          setIsSaveQueryModalOpen(true);
                         }}
-                        className={`group flex items-start justify-between p-2 rounded-lg cursor-pointer transition-all border ${
-                          isActive 
-                            ? 'bg-[#71BF44]/10 border-[#71BF44]/30 text-[#71BF44] dark:text-white font-medium' 
-                            : 'bg-white dark:bg-[#181818]/50 border-neutral-200 dark:border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200 hover:border-neutral-300 dark:hover:border-neutral-800'
-                        }`}
-                        title={q.filter || 'Sin filtro'}
+                        className="text-neutral-500 hover:text-neutral-800 dark:text-neutral-450 dark:hover:text-white transition-colors"
+                        title="Guardar consulta actual"
                       >
-                        <div className="flex flex-col min-w-0 pr-1">
-                          <span className="text-xs truncate">{q.name}</span>
-                          <span className="text-[9px] text-neutral-450 dark:text-neutral-500 truncate">{q.filter || 'Todos los logs'}</span>
-                        </div>
-                        {!q.id.startsWith('q-') && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteQuery(q.id);
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                    
+                    <div className="flex flex-col gap-1.5 pr-1">
+                      {savedQueries.map(q => {
+                        const isActive = currentFilter === q.filter;
+                        return (
+                          <div
+                            key={q.id}
+                            onClick={() => {
+                              setCurrentFilter(q.filter);
+                              setTimeout(() => fetchLogs(false), 50);
                             }}
-                            className="opacity-0 group-hover:opacity-100 text-neutral-450 dark:text-neutral-500 hover:text-red-500 dark:hover:text-red-400 transition-all p-0.5 shrink-0"
-                            title="Eliminar consulta"
+                            className={`group flex items-start justify-between p-2 rounded-lg cursor-pointer transition-all border ${
+                              isActive 
+                                ? 'bg-[#71BF44]/10 border-[#71BF44]/30 text-[#71BF44] dark:text-white font-medium' 
+                                : 'bg-white dark:bg-[#181818]/50 border-neutral-200 dark:border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200 hover:border-neutral-300 dark:hover:border-neutral-800'
+                            }`}
+                            title={q.filter || 'Sin filtro'}
                           >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                            <div className="flex flex-col min-w-0 pr-1 flex-1">
+                              <span className="text-xs truncate">{q.name}</span>
+                              <span className="text-[9px] text-neutral-450 dark:text-neutral-500 truncate block font-mono">{q.filter || 'Todos los logs'}</span>
+                            </div>
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 shrink-0 select-none">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setQueryNameInput(q.name);
+                                  setQueryFilterInput(q.filter);
+                                  setEditingQuery(q);
+                                  setIsSaveQueryModalOpen(true);
+                                }}
+                                className="text-neutral-450 dark:text-neutral-500 hover:text-[#71BF44] dark:hover:text-[#71BF44] transition-all p-0.5"
+                                title="Editar consulta"
+                              >
+                                <Edit className="w-3 h-3" />
+                              </button>
+                              {!q.id.startsWith('q-') && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteQuery(q.id);
+                                  }}
+                                  className="text-neutral-450 dark:text-neutral-500 hover:text-red-500 dark:hover:text-red-400 transition-all p-0.5"
+                                  title="Eliminar consulta"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Historial de Ejecuciones (Consultas Realizadas) */}
+                    <div className="flex items-center justify-between border-t border-neutral-200 dark:border-neutral-800/50 pt-3 mt-3">
+                      <h4 className="text-[10px] font-bold text-[#71BF44] dark:text-[#71BF44] tracking-wider uppercase">Consultas Realizadas</h4>
+                      <span className="text-[9px] text-neutral-400 dark:text-neutral-500 font-medium">({historyQueries.length})</span>
+                    </div>
+                    
+                    <div className="flex flex-col gap-1.5 pr-1 max-h-[250px] overflow-y-auto">
+                      {historyQueries.length === 0 ? (
+                        <span className="text-[10px] text-neutral-500 dark:text-neutral-450 italic p-1">No hay consultas en el historial</span>
+                      ) : (
+                        historyQueries.map((historyQuery, index) => {
+                          const matchingSaved = savedQueries.find(q => q.filter.trim() === historyQuery.trim());
+                          const isNamed = !!matchingSaved;
+                          const isActive = currentFilter === historyQuery;
+                          return (
+                            <div
+                              key={index}
+                              onClick={() => {
+                                setCurrentFilter(historyQuery);
+                                setTimeout(() => fetchLogs(false), 50);
+                              }}
+                              className={`group flex items-start justify-between p-2 rounded-lg cursor-pointer transition-all border ${
+                                isActive 
+                                  ? 'bg-[#71BF44]/10 border-[#71BF44]/30 text-[#71BF44] dark:text-white font-medium' 
+                                  : 'bg-white dark:bg-[#181818]/50 border-neutral-200 dark:border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200 hover:border-neutral-300 dark:hover:border-neutral-800'
+                              }`}
+                              title={historyQuery}
+                            >
+                              <div className="flex flex-col min-w-0 pr-1 flex-1">
+                                <span className="text-xs truncate font-medium">
+                                  {isNamed ? matchingSaved.name : 'Consulta sin guardar'}
+                                </span>
+                                <span className="text-[9px] text-neutral-450 dark:text-neutral-500 truncate block font-mono">{historyQuery || 'Todos los logs'}</span>
+                              </div>
+                              {!isNamed && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteHistoryQuery(historyQuery);
+                                  }}
+                                  className="opacity-0 group-hover:opacity-100 text-neutral-450 dark:text-neutral-500 hover:text-red-500 dark:hover:text-red-400 transition-all p-0.5 shrink-0"
+                                  title="Eliminar del historial"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
               </section>
             </aside>
 
@@ -1365,8 +1498,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                 <div className="flex flex-col sm:flex-row gap-2">
                   <div className="flex-1 relative">
                     <Search className="absolute left-3 top-2.5 w-4 h-4 text-neutral-450 dark:text-neutral-500" />
-                    <input
-                      type="text"
+                    <textarea
                       placeholder="Filtro (ej: @Level = 'Error' or App = 'RAG' o propiedades estructuradas)"
                       value={currentFilter}
                       onChange={(e) => {
@@ -1374,10 +1506,17 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                         stateRef.current.currentFilter = e.target.value;
                       }}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleExecuteQuery();
+                        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                          e.preventDefault();
+                          handleExecuteQuery();
+                        }
                       }}
-                      className="w-full bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg pl-9 pr-3 py-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44]"
+                      rows={2}
+                      className="w-full bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg pl-9 pr-16 py-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] font-mono resize-y"
                     />
+                    <div className="absolute right-2 bottom-2 text-[9px] text-neutral-400 dark:text-neutral-500 pointer-events-none select-none font-sans bg-neutral-100 dark:bg-[#111] px-1 rounded border border-neutral-200 dark:border-neutral-800">
+                      Ctrl+Enter
+                    </div>
                   </div>
                   
                   <div className="flex items-center gap-2">
@@ -2089,7 +2228,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
               <button
                 onClick={() => {
                   setEditingConnection(null);
-                  setConnectionForm({ name: '', url: '', apiKey: '' });
+                  setConnectionForm({ name: '', url: '', apiKey: '', usuario: '', clave: '' });
                   setIsConnectionModalOpen(true);
                 }}
                 className="bg-[#71BF44] hover:bg-[#71BF44]/90 text-white dark:text-[#131313] text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-colors"
@@ -2205,13 +2344,21 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
         )}
       </div>
 
-      {/* --- MODAL GUARDAR QUERY --- */}
+      {/* --- MODAL GUARDAR/EDITAR QUERY --- */}
       {isSaveQueryModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-xl p-5 w-full max-w-md shadow-2xl animate-scale-in">
             <div className="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-900 pb-3 mb-4">
-              <h3 className="text-sm font-bold text-neutral-900 dark:text-white uppercase tracking-wider">Guardar Consulta</h3>
-              <button onClick={() => setIsSaveQueryModalOpen(false)} className="text-neutral-500 hover:text-neutral-800 dark:text-neutral-450 dark:hover:text-white">
+              <h3 className="text-sm font-bold text-neutral-900 dark:text-white uppercase tracking-wider">
+                {editingQuery ? 'Editar Consulta' : 'Guardar Consulta'}
+              </h3>
+              <button 
+                onClick={() => {
+                  setIsSaveQueryModalOpen(false);
+                  setEditingQuery(null);
+                }} 
+                className="text-neutral-500 hover:text-neutral-800 dark:text-neutral-450 dark:hover:text-white"
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -2232,16 +2379,20 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] text-neutral-550 dark:text-neutral-400 font-bold uppercase">Expresión de Filtro</label>
                 <textarea
-                  readOnly
-                  value={currentFilter || '(Consulta vacía - todos los logs)'}
-                  className="bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-850 rounded-lg p-2.5 text-xs text-neutral-600 dark:text-neutral-450 font-mono h-20 resize-none focus:outline-none"
+                  value={queryFilterInput}
+                  onChange={(e) => setQueryFilterInput(e.target.value)}
+                  placeholder="Escribe el query o filtro aquí..."
+                  className="bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-850 rounded-lg p-2.5 text-xs text-neutral-900 dark:text-white font-mono h-24 resize-y focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44]"
                 />
               </div>
 
               <div className="flex items-center justify-end gap-2 mt-2">
                 <button
                   type="button"
-                  onClick={() => setIsSaveQueryModalOpen(false)}
+                  onClick={() => {
+                    setIsSaveQueryModalOpen(false);
+                    setEditingQuery(null);
+                  }}
                   className="border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-[#181818] hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs font-bold px-4 py-2.5 rounded-lg text-neutral-600 dark:text-neutral-300"
                 >
                   Cancelar
@@ -2251,7 +2402,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                   className="bg-[#71BF44] hover:bg-[#71BF44]/90 text-white dark:text-[#131313] text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-1.5"
                 >
                   <Save className="w-3.5 h-3.5" />
-                  Guardar
+                  {editingQuery ? 'Actualizar' : 'Guardar'}
                 </button>
               </div>
             </form>
