@@ -1014,6 +1014,8 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
         if (colonIndex !== -1 && currentFilter.substring(colonIndex + 1).trim().toLowerCase().startsWith('select ')) {
           const prefix = currentFilter.substring(0, colonIndex + 1);
           setCurrentFilter(`${prefix} ${modifiedQuery}`);
+        }
+      }
     }
     fetchLogs(false);
   };
