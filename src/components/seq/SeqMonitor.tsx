@@ -667,35 +667,72 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
       const data = await response.json();
       let fetchedLogs: SeqLog[] = [];
 
-      if (data && data.Columns && Array.isArray(data.Rows)) {
-        // Es un resultado de consulta SQL agregada/dataset de Seq
-        setRawSqlResult({ columns: data.Columns, rows: data.Rows });
+      if (data && data.Columns && (Array.isArray(data.Rows) || Array.isArray(data.Series))) {
+        // Es un resultado de consulta SQL agregada/dataset de Seq (Rows o Series/Slices)
+        let columns = [...data.Columns];
+        let rows: any[][] = [];
+
+        if (Array.isArray(data.Rows)) {
+          rows = data.Rows;
+        } else if (Array.isArray(data.Series)) {
+          // Aplanar Series y Slices (GROUP BY time(...))
+          const timeColName = 'time';
+          const hasTimeCol = columns.some(c => c.toLowerCase() === 'time' || c.toLowerCase() === '@timestamp');
+          if (!hasTimeCol) {
+            let keyLength = 0;
+            if (data.Series.length > 0 && data.Series[0].Key) {
+              keyLength = data.Series[0].Key.length;
+            }
+            columns.splice(keyLength, 0, timeColName);
+          }
+
+          const timeIndex = columns.findIndex(c => c.toLowerCase() === 'time' || c.toLowerCase() === '@timestamp');
+
+          data.Series.forEach((seriesItem: any) => {
+            const keyValues = seriesItem.Key || [];
+            const slices = seriesItem.Slices || [];
+            
+            slices.forEach((slice: any) => {
+              const sliceTime = slice.Time;
+              const sliceRows = slice.Rows || [[]];
+              
+              sliceRows.forEach((sliceRow: any[]) => {
+                const flatRow = [...keyValues];
+                flatRow.splice(timeIndex, 0, sliceTime);
+                flatRow.push(...sliceRow);
+                rows.push(flatRow);
+              });
+            });
+          });
+        }
+
+        setRawSqlResult({ columns, rows });
         if (!isAutoRefresh) {
           setSqlViewMode('grid');
         }
 
-        fetchedLogs = data.Rows.map((row: any[], rowIndex: number) => {
-          const properties = data.Columns.map((colName: string, colIndex: number) => ({
+        fetchedLogs = rows.map((row: any[], rowIndex: number) => {
+          const properties = columns.map((colName: string, colIndex: number) => ({
             Name: colName,
             Value: row[colIndex]
           }));
 
           // Determinar si hay un timestamp en las columnas
           let timestamp = new Date().toISOString();
-          const tsColIndex = data.Columns.findIndex((col: string) => col.toLowerCase() === '@timestamp' || col.toLowerCase() === 'time');
+          const tsColIndex = columns.findIndex((col: string) => col.toLowerCase() === '@timestamp' || col.toLowerCase() === 'time');
           if (tsColIndex !== -1 && row[tsColIndex]) {
             timestamp = row[tsColIndex];
           }
 
           // Buscar si hay columna de nivel de log
           let level = 'Information';
-          const lvlColIndex = data.Columns.findIndex((col: string) => col.toLowerCase() === '@level' || col.toLowerCase() === 'level');
+          const lvlColIndex = columns.findIndex((col: string) => col.toLowerCase() === '@level' || col.toLowerCase() === 'level');
           if (lvlColIndex !== -1 && row[lvlColIndex]) {
             level = row[lvlColIndex];
           }
 
           // Crear mensaje renderizado descriptivo
-          const renderedMessage = data.Columns
+          const renderedMessage = columns
             .map((colName: string, colIndex: number) => {
               const val = row[colIndex];
               return `${colName}: ${typeof val === 'object' ? JSON.stringify(val) : String(val)}`;
@@ -977,14 +1014,73 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
         if (colonIndex !== -1 && currentFilter.substring(colonIndex + 1).trim().toLowerCase().startsWith('select ')) {
           const prefix = currentFilter.substring(0, colonIndex + 1);
           setCurrentFilter(`${prefix} ${modifiedQuery}`);
-          stateRef.current.currentFilter = `${prefix} ${modifiedQuery}`;
-        } else {
-          setCurrentFilter(modifiedQuery);
-          stateRef.current.currentFilter = modifiedQuery;
-        }
-      }
     }
     fetchLogs(false);
+  };
+
+  // Inyecta la condición "and @Timestamp >= Now() - 3h" respetando las cláusulas WHERE y GROUP BY
+  const handleInjectTimeFilter = () => {
+    const trimmed = currentFilter.trim();
+    if (!trimmed) {
+      const newFilter = "@Timestamp >= Now() - 3h";
+      setCurrentFilter(newFilter);
+      stateRef.current.currentFilter = newFilter;
+      showToast("Filtro de tiempo de 3 horas inyectado", "success");
+      return;
+    }
+
+    if (!trimmed.toLowerCase().startsWith('select ')) {
+      // Si es un filtro simple, simplemente concatenamos con "and" si no lo contiene ya
+      if (/@timestamp\s*>=/i.test(trimmed)) {
+        showToast("El filtro ya contiene un límite de @Timestamp", "info");
+        return;
+      }
+      const newFilter = `${trimmed} and @Timestamp >= Now() - 3h`;
+      setCurrentFilter(newFilter);
+      stateRef.current.currentFilter = newFilter;
+      showToast("Filtro de tiempo de 3 horas inyectado", "success");
+      return;
+    }
+
+    // Si es SQL
+    if (/@timestamp\s*>=/i.test(trimmed)) {
+      showToast("La consulta SQL ya contiene un límite de @Timestamp", "info");
+      return;
+    }
+
+    const groupByMatch = trimmed.match(/\bgroup\s+by\b/i);
+    let queryPartBeforeGroupBy = trimmed;
+    let queryPartAfterGroupBy = '';
+
+    if (groupByMatch) {
+      const index = groupByMatch.index!;
+      queryPartBeforeGroupBy = trimmed.substring(0, index).trim();
+      queryPartAfterGroupBy = ' ' + trimmed.substring(index).trim();
+    }
+
+    let modifiedQueryBefore = '';
+    const whereMatchInBefore = queryPartBeforeGroupBy.match(/\bwhere\b/i);
+
+    if (whereMatchInBefore) {
+      // Si ya tiene cláusula WHERE, concatenamos con AND al final de esa sección
+      modifiedQueryBefore = `${queryPartBeforeGroupBy} and @Timestamp >= Now() - 3h`;
+    } else {
+      // Si no tiene cláusula WHERE, debemos insertarla después del FROM
+      const fromMatch = queryPartBeforeGroupBy.match(/\bfrom\s+([a-zA-Z0-9_"`'@.-]+)/i);
+      if (fromMatch) {
+        const index = fromMatch.index! + fromMatch[0].length;
+        const beforeFrom = queryPartBeforeGroupBy.substring(0, index);
+        const afterFrom = queryPartBeforeGroupBy.substring(index);
+        modifiedQueryBefore = `${beforeFrom} where @Timestamp >= Now() - 3h${afterFrom}`;
+      } else {
+        modifiedQueryBefore = `${queryPartBeforeGroupBy} where @Timestamp >= Now() - 3h`;
+      }
+    }
+
+    const finalQuery = `${modifiedQueryBefore}${queryPartAfterGroupBy}`;
+    setCurrentFilter(finalQuery);
+    stateRef.current.currentFilter = finalQuery;
+    showToast("Filtro de tiempo de 3 horas inyectado en SQL", "success");
   };
 
   // Parsear el resultado de la consulta SQL para consumo del LineChart de Recharts
@@ -1039,16 +1135,19 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
       }
       
       if (categoryIndices.length > 0) {
-        categoryIndices.forEach(catIdx => {
-          const catVal = String(row[catIdx] ?? 'null');
-          numericIndices.forEach(numIdx => {
-            const seriesName = numericIndices.length > 1 
-              ? `${catVal} (${columns[numIdx]})`
-              : catVal;
-            
-            chartDataMap[xVal][seriesName] = Number(row[numIdx] ?? 0);
-            seriesSet.add(seriesName);
-          });
+        // Combinar todos los valores de categoría en un solo string identificador de serie
+        const catVal = categoryIndices
+          .map(catIdx => String(row[catIdx] ?? '').trim())
+          .filter(Boolean)
+          .join(' | ') || 'General';
+
+        numericIndices.forEach(numIdx => {
+          const seriesName = numericIndices.length > 1 
+            ? `${catVal} (${columns[numIdx]})`
+            : catVal;
+          
+          chartDataMap[xVal][seriesName] = Number(row[numIdx] ?? 0);
+          seriesSet.add(seriesName);
         });
       } else {
         numericIndices.forEach(numIdx => {
@@ -1764,6 +1863,17 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                         </div>
                       )}
                     </div>
+
+                    {/* Botón para inyectar filtro temporal de 3h */}
+                    <button
+                      onClick={handleInjectTimeFilter}
+                      type="button"
+                      className="flex items-center gap-1.5 px-3 py-2 bg-neutral-50 dark:bg-[#181818] border border-neutral-255 dark:border-neutral-800 rounded-lg text-xs text-neutral-700 dark:text-neutral-300 hover:bg-[#71BF44]/10 hover:text-[#71BF44] hover:border-[#71BF44]/30 transition-colors select-none whitespace-nowrap"
+                      title="Insertar condición de tiempo 'and @Timestamp >= Now() - 3h' al final del WHERE y antes del GROUP BY si existe"
+                    >
+                      <Clock className="w-3.5 h-3.5 text-[#71BF44]" />
+                      <span>+ 3h</span>
+                    </button>
 
                     <label className="text-[10px] text-neutral-550 dark:text-neutral-400 font-bold uppercase tracking-wider">Límite</label>
                     <input
