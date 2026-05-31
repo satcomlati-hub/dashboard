@@ -177,6 +177,17 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
   const [showSavedQueries, setShowSavedQueries] = useState<boolean>(false);
   const [historyQueries, setHistoryQueries] = useState<HistoryQuery[]>([]);
   
+  // Selector temporal (inicio/fin)
+  const [queryStartTime, setQueryStartTime] = useState<string>(''); // YYYY-MM-DDTHH:mm
+  const [queryEndTime, setQueryEndTime] = useState<string>('');     // YYYY-MM-DDTHH:mm
+  const [isTimePickerOpen, setIsTimePickerOpen] = useState<boolean>(false);
+  const [isSuggestionsOpen, setIsSuggestionsOpen] = useState<boolean>(false);
+
+  // Refs para interactividad
+  const timePickerRef = useRef<HTMLDivElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
   const [taskForm, setTaskForm] = useState({
     name: '',
     connectionId: '',
@@ -205,7 +216,15 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
 
   // Refs para temporizadores y streaming
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const stateRef = useRef({ seqUrl: '', apiKey: '', currentFilter: '', limit: 50, isStreaming: false });
+  const stateRef = useRef({ 
+    seqUrl: '', 
+    apiKey: '', 
+    currentFilter: '', 
+    limit: 50, 
+    isStreaming: false,
+    queryStartTime: '',
+    queryEndTime: ''
+  });
 
   // Sincronizar referencias del estado para el callback de setInterval
   useEffect(() => {
@@ -215,9 +234,30 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
       apiKey: activeConn?.apiKey || '',
       currentFilter,
       limit,
-      isStreaming
+      isStreaming,
+      queryStartTime,
+      queryEndTime
     };
-  }, [connections, selectedConnectionId, currentFilter, limit, isStreaming]);
+  }, [connections, selectedConnectionId, currentFilter, limit, isStreaming, queryStartTime, queryEndTime]);
+
+  // Cerrar popups al hacer clic afuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (timePickerRef.current && !timePickerRef.current.contains(event.target as Node)) {
+        setIsTimePickerOpen(false);
+      }
+      if (suggestionsRef.current && 
+          !suggestionsRef.current.contains(event.target as Node) && 
+          textareaRef.current && 
+          !textareaRef.current.contains(event.target as Node)) {
+        setIsSuggestionsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   // Mostrar Toast
   const showToast = (message: string, type: ToastMessage['type'] = 'info') => {
@@ -527,7 +567,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
 
   // Obtener logs de Seq
   const fetchLogs = async (isAutoRefresh = false) => {
-    const { seqUrl, apiKey, currentFilter: filterExpr, limit: maxCount } = stateRef.current;
+    const { seqUrl, apiKey, currentFilter: filterExpr, limit: maxCount, queryStartTime: startTime, queryEndTime: endTime } = stateRef.current;
     if (!seqUrl) {
       if (!isAutoRefresh) showToast('No hay una conexión de Seq activa', 'warning');
       return;
@@ -549,8 +589,33 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
       });
       
       const cleanFilter = cleanFilterPrefix(filterExpr);
-      if (cleanFilter && cleanFilter.trim() !== '') {
-        queryParams.append('filter', cleanFilter);
+      let finalFilter = cleanFilter;
+
+      // Inyectar límites de fecha/hora si no es query SQL (porque las SQL ya la llevan inyectada en su where)
+      const isSql = cleanFilter && cleanFilter.trim().toLowerCase().startsWith('select ');
+      if (!isSql) {
+        const timeFilters: string[] = [];
+        if (startTime) {
+          timeFilters.push(`@Timestamp >= DateTime('${startTime}:00Z')`);
+        }
+        if (endTime) {
+          timeFilters.push(`@Timestamp <= DateTime('${endTime}:00Z')`);
+        }
+        if (timeFilters.length > 0) {
+          const timeFilterStr = timeFilters.join(' and ');
+          if (finalFilter && finalFilter.trim() !== '') {
+            finalFilter = `(${finalFilter}) and ${timeFilterStr}`;
+          } else {
+            finalFilter = timeFilterStr;
+          }
+        }
+      } else {
+        // Si es SQL, aseguremonos de inyectar las fechas actuales en el where
+        finalFilter = applyTimeLimitsToQuery(cleanFilter);
+      }
+
+      if (finalFilter && finalFilter.trim() !== '') {
+        queryParams.append('filter', finalFilter);
       }
 
       const response = await fetch(`/api/seq/events?${queryParams}`, {
@@ -817,17 +882,31 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
       .catch(err => showToast(`Error al copiar: ${err.message}`, 'error'));
   };
 
-  // Si la consulta SQL no especifica un filtro de tiempo, añadir por defecto 3 horas atrás
-  const addDefaultTimeFilter = (query: string): string => {
+  // Aplica los límites de tiempo seleccionados (o por defecto 3 horas) a una consulta SQL select
+  const applyTimeLimitsToQuery = (query: string): string => {
     const trimmed = query.trim();
     if (!trimmed.toLowerCase().startsWith('select ')) {
       return query;
     }
 
-    // Verificar si ya tiene filtro de tiempo (ej: @timestamp o la palabra clave "time" que no sea la función time(1h) en group by)
-    const hasTimeFilter = /@timestamp/i.test(trimmed) || /\btime\b(?!\s*\()/i.test(trimmed);
-    if (hasTimeFilter) {
-      return query;
+    let timeFilterExpr = '';
+    const timeFilters: string[] = [];
+    if (queryStartTime) {
+      timeFilters.push(`@Timestamp >= DateTime('${queryStartTime}:00Z')`);
+    }
+    if (queryEndTime) {
+      timeFilters.push(`@Timestamp <= DateTime('${queryEndTime}:00Z')`);
+    }
+
+    if (timeFilters.length > 0) {
+      timeFilterExpr = timeFilters.join(' and ');
+    } else {
+      // Verificar si ya tiene filtro de tiempo
+      const hasTimeFilter = /@timestamp/i.test(trimmed) || /\btime\b(?!\s*\()/i.test(trimmed);
+      if (hasTimeFilter) {
+        return query;
+      }
+      timeFilterExpr = "@Timestamp >= Now() - 3h";
     }
 
     // Buscar si tiene la palabra clave WHERE
@@ -837,7 +916,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
       const index = whereMatch.index! + whereMatch[0].length;
       const before = trimmed.substring(0, index);
       const after = trimmed.substring(index);
-      return `${before} @Timestamp >= Now() - 3h and${after}`;
+      return `${before} ${timeFilterExpr} and${after}`;
     } else {
       // Si no tiene WHERE, lo insertamos después del FROM <tabla>
       const fromMatch = trimmed.match(/\bfrom\s+([a-zA-Z0-9_"`'@.-]+)/i);
@@ -845,7 +924,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
         const index = fromMatch.index! + fromMatch[0].length;
         const before = trimmed.substring(0, index);
         const after = trimmed.substring(index);
-        return `${before} where @Timestamp >= Now() - 3h${after}`;
+        return `${before} where ${timeFilterExpr}${after}`;
       }
     }
 
@@ -857,7 +936,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     const cleanedQuery = cleanFilterPrefix(currentFilter);
     let queryToRun = cleanedQuery;
     if (queryToRun && queryToRun.trim().toLowerCase().startsWith('select ')) {
-      const modifiedQuery = addDefaultTimeFilter(queryToRun);
+      const modifiedQuery = applyTimeLimitsToQuery(queryToRun);
       if (modifiedQuery !== queryToRun) {
         queryToRun = modifiedQuery;
         // Si originalmente tenía prefijo, mantenerlo al guardar en el estado
@@ -1424,9 +1503,9 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                   </div>
                 </div>
 
-                {/* Historial de Consultas */}
+                {/* Queries Guardadas */}
                 <div className="flex items-center gap-2 w-full md:w-auto">
-                  <span className="text-[10px] font-bold text-[#71BF44] uppercase tracking-wider whitespace-nowrap">Historial:</span>
+                  <span className="text-[10px] font-bold text-[#71BF44] uppercase tracking-wider whitespace-nowrap">Guardadas:</span>
                   <div className="flex items-center gap-1.5 flex-1 md:flex-none">
                     <select
                       onChange={(e) => {
@@ -1439,24 +1518,25 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                           }, 50);
                         }
                       }}
-                      className="bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg p-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] w-full md:w-[220px]"
+                      className="bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg p-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] w-full md:w-[180px]"
                     >
-                      <option value="">-- Seleccionar Reciente --</option>
-                      {historyQueries.map((h, i) => (
-                        <option key={i} value={h.query}>
-                          {`[${h.timestamp}] ${h.query.length > 35 ? h.query.substring(0, 35) + '...' : h.query}`}
-                        </option>
+                      <option value="">-- Cargar Guardada --</option>
+                      {savedQueries.map(q => (
+                        <option key={q.id} value={q.filter}>{q.name}</option>
                       ))}
                     </select>
-                    {currentFilter && (
-                      <button
-                        onClick={() => handleDeleteHistoryQuery(currentFilter)}
-                        className="p-2 bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-850 hover:bg-neutral-100 dark:hover:bg-red-500/20 text-neutral-500 hover:text-red-500 dark:text-neutral-400 dark:hover:text-red-400 rounded-lg transition-colors"
-                        title="Eliminar consulta del historial"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+                    <button
+                      onClick={() => {
+                        setQueryNameInput('');
+                        setQueryFilterInput(currentFilter);
+                        setEditingQuery(null);
+                        setIsSaveQueryModalOpen(true);
+                      }}
+                      className="p-2 bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-850 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-white transition-colors"
+                      title="Guardar consulta actual"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
 
@@ -1468,16 +1548,22 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                   <div className="flex-1 relative">
                     <Search className="absolute left-3 top-2.5 w-4 h-4 text-neutral-450 dark:text-neutral-500" />
                     <textarea
+                      ref={textareaRef}
                       placeholder="Filtro (ej: @Level = 'Error' or App = 'RAG' o propiedades estructuradas)"
                       value={currentFilter}
                       onChange={(e) => {
                         setCurrentFilter(e.target.value);
                         stateRef.current.currentFilter = e.target.value;
+                        setIsSuggestionsOpen(true);
                       }}
+                      onFocus={() => setIsSuggestionsOpen(true)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                           e.preventDefault();
                           handleExecuteQuery();
+                          setIsSuggestionsOpen(false);
+                        } else if (e.key === 'Escape') {
+                          setIsSuggestionsOpen(false);
                         }
                       }}
                       rows={2}
@@ -1486,9 +1572,166 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                     <div className="absolute right-2 bottom-2 text-[9px] text-neutral-400 dark:text-neutral-500 pointer-events-none select-none font-sans bg-neutral-100 dark:bg-[#111] px-1 rounded border border-neutral-200 dark:border-neutral-800">
                       Ctrl+Enter
                     </div>
+
+                    {/* Sugerencias de Historial Autocompletable */}
+                    {isSuggestionsOpen && historyQueries.length > 0 && (
+                      <div 
+                        ref={suggestionsRef}
+                        className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-[#151515] border border-neutral-250 dark:border-neutral-800 rounded-lg shadow-xl max-h-60 overflow-y-auto z-40 divide-y divide-neutral-100 dark:divide-neutral-850"
+                      >
+                        {(() => {
+                          const filterVal = currentFilter.trim().toLowerCase();
+                          const filteredHistory = historyQueries.filter(h => 
+                            h.query.toLowerCase().includes(filterVal)
+                          );
+                          if (filteredHistory.length === 0) {
+                            return (
+                              <div className="p-3 text-xs text-neutral-500 italic select-none">
+                                Sin coincidencias en el historial
+                              </div>
+                            );
+                          }
+                          return filteredHistory.map((h, i) => (
+                            <div 
+                              key={i} 
+                              className="flex items-center justify-between p-2.5 hover:bg-[#71BF44]/5 dark:hover:bg-[#71BF44]/10 cursor-pointer group text-xs transition-colors"
+                              onClick={() => {
+                                setCurrentFilter(h.query);
+                                stateRef.current.currentFilter = h.query;
+                                setIsSuggestionsOpen(false);
+                                textareaRef.current?.focus();
+                              }}
+                            >
+                              <div className="flex items-center gap-2 truncate pr-4 text-neutral-850 dark:text-neutral-200">
+                                <Clock className="w-3.5 h-3.5 text-neutral-450 dark:text-neutral-500 shrink-0" />
+                                <span className="font-mono truncate select-all">{h.query}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[9px] text-neutral-400 dark:text-neutral-500 font-sans select-none shrink-0 bg-neutral-100 dark:bg-[#181818] px-1 rounded">
+                                  {h.timestamp}
+                                </span>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteHistoryQuery(h.query);
+                                  }}
+                                  className="text-neutral-400 hover:text-red-500 dark:text-neutral-550 dark:hover:text-red-400 p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors"
+                                  title="Eliminar del historial"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ));
+                        })()}
+                      </div>
+                    )}
                   </div>
                   
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                    {/* Selector de fecha / Time Picker al estilo de Seq */}
+                    <div className="relative" ref={timePickerRef}>
+                      <button
+                        onClick={() => setIsTimePickerOpen(!isTimePickerOpen)}
+                        type="button"
+                        className="flex items-center gap-2 px-3 py-2 bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg text-xs text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors select-none whitespace-nowrap"
+                        title="Limitar rango de tiempo (FIRST to NOW)"
+                      >
+                        <Clock className="w-3.5 h-3.5 text-[#71BF44]" />
+                        <span>
+                          {queryStartTime ? new Date(queryStartTime).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'}) : 'FIRST'}
+                        </span>
+                        <span className="text-neutral-450 dark:text-neutral-600 font-bold px-0.5">to</span>
+                        <span>
+                          {queryEndTime ? new Date(queryEndTime).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'}) : 'NOW'}
+                        </span>
+                        {(queryStartTime || queryEndTime) && (
+                          <span 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setQueryStartTime('');
+                              setQueryEndTime('');
+                              showToast('Rango de tiempo restablecido (FIRST to NOW)', 'info');
+                            }}
+                            className="ml-1 p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-750 rounded text-neutral-400 hover:text-red-500 transition-colors"
+                            title="Limpiar rango"
+                          >
+                            <X className="w-3 h-3" />
+                          </span>
+                        )}
+                      </button>
+
+                      {isTimePickerOpen && (
+                        <div className="absolute right-0 sm:left-0 mt-1 bg-white dark:bg-[#151515] border border-neutral-250 dark:border-neutral-800 rounded-xl shadow-2xl p-4 z-40 w-72 flex flex-col gap-3 animate-scale-in">
+                          <h5 className="text-[10px] text-[#71BF44] font-bold uppercase tracking-wider">Rango de Consulta</h5>
+                          
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-[10px] text-neutral-550 dark:text-neutral-400 font-bold uppercase">Desde (Inicio)</label>
+                            <input
+                              type="datetime-local"
+                              value={queryStartTime}
+                              onChange={(e) => setQueryStartTime(e.target.value)}
+                              className="bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-250 dark:border-neutral-800 rounded-lg p-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] w-full"
+                            />
+                          </div>
+
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-[10px] text-neutral-550 dark:text-neutral-400 font-bold uppercase">Hasta (Fin)</label>
+                            <input
+                              type="datetime-local"
+                              value={queryEndTime}
+                              onChange={(e) => setQueryEndTime(e.target.value)}
+                              className="bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-250 dark:border-neutral-800 rounded-lg p-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] w-full"
+                            />
+                          </div>
+
+                          <div className="border-t border-neutral-100 dark:border-neutral-850 pt-2 flex flex-col gap-1.5">
+                            <span className="text-[9px] text-neutral-450 dark:text-neutral-400 font-bold uppercase tracking-wider">Intervalos rápidos:</span>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {[
+                                { label: 'Últimos 30m', value: 30 },
+                                { label: 'Última 1h', value: 60 },
+                                { label: 'Últimas 4h', value: 240 },
+                                { label: 'Últimas 24h', value: 1440 },
+                              ].map((opt) => (
+                                <button
+                                  key={opt.label}
+                                  type="button"
+                                  onClick={() => {
+                                    const now = new Date();
+                                    const start = new Date(now.getTime() - opt.value * 60 * 1000);
+                                    
+                                    const tzOffset = start.getTimezoneOffset() * 60000;
+                                    const localISOTime = (new Date(start.getTime() - tzOffset)).toISOString().slice(0, 16);
+                                    
+                                    setQueryStartTime(localISOTime);
+                                    setQueryEndTime('');
+                                    setIsTimePickerOpen(false);
+                                    showToast(`Filtrando por: ${opt.label}`, 'info');
+                                  }}
+                                  className="px-2 py-1 bg-neutral-50 dark:bg-[#1c1c1c] border border-neutral-200 dark:border-neutral-800 hover:bg-[#71BF44]/10 hover:border-[#71BF44]/30 rounded text-[10px] text-neutral-600 dark:text-neutral-350 hover:text-[#71BF44] text-center transition-all font-semibold"
+                                >
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setQueryStartTime('');
+                                setQueryEndTime('');
+                                setIsTimePickerOpen(false);
+                                showToast('Filtro temporal limpiado', 'info');
+                              }}
+                              className="mt-1 w-full py-1 text-center text-[10px] font-bold text-red-500 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 rounded transition-all"
+                            >
+                              Limpiar Rango (FIRST to NOW)
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
                     <label className="text-[10px] text-neutral-550 dark:text-neutral-400 font-bold uppercase tracking-wider">Límite</label>
                     <input
                       type="number"
