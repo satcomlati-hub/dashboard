@@ -68,6 +68,11 @@ interface SavedQuery {
   filter: string;
 }
 
+interface HistoryQuery {
+  query: string;
+  timestamp: string;
+}
+
 interface SeqLogProperty {
   Name: string;
   Value: any;
@@ -170,7 +175,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
   const [editingQuery, setEditingQuery] = useState<SavedQuery | null>(null);
   const [queryFilterInput, setQueryFilterInput] = useState<string>('');
   const [showSavedQueries, setShowSavedQueries] = useState<boolean>(false);
-  const [historyQueries, setHistoryQueries] = useState<string[]>([]);
+  const [historyQueries, setHistoryQueries] = useState<HistoryQuery[]>([]);
   
   const [taskForm, setTaskForm] = useState({
     name: '',
@@ -284,9 +289,27 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     }
 
     // Cargar historial de queries de localStorage
-    const savedHistory = localStorage.getItem('seq_monitor_query_history');
+    const savedHistory = localStorage.getItem('seq_monitor_query_history_v2');
     if (savedHistory) {
       setHistoryQueries(JSON.parse(savedHistory));
+    } else {
+      const legacyHistory = localStorage.getItem('seq_monitor_query_history');
+      if (legacyHistory) {
+        try {
+          const parsed = JSON.parse(legacyHistory);
+          if (Array.isArray(parsed)) {
+            const converted = parsed.map((q: any) => {
+              if (typeof q === 'string') {
+                return { query: q, timestamp: 'Previo' };
+              }
+              return q;
+            });
+            setHistoryQueries(converted);
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
     }
 
     // Cargar límite
@@ -745,10 +768,12 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
   const addToHistory = (query: string) => {
     const trimmed = query.trim();
     if (!trimmed) return;
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     setHistoryQueries(prev => {
-      const filtered = prev.filter(q => q !== trimmed);
-      const newHistory = [trimmed, ...filtered].slice(0, 100);
-      localStorage.setItem('seq_monitor_query_history', JSON.stringify(newHistory));
+      const filtered = prev.filter(q => q.query !== trimmed);
+      const newHistory = [{ query: trimmed, timestamp: timeStr }, ...filtered].slice(0, 100);
+      localStorage.setItem('seq_monitor_query_history_v2', JSON.stringify(newHistory));
       return newHistory;
     });
   };
@@ -756,8 +781,8 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
   // Eliminar una consulta del historial rápidamente
   const handleDeleteHistoryQuery = (queryToDelete: string) => {
     setHistoryQueries(prev => {
-      const updated = prev.filter(q => q !== queryToDelete);
-      localStorage.setItem('seq_monitor_query_history', JSON.stringify(updated));
+      const updated = prev.filter(q => q.query !== queryToDelete);
+      localStorage.setItem('seq_monitor_query_history_v2', JSON.stringify(updated));
       return updated;
     });
     showToast('Consulta eliminada del historial', 'info');
@@ -1294,7 +1319,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                 connectionStatus === 'connecting' ? 'bg-amber-500 animate-pulse' :
                 connectionStatus === 'error' ? 'bg-red-500' : 'bg-neutral-450 dark:bg-neutral-600'
               }`} />
-              <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-medium">{connectionStatusText}</span>
+              <span className="text-[10px] text-neutral-550 dark:text-neutral-400 font-medium">{connectionStatusText}</span>
             </div>
           </div>
         </div>
@@ -1317,181 +1342,125 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
       <div className="flex-1 flex overflow-hidden min-h-[550px]">
         {activeTab === 'monitor' && (
           <>
-            {/* Sidebar de Conexiones y Filtros */}
-            <aside className="w-64 border-r border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-[#111] hidden md:flex flex-col p-4 shrink-0 overflow-y-auto gap-5">
-              
-              {/* Conexión activa */}
-              <section className="flex flex-col gap-2.5">
-                <h4 className="text-[10px] font-bold text-[#71BF44] dark:text-[#71BF44] tracking-wider uppercase">Conexión Activa</h4>
-                <form onSubmit={handleConnect} className="flex flex-col gap-2">
-                  <select
-                    value={selectedConnectionId}
-                    onChange={(e) => {
-                      setSelectedConnectionId(e.target.value);
-                      setConnectionStatus('disconnected');
-                      setConnectionStatusText('Desconectado');
-                    }}
-                    className="w-full bg-white dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg p-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44]"
-                  >
-                    <option value="">-- Selecciona --</option>
-                    {connections.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                  <button
-                    type="submit"
-                    disabled={!selectedConnectionId || connectionStatus === 'connecting'}
-                    className="w-full bg-[#71BF44] text-white dark:text-[#131313] hover:bg-[#71BF44]/90 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
-                  >
-                    <Play className="w-3.5 h-3.5 fill-current" />
-                    Conectar
-                  </button>
-                </form>
-              </section>
-
-              {/* Consultas Guardadas */}
-              <section className="flex flex-col gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowSavedQueries(!showSavedQueries)}
-                  className="w-full border border-neutral-200 dark:border-neutral-850 bg-white dark:bg-[#181818]/60 hover:bg-neutral-50 dark:hover:bg-neutral-800/80 text-neutral-700 dark:text-neutral-300 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-between gap-1.5 shadow-sm"
-                >
-                  <span className="flex items-center gap-1.5">
-                    <FileText className="w-3.5 h-3.5 text-[#71BF44]" />
-                    {showSavedQueries ? 'Ocultar Guardadas' : 'Mostrar Guardadas'}
-                  </span>
-                  {showSavedQueries ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                </button>
-
-                {showSavedQueries && (
-                  <div className="flex flex-col min-h-0 gap-2 mt-1 border-t border-neutral-200 dark:border-neutral-800/50 pt-2.5 max-h-[300px] overflow-y-auto animate-scale-in">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-[10px] font-bold text-[#71BF44] dark:text-[#71BF44] tracking-wider uppercase">Queries Guardadas</h4>
-                      <button
-                        onClick={() => {
-                          setQueryNameInput('');
-                          setQueryFilterInput(currentFilter);
-                          setEditingQuery(null);
-                          setIsSaveQueryModalOpen(true);
-                        }}
-                        className="text-neutral-500 hover:text-neutral-800 dark:text-neutral-450 dark:hover:text-white transition-colors"
-                        title="Guardar consulta actual"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
-                    </div>
-                    
-                    <div className="flex flex-col gap-1.5 pr-1">
-                      {savedQueries.map(q => {
-                        const isActive = currentFilter === q.filter;
-                        return (
-                          <div
-                            key={q.id}
-                            onClick={() => {
-                              setCurrentFilter(q.filter);
-                              setTimeout(() => fetchLogs(false), 50);
-                            }}
-                            className={`group flex items-start justify-between p-2 rounded-lg cursor-pointer transition-all border ${
-                              isActive 
-                                ? 'bg-[#71BF44]/10 border-[#71BF44]/30 text-[#71BF44] dark:text-white font-medium' 
-                                : 'bg-white dark:bg-[#181818]/50 border-neutral-200 dark:border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200 hover:border-neutral-300 dark:hover:border-neutral-800'
-                            }`}
-                            title={q.filter || 'Sin filtro'}
-                          >
-                            <div className="flex flex-col min-w-0 pr-1 flex-1">
-                              <span className="text-xs truncate">{q.name}</span>
-                              <span className="text-[9px] text-neutral-450 dark:text-neutral-500 truncate block font-mono">{q.filter || 'Todos los logs'}</span>
-                            </div>
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 shrink-0 select-none">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setQueryNameInput(q.name);
-                                  setQueryFilterInput(q.filter);
-                                  setEditingQuery(q);
-                                  setIsSaveQueryModalOpen(true);
-                                }}
-                                className="text-neutral-450 dark:text-neutral-500 hover:text-[#71BF44] dark:hover:text-[#71BF44] transition-all p-0.5"
-                                title="Editar consulta"
-                              >
-                                <Edit className="w-3 h-3" />
-                              </button>
-                              {!q.id.startsWith('q-') && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteQuery(q.id);
-                                  }}
-                                  className="text-neutral-450 dark:text-neutral-500 hover:text-red-500 dark:hover:text-red-400 transition-all p-0.5"
-                                  title="Eliminar consulta"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Historial de Ejecuciones (Consultas Realizadas) */}
-                    <div className="flex items-center justify-between border-t border-neutral-200 dark:border-neutral-800/50 pt-3 mt-3">
-                      <h4 className="text-[10px] font-bold text-[#71BF44] dark:text-[#71BF44] tracking-wider uppercase">Consultas Realizadas</h4>
-                      <span className="text-[9px] text-neutral-400 dark:text-neutral-500 font-medium">({historyQueries.length})</span>
-                    </div>
-                    
-                    <div className="flex flex-col gap-1.5 pr-1 max-h-[250px] overflow-y-auto">
-                      {historyQueries.length === 0 ? (
-                        <span className="text-[10px] text-neutral-500 dark:text-neutral-450 italic p-1">No hay consultas en el historial</span>
-                      ) : (
-                        historyQueries.map((historyQuery, index) => {
-                          const matchingSaved = savedQueries.find(q => q.filter.trim() === historyQuery.trim());
-                          const isNamed = !!matchingSaved;
-                          const isActive = currentFilter === historyQuery;
-                          return (
-                            <div
-                              key={index}
-                              onClick={() => {
-                                setCurrentFilter(historyQuery);
-                                setTimeout(() => fetchLogs(false), 50);
-                              }}
-                              className={`group flex items-start justify-between p-2 rounded-lg cursor-pointer transition-all border ${
-                                isActive 
-                                  ? 'bg-[#71BF44]/10 border-[#71BF44]/30 text-[#71BF44] dark:text-white font-medium' 
-                                  : 'bg-white dark:bg-[#181818]/50 border-neutral-200 dark:border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200 hover:border-neutral-300 dark:hover:border-neutral-800'
-                              }`}
-                              title={historyQuery}
-                            >
-                              <div className="flex flex-col min-w-0 pr-1 flex-1">
-                                <span className="text-xs truncate font-medium">
-                                  {isNamed ? matchingSaved.name : 'Consulta sin guardar'}
-                                </span>
-                                <span className="text-[9px] text-neutral-450 dark:text-neutral-500 truncate block font-mono">{historyQuery || 'Todos los logs'}</span>
-                              </div>
-                              {!isNamed && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteHistoryQuery(historyQuery);
-                                  }}
-                                  className="opacity-0 group-hover:opacity-100 text-neutral-450 dark:text-neutral-500 hover:text-red-500 dark:hover:text-red-400 transition-all p-0.5 shrink-0"
-                                  title="Eliminar del historial"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              )}
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                )}
-              </section>
-            </aside>
-
             {/* Panel Principal */}
             <main className="flex-1 flex flex-col overflow-hidden bg-neutral-50 dark:bg-[#0a0a0a] p-4 gap-4">
+              {/* Controles de Conexión, Consultas Guardadas e Historial */}
+              <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-3 flex flex-col md:flex-row gap-4 items-center justify-between shadow-sm">
+                
+                {/* Conexión Activa */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2.5 w-full md:w-auto">
+                  <span className="text-[10px] font-bold text-[#71BF44] uppercase tracking-wider whitespace-nowrap">Conexión:</span>
+                  <form onSubmit={handleConnect} className="flex items-center gap-2 w-full sm:w-auto">
+                    <select
+                      value={selectedConnectionId}
+                      onChange={(e) => {
+                        setSelectedConnectionId(e.target.value);
+                        setConnectionStatus('disconnected');
+                        setConnectionStatusText('Desconectado');
+                      }}
+                      className="bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg p-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] min-w-[140px]"
+                    >
+                      <option value="">-- Selecciona --</option>
+                      {connections.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="submit"
+                      disabled={!selectedConnectionId || connectionStatus === 'connecting'}
+                      className="bg-[#71BF44] text-white dark:text-[#131313] hover:bg-[#71BF44]/90 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold py-2 px-3 rounded-lg flex items-center gap-1.5 transition-colors whitespace-nowrap"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      Conectar
+                    </button>
+                  </form>
+                  {/* Status indicator */}
+                  <div className="flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full ${
+                      connectionStatus === 'connected' ? 'bg-emerald-500 animate-pulse' :
+                      connectionStatus === 'connecting' ? 'bg-amber-500 animate-pulse' :
+                      connectionStatus === 'error' ? 'bg-red-500' : 'bg-neutral-400 dark:bg-neutral-600'
+                    }`} />
+                    <span className="text-[10px] text-neutral-500 dark:text-neutral-450 font-medium truncate max-w-[100px]" title={connectionStatusText}>
+                      {connectionStatus === 'connected' ? 'Conectado' : connectionStatus === 'connecting' ? 'Validando...' : connectionStatus === 'error' ? 'Error' : 'Desconectado'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Queries Guardadas */}
+                <div className="flex items-center gap-2 w-full md:w-auto">
+                  <span className="text-[10px] font-bold text-[#71BF44] uppercase tracking-wider whitespace-nowrap">Guardadas:</span>
+                  <div className="flex items-center gap-1.5 flex-1 md:flex-none">
+                    <select
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val) {
+                          setCurrentFilter(val);
+                          setTimeout(() => {
+                            stateRef.current.currentFilter = val;
+                            fetchLogs(false);
+                          }, 50);
+                        }
+                      }}
+                      className="bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg p-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] w-full md:w-[180px]"
+                    >
+                      <option value="">-- Cargar Guardada --</option>
+                      {savedQueries.map(q => (
+                        <option key={q.id} value={q.filter}>{q.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => {
+                        setQueryNameInput('');
+                        setQueryFilterInput(currentFilter);
+                        setEditingQuery(null);
+                        setIsSaveQueryModalOpen(true);
+                      }}
+                      className="p-2 bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-850 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-white transition-colors"
+                      title="Guardar consulta actual"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Historial de Consultas */}
+                <div className="flex items-center gap-2 w-full md:w-auto">
+                  <span className="text-[10px] font-bold text-[#71BF44] uppercase tracking-wider whitespace-nowrap">Historial:</span>
+                  <div className="flex items-center gap-1.5 flex-1 md:flex-none">
+                    <select
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val) {
+                          setCurrentFilter(val);
+                          setTimeout(() => {
+                            stateRef.current.currentFilter = val;
+                            fetchLogs(false);
+                          }, 50);
+                        }
+                      }}
+                      className="bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg p-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] w-full md:w-[220px]"
+                    >
+                      <option value="">-- Seleccionar Reciente --</option>
+                      {historyQueries.map((h, i) => (
+                        <option key={i} value={h.query}>
+                          {`[${h.timestamp}] ${h.query.length > 35 ? h.query.substring(0, 35) + '...' : h.query}`}
+                        </option>
+                      ))}
+                    </select>
+                    {currentFilter && (
+                      <button
+                        onClick={() => handleDeleteHistoryQuery(currentFilter)}
+                        className="p-2 bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-850 hover:bg-neutral-100 dark:hover:bg-red-500/20 text-neutral-500 hover:text-red-500 dark:text-neutral-400 dark:hover:text-red-400 rounded-lg transition-colors"
+                        title="Eliminar consulta del historial"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+              </div>
               
               {/* Barra de Búsqueda y Parámetros */}
               <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-3 flex flex-col gap-3">
