@@ -64,6 +64,17 @@ interface SavedQuery {
   id: string;
   name: string;
   filter: string;
+  alertConfig?: {
+    timeWindowMinutes: number;
+    clientEventsThreshold: number;
+    serverEventsThreshold: number;
+    serverClientsThreshold: number;
+    includeVersion: boolean;
+    includeApp: boolean;
+    includeHostname: boolean;
+    includeCliente: boolean;
+    isActive: boolean;
+  };
 }
 
 interface HistoryQuery {
@@ -178,9 +189,11 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     includeVersion: true,
     includeApp: true,
     includeHostname: true,
-    includeCliente: true
+    includeCliente: true,
+    isActive: true
   });
   const [generatedJsAlert, setGeneratedJsAlert] = useState<string>('');
+  const [alertModalTab, setAlertModalTab] = useState<'script' | 'simulation'>('script');
   
   // Ediciones en Modales
   const [editingTask, setEditingTask] = useState<SeqTask | null>(null);
@@ -1255,6 +1268,35 @@ return [
     showToast('Consulta guardada eliminada', 'info');
   };
 
+  // Guardar la configuración de la alerta para una consulta guardada
+  const handleSaveAlertConfig = () => {
+    if (!selectedQueryForAlert) return;
+    
+    const updated = savedQueries.map(q => {
+      if (q.id === selectedQueryForAlert.id) {
+        return {
+          ...q,
+          alertConfig: {
+            timeWindowMinutes: alertConfig.timeWindowMinutes,
+            clientEventsThreshold: alertConfig.clientEventsThreshold,
+            serverEventsThreshold: alertConfig.serverEventsThreshold,
+            serverClientsThreshold: alertConfig.serverClientsThreshold,
+            includeVersion: alertConfig.includeVersion,
+            includeApp: alertConfig.includeApp,
+            includeHostname: alertConfig.includeHostname,
+            includeCliente: alertConfig.includeCliente,
+            isActive: alertConfig.isActive
+          }
+        };
+      }
+      return q;
+    });
+
+    setSavedQueries(updated);
+    localStorage.setItem('seq_monitor_queries', JSON.stringify(updated));
+    showToast(`Configuración de alerta para "${selectedQueryForAlert.name}" guardada`, 'success');
+  };
+
   // Agregar consulta al historial de ejecuciones (máximo 100, sin duplicados)
   const addToHistory = (query: string) => {
     const trimmed = query.trim();
@@ -1817,6 +1859,224 @@ return [
     });
   }, [logs, activeLevels, localSearchQuery, activeConnectionFilters]);
 
+  // Simulación local de alerta en base a logs cargados en pantalla
+  const simulatedResult = useMemo(() => {
+    if (!selectedQueryForAlert || logs.length === 0) {
+      return {
+        alertaGenerada: false,
+        resumen: {
+          totalErroresEvaluados: 0,
+          totalErroresCliente: 0,
+          totalErroresServidor: 0,
+          ventanaEvaluacionMinutos: alertConfig.timeWindowMinutes,
+          alertaClienteCritico: false,
+          alertaServidorGlobal: false
+        },
+        alertasMesaDeAyuda: [] as any[],
+        alertasInfraestructura: {
+          triggered: false,
+          clientesAfectados: [] as string[],
+          detalleAlertas: [] as any[],
+          mensaje: "No hay logs cargados en pantalla para evaluar."
+        }
+      };
+    }
+
+    const VENTANA_TIEMPO_MINUTOS = alertConfig.timeWindowMinutes;
+    const UMBRAL_CLIENTE_EVENTOS = alertConfig.clientEventsThreshold;
+    const UMBRAL_SERVIDOR_EVENTOS = alertConfig.serverEventsThreshold;
+    const UMBRAL_SERVIDOR_CLIENTES = alertConfig.serverClientsThreshold;
+
+    // Aplanar los logs para simulación
+    const flattenedLogs = logs.map(log => {
+      const flat: { [key: string]: any } = {
+        Timestamp: log.Timestamp,
+        Level: log.Level,
+        Message: log.RenderedMessage || log.MessageTemplate || '',
+        Exception: log.Exception || '',
+      };
+      if (log.Properties) {
+        log.Properties.forEach(p => {
+          flat[p.Name] = p.Value;
+        });
+      }
+      return flat;
+    });
+
+    // Agrupamientos
+    const clientGroups: { [key: string]: any } = {};
+    const serverGroups: { [key: string]: any } = {};
+
+    let totalErrores = 0;
+    let erroresClienteCount = 0;
+    let erroresServidorCount = 0;
+
+    flattenedLogs.forEach(log => {
+      const message = log.Message || '';
+      const exception = log.Exception || '';
+      const hostname = log.Hostname || log._hostname || log.hostname || 'Desconocido';
+      const cliente = log.Cliente || log._cliente || log.cliente || 'Desconocido';
+      const app = log.App || log._app || log.app || 'Desconocido';
+      const version = log.Version || log._version || log.version || 'Desconocido';
+
+      // Buscar StatusCode en Exception o Message
+      let statusCode = null;
+      const statusCodeMatch = exception.match(/"StatusCode"\s*:\s*(\d+)/) || 
+                            exception.match(/StatusCode=(\d+)/) || 
+                            message.match(/(\d{3})/);
+      if (statusCodeMatch) {
+        statusCode = parseInt(statusCodeMatch[1]);
+      }
+
+      // Buscar Destino (RequestUri) en Exception o Message
+      let destino = 'Desconocido';
+      const requestUriMatch = exception.match(/"RequestUri"\s*:\s*"([^"]+)"/) || 
+                            exception.match(/RequestUri=([^,\s]+)/) ||
+                            message.match(/(https?:\/\/[^\s'"]+)/);
+      if (requestUriMatch) {
+        destino = requestUriMatch[1];
+      }
+
+      let isClient = false;
+      let isServer = false;
+
+      // Clasificación por código HTTP
+      if (statusCode) {
+        if (statusCode >= 400 && statusCode < 500) {
+          isClient = true;
+        } else if (statusCode >= 500) {
+          isServer = true;
+        }
+      }
+
+      // Clasificación heurística
+      if (!isClient && !isServer) {
+        const msgLower = message.toLowerCase();
+        const excLower = exception.toLowerCase();
+        
+        if (excLower.includes('timeout') || msgLower.includes('timeout') || msgLower.includes('tiempo de espera')) {
+          isServer = true;
+        } else if (excLower.includes('conexión') || excLower.includes('conexion') || 
+                   excLower.includes('connectfailure') || excLower.includes('httprequestexception') || 
+                   msgLower.includes('conexión') || msgLower.includes('conexion') || msgLower.includes('failed to connect')) {
+          isServer = true;
+        } else if (excLower.includes('bad request') || msgLower.includes('bad request')) {
+          isClient = true;
+        } else if (excLower.includes('not found') || msgLower.includes('not found')) {
+          isClient = true;
+        }
+      }
+
+      totalErrores++;
+
+      const payloadComun = {
+        timestamp: log.Timestamp || new Date().toISOString(),
+        mensajeError: message,
+        excepcion: exception,
+        destino: destino,
+        version: alertConfig.includeVersion ? version : undefined,
+        app: alertConfig.includeApp ? app : undefined,
+        hostname: alertConfig.includeHostname ? hostname : undefined,
+        cliente: alertConfig.includeCliente ? cliente : undefined,
+        origenConsulta: `Seq (Consulta: ${selectedQueryForAlert.name})`
+      };
+
+      if (isClient) {
+        erroresClienteCount++;
+        const key = `${cliente} | ${hostname}`;
+        if (!clientGroups[key]) {
+          clientGroups[key] = { cliente, hostname, eventos: 0, errores: [] as any[] };
+        }
+        clientGroups[key].eventos++;
+        if (clientGroups[key].errores.length < 10) {
+          clientGroups[key].errores.push(payloadComun);
+        }
+      } else if (isServer) {
+        erroresServidorCount++;
+        if (!serverGroups[cliente]) {
+          serverGroups[cliente] = { cliente, hostname, eventos: 0, errores: [] as any[] };
+        }
+        serverGroups[cliente].eventos++;
+        if (serverGroups[cliente].errores.length < 10) {
+          serverGroups[cliente].errores.push(payloadComun);
+        }
+      }
+    });
+
+    const alertasMesaDeAyuda = [];
+    const alertasInfraestructura = {
+      triggered: false,
+      clientesAfectados: [] as string[],
+      detalleAlertas: [] as any[],
+      mensaje: "No se superaron los umbrales de infraestructura."
+    };
+
+    // Evaluar Mesa de Ayuda (Cliente)
+    for (const key in clientGroups) {
+      const g = clientGroups[key];
+      if (g.eventos >= UMBRAL_CLIENTE_EVENTOS) {
+        alertasMesaDeAyuda.push({
+          origen: `${g.cliente} / ${g.hostname}`,
+          eventos: g.eventos,
+          detalles: g.errores.map((err: any) => ({
+            destino: err.destino,
+            error: err.mensajeError,
+            version: err.version,
+            app: err.app,
+            origenConsulta: err.origenConsulta
+          })),
+          mensaje: `Alerta Mesa de Ayuda: El cliente ${g.cliente} en ${g.hostname} ha superado el límite con ${g.eventos} errores de cliente en los últimos ${VENTANA_TIEMPO_MINUTOS} minutos.`
+        });
+      }
+    }
+
+    // Evaluar Infraestructura (Servidor)
+    const clientesServidorCriticos = [];
+    for (const cliente in serverGroups) {
+      const g = serverGroups[cliente];
+      if (g.eventos >= UMBRAL_SERVIDOR_EVENTOS) {
+        clientesServidorCriticos.push(g);
+      }
+    }
+
+    if (clientesServidorCriticos.length >= UMBRAL_SERVIDOR_CLIENTES) {
+      alertasInfraestructura.triggered = true;
+      alertasInfraestructura.clientesAfectados = clientesServidorCriticos.map(c => c.cliente);
+      alertasInfraestructura.detalleAlertas = [];
+      
+      clientesServidorCriticos.forEach(g => {
+        g.errores.forEach((err: any) => {
+          alertasInfraestructura.detalleAlertas.push({
+            origen: `${g.cliente} / ${g.hostname}`,
+            destino: err.destino,
+            error: err.mensajeError,
+            version: err.version,
+            app: err.app,
+            origenConsulta: err.origenConsulta
+          });
+        });
+      });
+
+      alertasInfraestructura.mensaje = `Alerta de Infraestructura: Posible falla generalizada del Servidor de APIs. Afecta a ${clientesServidorCriticos.length} clientes con más de ${UMBRAL_SERVIDOR_EVENTOS} errores de conexión cada uno.`;
+    }
+
+    const alertaGenerada = alertasMesaDeAyuda.length > 0 || alertasInfraestructura.triggered;
+
+    return {
+      alertaGenerada,
+      resumen: {
+        totalErroresEvaluados: totalErrores,
+        totalErroresCliente: erroresClienteCount,
+        totalErroresServidor: erroresServidorCount,
+        ventanaEvaluacionMinutos: VENTANA_TIEMPO_MINUTOS,
+        alertaClienteCritico: alertasMesaDeAyuda.length > 0,
+        alertaServidorGlobal: alertasInfraestructura.triggered
+      },
+      alertasMesaDeAyuda,
+      alertasInfraestructura
+    };
+  }, [selectedQueryForAlert, logs, alertConfig]);
+
   // Toggle de nivel en los chips de filtro local
   const toggleLocalLevel = (lvl: string) => {
     setActiveLevels(prev => {
@@ -2053,28 +2313,49 @@ return [
                                   <span className="font-medium text-neutral-855 dark:text-neutral-200 truncate pr-3">{q.name}</span>
                                   <div className="flex items-center gap-1 shrink-0">
                                     <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedQueryForAlert(q);
-                                        setAlertConfig({
-                                          timeWindowMinutes: 10,
-                                          clientEventsThreshold: 30,
-                                          serverEventsThreshold: 30,
-                                          serverClientsThreshold: 3,
-                                          includeVersion: true,
-                                          includeApp: true,
-                                          includeHostname: true,
-                                          includeCliente: true
-                                        });
-                                        setGeneratedJsAlert('');
-                                        setIsAlertModalOpen(true);
-                                        setIsSavedQueriesOpen(false);
-                                      }}
-                                      className="text-neutral-400 hover:text-amber-500 dark:text-neutral-550 dark:hover:text-amber-400 p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors"
-                                      title="Configurar alerta para n8n"
-                                    >
-                                      <Bell className="w-3.5 h-3.5" />
-                                    </button>
+                                       onClick={(e) => {
+                                         e.stopPropagation();
+                                         setSelectedQueryForAlert(q);
+                                         if (q.alertConfig) {
+                                           setAlertConfig({
+                                             timeWindowMinutes: q.alertConfig.timeWindowMinutes,
+                                             clientEventsThreshold: q.alertConfig.clientEventsThreshold,
+                                             serverEventsThreshold: q.alertConfig.serverEventsThreshold,
+                                             serverClientsThreshold: q.alertConfig.serverClientsThreshold,
+                                             includeVersion: q.alertConfig.includeVersion,
+                                             includeApp: q.alertConfig.includeApp,
+                                             includeHostname: q.alertConfig.includeHostname,
+                                             includeCliente: q.alertConfig.includeCliente,
+                                             isActive: q.alertConfig.isActive !== undefined ? q.alertConfig.isActive : true
+                                           });
+                                         } else {
+                                           setAlertConfig({
+                                             timeWindowMinutes: 10,
+                                             clientEventsThreshold: 30,
+                                             serverEventsThreshold: 30,
+                                             serverClientsThreshold: 3,
+                                             includeVersion: true,
+                                             includeApp: true,
+                                             includeHostname: true,
+                                             includeCliente: true,
+                                             isActive: true
+                                           });
+                                         }
+                                         setGeneratedJsAlert('');
+                                         setIsAlertModalOpen(true);
+                                         setIsSavedQueriesOpen(false);
+                                       }}
+                                       className={`p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors ${
+                                         q.alertConfig 
+                                           ? q.alertConfig.isActive
+                                             ? 'text-amber-500 hover:text-amber-600 dark:text-amber-500 dark:hover:text-amber-400' 
+                                             : 'text-neutral-400/40 hover:text-amber-500 dark:text-neutral-550/40' 
+                                           : 'text-neutral-400 hover:text-[#71BF44] dark:text-neutral-550 dark:hover:text-[#71BF44]'
+                                       }`}
+                                       title={q.alertConfig ? `Alerta configurada (${q.alertConfig.isActive ? 'Activa' : 'Inactiva'}). Clic para editar` : "Configurar alerta para n8n"}
+                                     >
+                                       <Bell className="w-3.5 h-3.5" />
+                                     </button>
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
@@ -3499,6 +3780,20 @@ return [
               <div className="lg:col-span-2 flex flex-col gap-4">
                 <h4 className="text-xs font-bold text-[#71BF44] uppercase tracking-wider">Parámetros del Umbral</h4>
                 
+                {/* Control de Activación de Monitoreo */}
+                <div className="flex items-center justify-between bg-[#71BF44]/5 border border-[#71BF44]/20 p-2.5 rounded-lg mb-2">
+                  <span className="text-xs font-bold text-neutral-800 dark:text-neutral-250">Monitoreo Activo</span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={alertConfig.isActive}
+                      onChange={(e) => setAlertConfig(prev => ({ ...prev, isActive: e.target.checked }))}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-neutral-300 dark:bg-neutral-850 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#71BF44]"></div>
+                  </label>
+                </div>
+
                 <div className="flex flex-col gap-1">
                   <label className="text-[9px] text-neutral-400 font-bold uppercase">Ventana de Tiempo (Minutos)</label>
                   <input
@@ -3575,29 +3870,89 @@ return [
                 </div>
               </div>
 
-              {/* Visor de Código JS Generado */}
+              {/* Visor de Código JS / Simulación */}
               <div className="lg:col-span-3 flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-[#71BF44] uppercase tracking-wider">Código JS para nodo de N8N</h4>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(generatedJsAlert);
-                      showToast('Script de alerta copiado al portapapeles', 'success');
-                    }}
-                    type="button"
-                    className="flex items-center gap-1 px-2.5 py-1.5 bg-[#71BF44]/10 border border-[#71BF44]/30 hover:bg-[#71BF44] hover:text-white dark:hover:text-[#131313] text-[#71BF44] rounded-lg transition-all text-[10px] font-bold"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                    Copiar Script
-                  </button>
+                <div className="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-900 pb-2">
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAlertModalTab('script')}
+                      className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${
+                        alertModalTab === 'script'
+                          ? 'bg-[#71BF44] text-white dark:text-[#131313]'
+                          : 'bg-neutral-50 dark:bg-[#181818] text-neutral-600 dark:text-neutral-400 hover:bg-neutral-105 dark:hover:bg-neutral-800'
+                      }`}
+                    >
+                      Script para N8N
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAlertModalTab('simulation')}
+                      className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                        alertModalTab === 'simulation'
+                          ? 'bg-[#71BF44] text-white dark:text-[#131313]'
+                          : 'bg-neutral-50 dark:bg-[#181818] text-neutral-600 dark:text-neutral-400 hover:bg-neutral-105 dark:hover:bg-neutral-800'
+                      }`}
+                    >
+                      <span>Simulación en Vivo</span>
+                      <span className={`w-2 h-2 rounded-full ${simulatedResult.alertaGenerada ? 'bg-amber-500 animate-pulse' : 'bg-neutral-400'}`}></span>
+                    </button>
+                  </div>
+
+                  {alertModalTab === 'script' && (
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(generatedJsAlert);
+                        showToast('Script de alerta copiado al portapapeles', 'success');
+                      }}
+                      type="button"
+                      className="flex items-center gap-1 px-2.5 py-1.5 bg-[#71BF44]/10 border border-[#71BF44]/30 hover:bg-[#71BF44] hover:text-white dark:hover:text-[#131313] text-[#71BF44] rounded-lg transition-all text-[10px] font-bold"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      Copiar Script
+                    </button>
+                  )}
                 </div>
 
-                <div className="bg-[#0b0b0b] border border-neutral-250 dark:border-neutral-850 rounded-xl p-4 font-mono text-[10.5px] leading-relaxed text-emerald-400 overflow-auto h-96 max-h-[50vh]">
-                  <pre className="whitespace-pre-wrap select-all">{generatedJsAlert}</pre>
-                </div>
-                <p className="text-[10px] text-neutral-450 italic mt-1">
-                  Este código procesa dinámicamente el log, parsea el destino (ej. `RequestUri`) y envía payloads agrupados listos para los destinatarios (Mesa de Ayuda / Infraestructura).
-                </p>
+                {alertModalTab === 'script' ? (
+                  <>
+                    <div className="bg-[#0b0b0b] border border-neutral-250 dark:border-neutral-850 rounded-xl p-4 font-mono text-[10.5px] leading-relaxed text-emerald-400 overflow-auto h-96 max-h-[50vh]">
+                      <pre className="whitespace-pre-wrap select-all">{generatedJsAlert}</pre>
+                    </div>
+                    <p className="text-[10px] text-neutral-450 italic mt-1">
+                      Este código procesa dinámicamente el log, parsea el destino (ej. `RequestUri`) y envía payloads agrupados listos para los destinatarios (Mesa de Ayuda / Infraestructura).
+                    </p>
+                  </>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    {/* Banner de Estado de la Simulación */}
+                    <div className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+                      simulatedResult.alertaGenerada 
+                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400' 
+                        : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <Bell className={`w-4 h-4 ${simulatedResult.alertaGenerada ? 'animate-bounce text-amber-500' : 'text-emerald-500'}`} />
+                        <span className="text-xs font-bold uppercase tracking-wider">
+                          {simulatedResult.alertaGenerada ? 'ALERTA SÍ GENERADA (Se superaron los umbrales)' : 'SIN ALERTAS (No se superaron los umbrales)'}
+                        </span>
+                      </div>
+                      <span className="text-[10px] bg-neutral-100 dark:bg-neutral-850 px-2 py-0.5 rounded font-mono text-neutral-700 dark:text-neutral-350">
+                        {logs.length} logs evaluados
+                      </span>
+                    </div>
+
+                    {/* JSON de Resultados de Simulación */}
+                    <div className="bg-[#0b0b0b] border border-neutral-250 dark:border-neutral-850 rounded-xl p-4 font-mono text-[10.5px] leading-relaxed text-emerald-400 overflow-auto h-80 max-h-[42vh]">
+                      {renderHighlightedJson([
+                        { Name: 'resultadoSimulacion', Value: simulatedResult }
+                      ])}
+                    </div>
+                    <p className="text-[10px] text-neutral-450 italic">
+                      Esta simulación corre localmente sobre los {logs.length} logs que están actualmente cargados en pantalla en el monitor, aplicando las mismas reglas exactas.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -3612,8 +3967,8 @@ return [
               <button
                 type="button"
                 onClick={() => {
+                  handleSaveAlertConfig();
                   navigator.clipboard.writeText(generatedJsAlert);
-                  showToast('Configuración de alerta guardada e importada en portapapeles', 'success');
                   setIsAlertModalOpen(false);
                 }}
                 className="bg-[#71BF44] hover:bg-[#71BF44]/90 text-white dark:text-[#131313] text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-1.5"
