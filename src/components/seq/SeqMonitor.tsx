@@ -345,6 +345,17 @@ if (items.length > 0) {
   }
 }
 
+// Helper para serializar valores complejos evitando [object Object]
+function stringifyValue(val) {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'string') return val;
+  try {
+    return JSON.stringify(val);
+  } catch (e) {
+    return String(val);
+  }
+}
+
 // Agrupamientos
 const clientGroups = {}; // Combinación: cliente | hostname
 const serverGroups = {}; // Agrupación por: cliente
@@ -370,12 +381,13 @@ function getGenericMessage(msg, exc) {
 }
 
 logs.forEach(log => {
-  const message = String(log.Message || log.RenderedMessage || '');
-  const exception = String(log.Exception || log.exception || log['@Exception'] || '');
+  const message = stringifyValue(log.Message || log.RenderedMessage || '');
+  const exception = stringifyValue(log.Exception || log.exception || log['@Exception'] || '');
   const hostname = log.Hostname || log._hostname || log.hostname || 'Desconocido';
   const cliente = log.Cliente || log._cliente || log.cliente || 'Desconocido';
   const app = log.App || log._app || log.app || 'Desconocido';
   const version = log.Version || log._version || log.version || 'Desconocido';
+  const origenConexion = log.Origen || log.origen || 'Desconocido';
 
   // Buscar StatusCode en Exception o Message
   let statusCode = null;
@@ -388,7 +400,8 @@ logs.forEach(log => {
 
   // Buscar Destino (RequestUri) en Exception o Message
   let destino = 'Desconocido';
-  const requestUriMatch = exception.match(/"RequestUri"\\\\s*:\\\\s*"([^"]+)"/) || 
+  const requestUriMatch = exception.match(/RequestUri[\\\\":=\\\\s]+(https?:\\\\/\\\\/[^\\\\s'",\\\\ ]+)/) ||
+                        exception.match(/"RequestUri"\\\\s*:\\\\s*"([^"]+)"/) || 
                         exception.match(/RequestUri=([^,\\\\s]+)/) ||
                         message.match(/(https?:\\\\/\\\\/[^\\\\s'"]+)/);
   if (requestUriMatch) {
@@ -425,6 +438,20 @@ logs.forEach(log => {
     }
   }
 
+  // Desviar alertas de infraestructura si el dominio no es administrado por infraestructura cloud
+  if (isServer) {
+    const DOMINIOS_INFRAESTRUCTURA = [
+      'api-colombia.mysatcomla.com',
+      'webapi.mysatcomla.com',
+      'api-app-prod.mysatcomla.com'
+    ];
+    const esDestinoCloud = DOMINIOS_INFRAESTRUCTURA.some(dom => destino.toLowerCase().includes(dom));
+    if (!esDestinoCloud) {
+      isClient = true;
+      isServer = false;
+    }
+  }
+
   totalErrores++;
 
   const payloadComun = {
@@ -437,7 +464,7 @@ logs.forEach(log => {
     ${alertConfig.includeApp ? 'app: app,' : ''}
     ${alertConfig.includeHostname ? 'hostname: hostname,' : ''}
     ${alertConfig.includeCliente ? 'cliente: cliente,' : ''}
-    origenConsulta: 'Seq (Consulta: ${queryName.replace(/'/g, "\\'")})'
+    origenConsulta: 'Seq (Origen: ' + origenConexion + ', Consulta: ${queryName.replace(/'/g, "\\'")})'
   };
 
   const genericMsg = getGenericMessage(message, exception);
@@ -1984,6 +2011,17 @@ return [
     const UMBRAL_SERVIDOR_EVENTOS = alertConfig.serverEventsThreshold;
     const UMBRAL_SERVIDOR_CLIENTES = alertConfig.serverClientsThreshold;
 
+    // Helper para serializar valores complejos evitando [object Object]
+    const stringifyValue = (val: any): string => {
+      if (val === null || val === undefined) return '';
+      if (typeof val === 'string') return val;
+      try {
+        return JSON.stringify(val);
+      } catch (e) {
+        return String(val);
+      }
+    };
+
     // Helper de limpieza genérica de mensajes
     const getGenericMessage = (msg: string, exc: string) => {
       let clean = msg || '';
@@ -2007,6 +2045,7 @@ return [
         Level: log.Level,
         Message: log.RenderedMessage || log.MessageTemplate || '',
         Exception: log.Exception || '',
+        Origen: log.connectionName || 'Desconocido',
       };
       if (log.Properties) {
         log.Properties.forEach(p => {
@@ -2025,8 +2064,8 @@ return [
     let erroresServidorCount = 0;
 
     flattenedLogs.forEach(log => {
-      const message = String(log.Message || '');
-      const exception = String(log.Exception || '');
+      const message = stringifyValue(log.Message);
+      const exception = stringifyValue(log.Exception);
       const hostname = log.Hostname || log._hostname || log.hostname || 'Desconocido';
       const cliente = log.Cliente || log._cliente || log.cliente || 'Desconocido';
       const app = log.App || log._app || log.app || 'Desconocido';
@@ -2043,7 +2082,8 @@ return [
 
       // Buscar Destino (RequestUri) en Exception o Message
       let destino = 'Desconocido';
-      const requestUriMatch = exception.match(/"RequestUri"\s*:\s*"([^"]+)"/) || 
+      const requestUriMatch = exception.match(/RequestUri[\\":=\s]+(https?:\/\/[^\s'",\ ]+)/) ||
+                            exception.match(/"RequestUri"\s*:\s*"([^"]+)"/) || 
                             exception.match(/RequestUri=([^,\s]+)/) ||
                             message.match(/(https?:\/\/[^\s'"]+)/);
       if (requestUriMatch) {
@@ -2080,6 +2120,20 @@ return [
         }
       }
 
+      // Desviar alertas de infraestructura si el dominio no es administrado por infraestructura cloud
+      if (isServer) {
+        const DOMINIOS_INFRAESTRUCTURA = [
+          'api-colombia.mysatcomla.com',
+          'webapi.mysatcomla.com',
+          'api-app-prod.mysatcomla.com'
+        ];
+        const esDestinoCloud = DOMINIOS_INFRAESTRUCTURA.some(dom => destino.toLowerCase().includes(dom));
+        if (!esDestinoCloud) {
+          isClient = true;
+          isServer = false;
+        }
+      }
+
       totalErrores++;
 
       const payloadComun = {
@@ -2091,7 +2145,7 @@ return [
         app: alertConfig.includeApp ? app : undefined,
         hostname: alertConfig.includeHostname ? hostname : undefined,
         cliente: alertConfig.includeCliente ? cliente : undefined,
-        origenConsulta: `Seq (Consulta: ${selectedQueryForAlert.name})`
+        origenConsulta: `Seq (Origen: ${log.Origen || 'Desconocido'}, Consulta: ${selectedQueryForAlert.name})`
       };
 
       const genericMsg = getGenericMessage(message, exception);
