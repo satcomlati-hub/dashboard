@@ -1448,6 +1448,141 @@ return [
     }
   };
 
+  const handleDownloadCSV = () => {
+    if (!selectedQueryForAlert || logs.length === 0) {
+      showToast('No hay logs evaluados para descargar', 'error');
+      return;
+    }
+
+    const sanitizeCsvCell = (val: any): string => {
+      if (val === null || val === undefined) return '';
+      let str = typeof val === 'object' ? JSON.stringify(val) : String(val);
+      str = str.replace(/[\r\n]+/g, ' ');
+      str = str.replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const stringifyValue = (val: any): string => {
+      if (val === null || val === undefined) return '';
+      if (typeof val === 'string') return val;
+      try {
+        return JSON.stringify(val);
+      } catch (e) {
+        return String(val);
+      }
+    };
+
+    const headers = [
+      'Timestamp',
+      'Origen_Conexion',
+      'Cliente',
+      'Hostname',
+      'App',
+      'Version',
+      'Destino_Detectado',
+      'Clasificacion',
+      'Mensaje_Error',
+      'Excepcion'
+    ];
+
+    const rows = logs.map(log => {
+      const message = stringifyValue(log.RenderedMessage || log.MessageTemplate || '');
+      const exception = stringifyValue(log.Exception || '');
+      const hostname = log.Properties?.find(p => p.Name === 'Hostname' || p.Name === '_hostname' || p.Name === 'hostname')?.Value || log._hostname || 'Desconocido';
+      const cliente = log.Properties?.find(p => p.Name === 'Cliente' || p.Name === '_cliente' || p.Name === 'cliente')?.Value || log._cliente || 'Desconocido';
+      const app = log.Properties?.find(p => p.Name === 'App' || p.Name === '_app' || p.Name === 'app')?.Value || log._app || 'Desconocido';
+      const version = log.Properties?.find(p => p.Name === 'Version' || p.Name === '_version' || p.Name === 'version')?.Value || log._version || 'Desconocido';
+      const origenConexion = log.connectionName || 'Desconocido';
+
+      let statusCode = null;
+      const statusCodeMatch = exception.match(/"StatusCode"\s*:\s*(\d+)/) || 
+                            exception.match(/StatusCode=(\d+)/) || 
+                            message.match(/(\d{3})/);
+      if (statusCodeMatch) {
+        statusCode = parseInt(statusCodeMatch[1]);
+      }
+
+      let destino = 'Desconocido';
+      const requestUriMatch = exception.match(/RequestUri[\\":=\s]+(https?:\/\/[^\s'",\ ]+)/) ||
+                            exception.match(/"RequestUri"\s*:\s*"([^"]+)"/) || 
+                            exception.match(/RequestUri=([^,\s]+)/) ||
+                            message.match(/(https?:\/\/[^\s'"]+)/);
+      if (requestUriMatch) {
+        destino = requestUriMatch[1];
+      }
+
+      let isClient = false;
+      let isServer = false;
+
+      if (statusCode) {
+        if (statusCode >= 400 && statusCode < 500) {
+          isClient = true;
+        } else if (statusCode >= 500) {
+          isServer = true;
+        }
+      }
+
+      if (!isClient && !isServer) {
+        const msgLower = message.toLowerCase();
+        const excLower = exception.toLowerCase();
+        
+        if (excLower.includes('timeout') || msgLower.includes('timeout') || msgLower.includes('tiempo de espera')) {
+          isServer = true;
+        } else if (excLower.includes('conexión') || excLower.includes('conexion') || 
+                   excLower.includes('connectfailure') || excLower.includes('httprequestexception') || 
+                   msgLower.includes('conexión') || msgLower.includes('conexion') || msgLower.includes('failed to connect')) {
+          isServer = true;
+        } else if (excLower.includes('bad request') || msgLower.includes('bad request')) {
+          isClient = true;
+        } else if (excLower.includes('not found') || msgLower.includes('not found')) {
+          isClient = true;
+        }
+      }
+
+      if (isServer) {
+        const DOMINIOS_INFRAESTRUCTURA = [
+          'api-colombia.mysatcomla.com',
+          'webapi.mysatcomla.com',
+          'api-app-prod.mysatcomla.com'
+        ];
+        const esDestinoCloud = DOMINIOS_INFRAESTRUCTURA.some(dom => destino.toLowerCase().includes(dom));
+        if (!esDestinoCloud) {
+          isClient = true;
+          isServer = false;
+        }
+      }
+
+      const clasificacion = isServer ? 'SERVIDOR (Infraestructura Cloud)' : (isClient ? 'CLIENTE (Mesa de Ayuda)' : 'OK / Indeterminado');
+
+      return [
+        log.Timestamp || new Date().toISOString(),
+        origenConexion,
+        cliente,
+        hostname,
+        app,
+        version,
+        destino,
+        clasificacion,
+        message,
+        exception
+      ].map(sanitizeCsvCell).join(',');
+    });
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    
+    const formattedDate = new Date().toISOString().substring(0, 10);
+    const fileName = `Simulacion_Alertas_${selectedQueryForAlert.name.replace(/[^a-zA-Z0-9]/g, '_')}_${formattedDate}.csv`;
+    link.setAttribute("download", fileName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast(`Archivo CSV de simulación descargado`, 'success');
+  };
+
   // Agregar consulta al historial de ejecuciones (máximo 100, sin duplicados)
   const addToHistory = (query: string) => {
     const trimmed = query.trim();
@@ -3975,7 +4110,7 @@ return [
       {isAlertModalOpen && selectedQueryForAlert && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 w-full max-w-4xl shadow-2xl animate-scale-in flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-900 pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-neutral-100 dark:border-neutral-900 pb-3 gap-3">
               <div className="flex flex-col gap-0.5">
                 <h3 className="text-sm font-bold text-neutral-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
                   <Bell className="w-4 h-4 text-[#71BF44]" />
@@ -3985,12 +4120,27 @@ return [
                   Consulta: <span className="font-semibold text-neutral-700 dark:text-neutral-300">{selectedQueryForAlert.name}</span>
                 </p>
               </div>
-              <button 
-                onClick={() => setIsAlertModalOpen(false)} 
-                className="text-neutral-500 hover:text-neutral-800 dark:text-neutral-450 dark:hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2 self-end sm:self-center">
+                <button
+                  type="button"
+                  onClick={() => setIsAlertModalOpen(false)}
+                  className="border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-[#181818] hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs font-bold px-3 py-2 rounded-lg text-neutral-600 dark:text-neutral-305 transition-colors"
+                >
+                  Cerrar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleSaveAlertConfig();
+                    navigator.clipboard.writeText(generatedJsAlert);
+                    setIsAlertModalOpen(false);
+                  }}
+                  className="bg-[#71BF44] hover:bg-[#71BF44]/90 text-white dark:text-[#131313] text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1.5 transition-colors"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  Copiar y Guardar Alerta
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
@@ -4164,17 +4314,28 @@ return [
                       Copiar Script
                     </button>
                   ) : (
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(JSON.stringify(simulatedResult, null, 2));
-                        showToast('Resultado de simulación copiado al portapapeles', 'success');
-                      }}
-                      type="button"
-                      className="flex items-center gap-1 px-2.5 py-1.5 bg-[#71BF44]/10 border border-[#71BF44]/30 hover:bg-[#71BF44] hover:text-white dark:hover:text-[#131313] text-[#71BF44] rounded-lg transition-all text-[10px] font-bold"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                      Copiar JSON
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleDownloadCSV}
+                        type="button"
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-sky-500/10 border border-sky-500/30 hover:bg-sky-500 hover:text-white text-sky-600 dark:text-sky-400 rounded-lg transition-all text-[10px] font-bold"
+                        title="Descargar datos simulados en formato CSV para Excel"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        Descargar CSV
+                      </button>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(JSON.stringify(simulatedResult, null, 2));
+                          showToast('Resultado de simulación copiado al portapapeles', 'success');
+                        }}
+                        type="button"
+                        className="flex items-center gap-1 px-2.5 py-1.5 bg-[#71BF44]/10 border border-[#71BF44]/30 hover:bg-[#71BF44] hover:text-white dark:hover:text-[#131313] text-[#71BF44] rounded-lg transition-all text-[10px] font-bold"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        Copiar JSON
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -4220,27 +4381,7 @@ return [
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 mt-4 border-t border-neutral-100 dark:border-neutral-900 pt-4">
-              <button
-                type="button"
-                onClick={() => setIsAlertModalOpen(false)}
-                className="border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-[#181818] hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs font-bold px-4 py-2.5 rounded-lg text-neutral-600 dark:text-neutral-300"
-              >
-                Cerrar
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  handleSaveAlertConfig();
-                  navigator.clipboard.writeText(generatedJsAlert);
-                  setIsAlertModalOpen(false);
-                }}
-                className="bg-[#71BF44] hover:bg-[#71BF44]/90 text-white dark:text-[#131313] text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-1.5"
-              >
-                <Check className="w-3.5 h-3.5" />
-                Copiar y Guardar Alerta
-              </button>
-            </div>
+            <div className="h-2"></div>
           </div>
         </div>
       )}
