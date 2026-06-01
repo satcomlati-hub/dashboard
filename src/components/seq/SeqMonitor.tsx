@@ -2149,10 +2149,32 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                   /* VISTA ORIGINAL DE LISTA DE LOGS (CONSOLA) */
                   <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1 font-mono text-xs">
                     {filteredLogs.length === 0 ? (
-                      <div className="flex-1 flex flex-col items-center justify-center text-center p-8 gap-2 text-neutral-500">
-                        <FileText className="w-8 h-8 opacity-40" />
-                        <p className="text-xs">No hay eventos que mostrar. Configura tu conexión y ejecuta una consulta.</p>
-                      </div>
+                      logs.length > 0 ? (
+                        <div className="flex-1 flex flex-col items-center justify-center text-center p-8 gap-3 text-neutral-450 dark:text-neutral-400 select-none">
+                          <AlertTriangle className="w-8 h-8 text-amber-500 opacity-80 animate-pulse" />
+                          <div className="flex flex-col gap-1">
+                            <p className="text-xs font-semibold text-neutral-250 dark:text-neutral-200">Resultados ocultos por filtros locales</p>
+                            <p className="text-[11px] text-neutral-500 max-w-sm">
+                              Se recuperaron {logs.length} logs de Seq que coinciden con tu consulta, pero están ocultos debido a los filtros de nivel de log seleccionados o al filtro de texto local (<strong>"{localSearchQuery}"</strong>).
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setLocalSearchQuery('');
+                              setActiveLevels(new Set(LOG_LEVELS));
+                              showToast('Filtros locales restablecidos', 'success');
+                            }}
+                            className="mt-2 px-3 py-1.5 bg-[#71BF44]/10 hover:bg-[#71BF44]/20 border border-[#71BF44]/35 text-[#71BF44] dark:text-[#8ae65c] text-[10px] font-bold rounded-lg transition-all"
+                          >
+                            Restablecer filtros locales
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex-1 flex flex-col items-center justify-center text-center p-8 gap-2 text-neutral-500">
+                          <FileText className="w-8 h-8 opacity-40" />
+                          <p className="text-xs">No hay eventos que mostrar. Configura tu conexión y ejecuta una consulta.</p>
+                        </div>
+                      )
                     ) : (
                       filteredLogs.map((log, index) => {
                         const isSqlAggregation = !log.Timestamp || isNaN(Date.parse(log.Timestamp));
