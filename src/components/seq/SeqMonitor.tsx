@@ -302,8 +302,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     };
   }, [connections, selectedConnectionIds, currentFilter, limit, isStreaming, queryStartTime, queryEndTime]);
 
-  // Regenerar script de alerta dinámica en base a inputs de configuración
-  useEffect(() => {
+  // Regenerar script de alerta dinámica en base a inputs de configurac  useEffect(() => {
     if (!selectedQueryForAlert) return;
     
     const queryName = selectedQueryForAlert.name;
@@ -311,11 +310,17 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     const cleanFilter = cleanFilterPrefix(queryFilter);
     const formattedFilter = formatFilterForSeq(cleanFilter);
 
+    const urlsDict = connections.reduce((acc, c) => ({ ...acc, [c.name]: c.url }), {} as Record<string, string>);
+    const urlsDictStr = JSON.stringify(urlsDict, null, 2);
+
     const jsCode = `/**
  * Script de Alerta Automatizado para N8N
  * Consulta Seq: "${queryName.replace(/"/g, '\\"')}"
  * Generado automáticamente desde Satcom Analytics
  */
+
+// Diccionario de URLs de Seq asociadas a sus nombres de conexión
+const URLS_CONEXIONES_SEQ = ${urlsDictStr};
 
 // 1. Obtener los logs de entrada desde el nodo HTTP Request anterior de n8n
 const items = $input.all();
@@ -483,6 +488,13 @@ logs.forEach(log => {
     return parts.join(' and ');
   }
 
+  const eventId = log.Id || log['@Id'] || '';
+  let seqPermalink = '';
+  if (eventId) {
+    const baseUrl = URLS_CONEXIONES_SEQ[origenConexion] || 'http://logs-sender.mysatcomla.com:5341';
+    seqPermalink = \`\${baseUrl}/#/events/?filter=@Id%20%3D%20%27\${eventId}%27&showExpanded\`;
+  }
+
   const payloadComun = {
     timestamp: log.Timestamp || log['@Timestamp'] || new Date().toISOString(),
     mensajeError: message,
@@ -494,7 +506,8 @@ logs.forEach(log => {
     ${alertConfig.includeHostname ? 'hostname: hostname,' : ''}
     ${alertConfig.includeCliente ? 'cliente: cliente,' : ''}
     origenConsulta: 'Seq (Origen: ' + origenConexion + ', Consulta: ${queryName.replace(/'/g, "\\'")})',
-    seqQuery: buildSeqQuery("${queryFilter.replace(/"/g, '\\"')}", cliente, hostname)
+    seqQuery: buildSeqQuery("${queryFilter.replace(/"/g, '\\"')}", cliente, hostname),
+    seqPermalink: seqPermalink
   };
 
   const genericMsg = getGenericMessage(message, exception);
@@ -548,16 +561,17 @@ for (const key in clientGroups) {
           version: errGroup.ejemplo.version,
           app: errGroup.ejemplo.app,
           origenConsulta: errGroup.ejemplo.origenConsulta,
-          seqQuery: errGroup.ejemplo.seqQuery
+          seqQuery: errGroup.ejemplo.seqQuery,
+          seqPermalink: errGroup.ejemplo.seqPermalink
         }
       });
     }
 
     alertasMesaDeAyuda.push({
-      origen: \`\${g.cliente} / \${g.hostname}\`,
+      origen: `${g.cliente} / ${g.hostname}`,
       totalEventos: g.eventos,
       erroresAgrupados,
-      mensaje: \`Alerta Mesa de Ayuda: El cliente \${g.cliente} en \${g.hostname} ha superado el límite con \${g.eventos} errores de cliente en los últimos \${VENTANA_TIEMPO_MINUTOS} minutos.\`
+      mensaje: `Alerta Mesa de Ayuda: El cliente ${g.cliente} en ${g.hostname} ha superado el límite con ${g.eventos} errores de cliente en los últimos ${VENTANA_TIEMPO_MINUTOS} minutos.`
     });
   }
 }
@@ -581,7 +595,7 @@ if (clientesServidorCriticos.length >= UMBRAL_SERVIDOR_CLIENTES) {
     for (const msgKey in g.errores) {
       const errGroup = g.errores[msgKey];
       agrupadosPorOrigen.push({
-        origen: \`\${g.cliente} / \${g.hostname}\`,
+        origen: `${g.cliente} / ${g.hostname}`,
         errorGenerico: msgKey,
         cantidad: errGroup.cantidad,
         ejemplo: {
@@ -590,18 +604,19 @@ if (clientesServidorCriticos.length >= UMBRAL_SERVIDOR_CLIENTES) {
           version: errGroup.ejemplo.version,
           app: errGroup.ejemplo.app,
           origenConsulta: errGroup.ejemplo.origenConsulta,
-          seqQuery: errGroup.ejemplo.seqQuery
+          seqQuery: errGroup.ejemplo.seqQuery,
+          seqPermalink: errGroup.ejemplo.seqPermalink
         }
       });
     }
     alertasInfraestructura.erroresAgrupados.push(...agrupadosPorOrigen);
   });
 
-  alertasInfraestructura.mensaje = \`Alerta de Infraestructura: Posible falla generalizada del Servidor de APIs. Afecta a \${clientesServidorCriticos.length} clientes con más de \${UMBRAL_SERVIDOR_EVENTOS} errores de conexión cada uno.\`;
+  alertasInfraestructura.mensaje = `Alerta de Infraestructura: Posible falla generalizada del Servidor de APIs. Afecta a ${clientesServidorCriticos.length} clientes con más de ${UMBRAL_SERVIDOR_EVENTOS} errores de conexión cada uno.`;
 }
 
 const rangoHorario = minTimestamp && maxTimestamp 
-  ? \`\${minTimestamp} a \${maxTimestamp}\`
+  ? `${minTimestamp} a ${maxTimestamp}`
   : 'No disponible';
 
 return [
@@ -625,7 +640,7 @@ return [
 ];
 `;
     setGeneratedJsAlert(jsCode);
-  }, [selectedQueryForAlert, alertQueryFilter, alertConfig]);
+  }, [selectedQueryForAlert, alertQueryFilter, alertConfig, connections]);rtQueryFilter, alertConfig]);
 
   // Cerrar popups al hacer clic afuera
   useEffect(() => {
@@ -2197,10 +2212,7 @@ return [
 
       return message.includes(query) || propertiesStr.includes(query) || exceptionStr.includes(query);
     });
-  }, [logs, activeLevels, localSearchQuery, activeConnectionFilters]);
-
-  // Simulación local de alerta en base a logs cargados en pantalla
-  const simulatedResult = useMemo(() => {
+  }, [logs, activeLevels, localSearchQ  const simulatedResult = useMemo(() => {
     if (!selectedQueryForAlert || logs.length === 0) {
       return {
         consultaEvaluada: alertQueryFilter || (selectedQueryForAlert ? selectedQueryForAlert.filter : ''),
@@ -2263,6 +2275,7 @@ return [
         Message: log.RenderedMessage || log.MessageTemplate || '',
         Exception: log.Exception || '',
         Origen: log.connectionName || 'Desconocido',
+        Id: log.Id
       };
       if (log.Properties) {
         log.Properties.forEach(p => {
@@ -2270,7 +2283,7 @@ return [
         });
       }
       return flat;
-    });
+    };
 
     // Agrupamientos
     const clientGroups: { [key: string]: any } = {};
@@ -2287,6 +2300,15 @@ return [
       const cliente = log.Cliente || log._cliente || log.cliente || 'Desconocido';
       const app = log.App || log._app || log.app || 'Desconocido';
       const version = log.Version || log._version || log.version || 'Desconocido';
+      const origenConexion = log.Origen || 'Desconocido';
+      const eventId = log.Id || log['@Id'];
+
+      // Buscar la URL del origen en el array de connections para construir el permalink
+      const matchingConn = connections.find(c => c.name === origenConexion);
+      const baseUrl = matchingConn ? matchingConn.url : 'http://logs-sender.mysatcomla.com:5341';
+      const seqPermalink = eventId 
+        ? `${baseUrl}/#/events/?filter=@Id%20%3D%20%27${eventId}%27&showExpanded`
+        : '';
 
       // Buscar StatusCode en Exception o Message
       let statusCode = null;
@@ -2379,7 +2401,8 @@ return [
         hostname: alertConfig.includeHostname ? hostname : undefined,
         cliente: alertConfig.includeCliente ? cliente : undefined,
         origenConsulta: `Seq (Origen: ${log.Origen || 'Desconocido'}, Consulta: ${selectedQueryForAlert.name})`,
-        seqQuery: buildSeqQuery(alertQueryFilter || selectedQueryForAlert.filter, cliente, hostname)
+        seqQuery: buildSeqQuery(alertQueryFilter || selectedQueryForAlert.filter, cliente, hostname),
+        seqPermalink: seqPermalink
       };
 
       const genericMsg = getGenericMessage(message, exception);
@@ -2432,7 +2455,8 @@ return [
               version: errGroup.ejemplo.version,
               app: errGroup.ejemplo.app,
               origenConsulta: errGroup.ejemplo.origenConsulta,
-              seqQuery: errGroup.ejemplo.seqQuery
+              seqQuery: errGroup.ejemplo.seqQuery,
+              seqPermalink: errGroup.ejemplo.seqPermalink
             }
           });
         }
@@ -2474,7 +2498,8 @@ return [
               version: errGroup.ejemplo.version,
               app: errGroup.ejemplo.app,
               origenConsulta: errGroup.ejemplo.origenConsulta,
-              seqQuery: errGroup.ejemplo.seqQuery
+              seqQuery: errGroup.ejemplo.seqQuery,
+              seqPermalink: errGroup.ejemplo.seqPermalink
             }
           });
         }
@@ -2528,7 +2553,7 @@ return [
       alertasMesaDeAyuda,
       alertasInfraestructura
     };
-  }, [selectedQueryForAlert, logs, alertConfig, alertQueryFilter]);
+  }, [selectedQueryForAlert, logs, alertConfig, alertQueryFilter, connections]);
 
   // Toggle de nivel en los chips de filtro local
   const toggleLocalLevel = (lvl: string) => {
