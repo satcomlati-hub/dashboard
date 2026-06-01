@@ -1876,9 +1876,6 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                     {isLoadingLogs ? 'Procesando...' : 'Ejecutar'}
                   </button>
                 </div>
-              </div>>
-                  </div>
-                </div>
               </div>
 
               {/* Filtros Locales / Rápidos */}
