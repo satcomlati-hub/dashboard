@@ -1647,7 +1647,8 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
               <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-3 flex flex-col gap-3.5 shadow-sm">
                 {/* FILA 1: Configuración de Herramientas */}
                 <div className="flex flex-wrap items-center justify-between gap-3 text-xs border-b border-neutral-100 dark:border-neutral-900 pb-3">
-                          {/* 1. Selector Múltiple de Conexiones */}
+                  <div className="flex flex-wrap items-center gap-3">
+                    {/* 1. Selector Múltiple de Conexiones */}
                     <div className="relative" ref={connectionDropdownRef}>
                       <button
                         type="button"
