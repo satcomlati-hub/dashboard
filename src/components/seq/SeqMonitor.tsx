@@ -137,6 +137,10 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
   }, []);
 
   const [connections, setConnections] = useState<SeqConnection[]>([]);
+  const [selectedConnectionIds, setSelectedConnectionIds] = useState<Set<string>>(new Set());
+  const [activeConnectionFilters, setActiveConnectionFilters] = useState<Set<string>>(new Set());
+  const [isConnectionDropdownOpen, setIsConnectionDropdownOpen] = useState<boolean>(false);
+  const connectionDropdownRef = useRef<HTMLDivElement>(null);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string>('');
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
   const [connectionStatusText, setConnectionStatusText] = useState<string>('Desconectado');
@@ -144,7 +148,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
   // Queries
   const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([]);
   const [currentFilter, setCurrentFilter] = useState<string>('');
-  const [limit, setLimit] = useState<number>(50);
+  const [limit, setLimit] = useState<number>(100);
   const [logs, setLogs] = useState<SeqLog[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState<boolean>(false);
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
@@ -222,10 +226,9 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
   // Refs para temporizadores y streaming
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   const stateRef = useRef({ 
-    seqUrl: '', 
-    apiKey: '', 
+    selectedConnections: [] as SeqConnection[], 
     currentFilter: '', 
-    limit: 50, 
+    limit: 100, 
     isStreaming: false,
     queryStartTime: '',
     queryEndTime: ''
@@ -233,17 +236,16 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
 
   // Sincronizar referencias del estado para el callback de setInterval
   useEffect(() => {
-    const activeConn = connections.find(c => c.id === selectedConnectionId);
+    const selectedConns = connections.filter(c => selectedConnectionIds.has(c.id));
     stateRef.current = {
-      seqUrl: activeConn?.url || '',
-      apiKey: activeConn?.apiKey || '',
+      selectedConnections: selectedConns,
       currentFilter,
       limit,
       isStreaming,
       queryStartTime,
       queryEndTime
     };
-  }, [connections, selectedConnectionId, currentFilter, limit, isStreaming, queryStartTime, queryEndTime]);
+  }, [connections, selectedConnectionIds, currentFilter, limit, isStreaming, queryStartTime, queryEndTime]);
 
   // Cerrar popups al hacer clic afuera
   useEffect(() => {
@@ -259,6 +261,9 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
       }
       if (savedQueriesDropdownRef.current && !savedQueriesDropdownRef.current.contains(event.target as Node)) {
         setIsSavedQueriesOpen(false);
+      }
+      if (connectionDropdownRef.current && !connectionDropdownRef.current.contains(event.target as Node)) {
+        setIsConnectionDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -391,9 +396,18 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
       if (res.ok) {
         const data = await res.json();
         setConnections(data);
-        // Autoseleccionar la primera si no hay ninguna seleccionada
-        if (data.length > 0 && !selectedConnectionId) {
-          setSelectedConnectionId(data[0].id);
+        // Autoseleccionar todos los orígenes por defecto
+        if (data.length > 0) {
+          const allIds = data.map((c: any) => c.id);
+          setSelectedConnectionIds(new Set(allIds));
+          setActiveConnectionFilters(new Set(allIds));
+          setConnectionStatus('connected');
+          setConnectionStatusText(`Orígenes: ${data.length} activos`);
+          
+          // Cargar logs iniciales al iniciar
+          setTimeout(() => {
+            fetchLogs(false);
+          }, 150);
         }
       }
     } catch (err) {
@@ -593,9 +607,9 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
 
   // Obtener logs de Seq
   const fetchLogs = async (isAutoRefresh = false) => {
-    const { seqUrl, apiKey, currentFilter: filterExpr, limit: maxCount, queryStartTime: startTime, queryEndTime: endTime } = stateRef.current;
-    if (!seqUrl) {
-      if (!isAutoRefresh) showToast('No hay una conexión de Seq activa', 'warning');
+    const { selectedConnections, currentFilter: filterExpr, limit: maxCount, queryStartTime: startTime, queryEndTime: endTime } = stateRef.current;
+    if (selectedConnections.length === 0) {
+      if (!isAutoRefresh) showToast('Selecciona al menos una conexión de Seq activa', 'warning');
       return;
     }
 
@@ -609,12 +623,6 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     }
 
     try {
-      const queryParams = new URLSearchParams({
-        seqUrl,
-        count: maxCount.toString(),
-        render: 'true'
-      });
-      
       const cleanFilter = cleanFilterPrefix(filterExpr);
       const formattedFilter = formatFilterForSeq(cleanFilter);
       let finalFilter = formattedFilter;
@@ -642,122 +650,226 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
         finalFilter = applyTimeLimitsToQuery(cleanFilter);
       }
 
-      if (finalFilter && finalFilter.trim() !== '') {
-        queryParams.append('filter', finalFilter);
-      }
+      // Ejecutar consultas en paralelo para todas las conexiones seleccionadas
+      const promises = selectedConnections.map(async (conn) => {
+        const queryParams = new URLSearchParams({
+          seqUrl: conn.url,
+          count: maxCount.toString(),
+          render: 'true'
+        });
 
-      const response = await fetch(`/api/seq/events?${queryParams}`, {
-        headers: {
-          'X-Seq-ApiKey': apiKey
+        if (finalFilter && finalFilter.trim() !== '') {
+          queryParams.append('filter', finalFilter);
+        }
+
+        try {
+          const response = await fetch(`/api/seq/events?${queryParams}`, {
+            headers: {
+              'X-Seq-ApiKey': conn.apiKey || ''
+            }
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            return {
+              connectionId: conn.id,
+              connectionName: conn.name,
+              success: false,
+              error: errorData.error || errorData.details || 'Error de respuesta'
+            };
+          }
+
+          const data = await response.json();
+          return {
+            connectionId: conn.id,
+            connectionName: conn.name,
+            success: true,
+            data
+          };
+        } catch (err: any) {
+          return {
+            connectionId: conn.id,
+            connectionName: conn.name,
+            success: false,
+            error: err.message || 'Error de red'
+          };
         }
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        showToast(`Error de Seq: ${errorData.error || errorData.details || 'Servidor inalcanzable'}`, 'error');
-        if (isStreaming) stopStreaming();
-        return;
+      const results = await Promise.all(promises);
+
+      // Reportar fallos parciales
+      const failed = results.filter(r => !r.success);
+      if (failed.length > 0 && !isAutoRefresh) {
+        failed.forEach(f => {
+          showToast(`Error en conexión '${f.connectionName}': ${f.error}`, 'error');
+        });
       }
 
-      const data = await response.json();
-      let fetchedLogs: SeqLog[] = [];
+      let allFetchedLogs: SeqLog[] = [];
+      let aggregatedSqlResult: { columns: string[], rows: any[][] } | null = null;
 
-      if (data && data.Columns && (Array.isArray(data.Rows) || Array.isArray(data.Series))) {
-        // Es un resultado de consulta SQL agregada/dataset de Seq (Rows o Series/Slices)
-        let columns = [...data.Columns];
-        let rows: any[][] = [];
+      // Filtrar resultados exitosos
+      const successfulResults = results.filter(r => r.success && r.data);
 
-        if (Array.isArray(data.Rows)) {
-          rows = data.Rows;
-        } else if (Array.isArray(data.Series)) {
-          // Aplanar Series y Slices (GROUP BY time(...))
-          const timeColName = 'time';
-          const hasTimeCol = columns.some(c => c.toLowerCase() === 'time' || c.toLowerCase() === '@timestamp');
-          if (!hasTimeCol) {
-            let keyLength = 0;
-            if (data.Series.length > 0 && data.Series[0].Key) {
-              keyLength = data.Series[0].Key.length;
-            }
-            columns.splice(keyLength, 0, timeColName);
-          }
+      if (successfulResults.length > 0) {
+        // Verificar si es agregación SQL (Columns + Rows/Series)
+        const isSqlResult = successfulResults.some(r => r.data && r.data.Columns);
 
-          const timeIndex = columns.findIndex(c => c.toLowerCase() === 'time' || c.toLowerCase() === '@timestamp');
+        if (isSqlResult) {
+          let mergedColumns: string[] = [];
+          let mergedRows: any[][] = [];
 
-          data.Series.forEach((seriesItem: any) => {
-            const keyValues = seriesItem.Key || [];
-            const slices = seriesItem.Slices || [];
-            
-            slices.forEach((slice: any) => {
-              const sliceTime = slice.Time;
-              const sliceRows = slice.Rows || [[]];
-              
-              sliceRows.forEach((sliceRow: any[]) => {
-                const flatRow = [...keyValues];
-                flatRow.splice(timeIndex, 0, sliceTime);
-                flatRow.push(...sliceRow);
-                rows.push(flatRow);
+          successfulResults.forEach(r => {
+            const data = r.data;
+            if (!data || !data.Columns) return;
+
+            let columns = [...data.Columns];
+            let rows: any[][] = [];
+
+            if (Array.isArray(data.Rows)) {
+              rows = data.Rows;
+            } else if (Array.isArray(data.Series)) {
+              // Aplanar Series y Slices (GROUP BY time(...))
+              const timeColName = 'time';
+              const hasTimeCol = columns.some(c => c.toLowerCase() === 'time' || c.toLowerCase() === '@timestamp');
+              if (!hasTimeCol) {
+                let keyLength = 0;
+                if (data.Series.length > 0 && data.Series[0].Key) {
+                  keyLength = data.Series[0].Key.length;
+                }
+                columns.splice(keyLength, 0, timeColName);
+              }
+
+              const timeIndex = columns.findIndex(c => c.toLowerCase() === 'time' || c.toLowerCase() === '@timestamp');
+
+              data.Series.forEach((seriesItem: any) => {
+                const keyValues = seriesItem.Key || [];
+                const slices = seriesItem.Slices || [];
+                
+                slices.forEach((slice: any) => {
+                  const sliceTime = slice.Time;
+                  const sliceRows = slice.Rows || [[]];
+                  
+                  sliceRows.forEach((sliceRow: any[]) => {
+                    const flatRow = [...keyValues];
+                    flatRow.splice(timeIndex, 0, sliceTime);
+                    flatRow.push(...sliceRow);
+                    rows.push(flatRow);
+                  });
+                });
               });
+            }
+
+            // Inyectar columna "Origen" para identificar de dónde proceden las filas
+            const originColIndex = columns.findIndex(c => c === 'Origen');
+            if (originColIndex === -1) {
+              columns.push('Origen');
+            }
+
+            const formattedRows = rows.map(row => {
+              const newRow = [...row];
+              if (originColIndex === -1) {
+                newRow.push(r.connectionName);
+              } else {
+                newRow[originColIndex] = r.connectionName;
+              }
+              return newRow;
             });
+
+            if (mergedColumns.length === 0) {
+              mergedColumns = columns;
+            }
+            mergedRows.push(...formattedRows);
+          });
+
+          aggregatedSqlResult = { columns: mergedColumns, rows: mergedRows };
+
+          // Convertir filas a formato SeqLogs
+          allFetchedLogs = mergedRows.map((row: any[], rowIndex: number) => {
+            const properties = mergedColumns.map((colName: string, colIndex: number) => ({
+              Name: colName,
+              Value: row[colIndex]
+            }));
+
+            let timestamp = new Date().toISOString();
+            const tsColIndex = mergedColumns.findIndex((col: string) => col.toLowerCase() === '@timestamp' || col.toLowerCase() === 'time');
+            if (tsColIndex !== -1 && row[tsColIndex]) {
+              timestamp = row[tsColIndex];
+            }
+
+            let level = 'Information';
+            const lvlColIndex = mergedColumns.findIndex((col: string) => col.toLowerCase() === '@level' || col.toLowerCase() === 'level');
+            if (lvlColIndex !== -1 && row[lvlColIndex]) {
+              level = row[lvlColIndex];
+            }
+
+            const renderedMessage = mergedColumns
+              .map((colName: string, colIndex: number) => {
+                const val = row[colIndex];
+                return `${colName}: ${typeof val === 'object' ? JSON.stringify(val) : String(val)}`;
+              }).join(' | ');
+
+            const originVal = row[mergedColumns.length - 1];
+            const matchingConn = selectedConnections.find(c => c.name === originVal);
+
+            return {
+              Id: `sql-row-${rowIndex}-${Date.now()}`,
+              Timestamp: timestamp,
+              Level: level,
+              RenderedMessage: renderedMessage,
+              Properties: properties,
+              connectionId: matchingConn?.id,
+              connectionName: matchingConn?.name
+            };
+          });
+        } else {
+          // logs tradicionales de Seq
+          successfulResults.forEach(r => {
+            const data = r.data;
+            const events = Array.isArray(data) ? data : (data.Events || []);
+            
+            const processedEvents = events.map((log: SeqLog) => {
+              const propertiesWithConnection = [
+                ...(log.Properties || []),
+                { Name: 'Origen', Value: r.connectionName }
+              ];
+
+              return {
+                ...log,
+                Properties: propertiesWithConnection,
+                connectionId: r.connectionId,
+                connectionName: r.connectionName
+              };
+            });
+
+            allFetchedLogs.push(...processedEvents);
+          });
+
+          // Mezclar cronológicamente por Timestamp descendente
+          allFetchedLogs.sort((a, b) => {
+            const timeA = new Date(a.Timestamp).getTime();
+            const timeB = new Date(b.Timestamp).getTime();
+            return timeB - timeA;
           });
         }
+      }
 
-        setRawSqlResult({ columns, rows });
-        if (!isAutoRefresh) {
-          setSqlViewMode('grid');
-        }
-
-        fetchedLogs = rows.map((row: any[], rowIndex: number) => {
-          const properties = columns.map((colName: string, colIndex: number) => ({
-            Name: colName,
-            Value: row[colIndex]
-          }));
-
-          // Determinar si hay un timestamp en las columnas
-          let timestamp = new Date().toISOString();
-          const tsColIndex = columns.findIndex((col: string) => col.toLowerCase() === '@timestamp' || col.toLowerCase() === 'time');
-          if (tsColIndex !== -1 && row[tsColIndex]) {
-            timestamp = row[tsColIndex];
-          }
-
-          // Buscar si hay columna de nivel de log
-          let level = 'Information';
-          const lvlColIndex = columns.findIndex((col: string) => col.toLowerCase() === '@level' || col.toLowerCase() === 'level');
-          if (lvlColIndex !== -1 && row[lvlColIndex]) {
-            level = row[lvlColIndex];
-          }
-
-          // Crear mensaje renderizado descriptivo
-          const renderedMessage = columns
-            .map((colName: string, colIndex: number) => {
-              const val = row[colIndex];
-              return `${colName}: ${typeof val === 'object' ? JSON.stringify(val) : String(val)}`;
-            }).join(' | ');
-
-          return {
-            Id: `sql-row-${rowIndex}-${Date.now()}`,
-            Timestamp: timestamp,
-            Level: level,
-            RenderedMessage: renderedMessage,
-            Properties: properties
-          };
-        });
-      } else {
-        setRawSqlResult(null);
-        fetchedLogs = Array.isArray(data) ? data : (data.Events || []);
+      setRawSqlResult(aggregatedSqlResult);
+      if (!isAutoRefresh && aggregatedSqlResult) {
+        setSqlViewMode('grid');
       }
 
       setLogs(prevLogs => {
-        if (!isAutoRefresh) return fetchedLogs;
+        if (!isAutoRefresh) return allFetchedLogs;
         
-        // Unificar y evitar duplicados por ID
         const existingIds = new Set(prevLogs.map(l => l.Id));
-        const newLogs = fetchedLogs.filter((l: any) => !existingIds.has(l.Id));
+        const newLogs = allFetchedLogs.filter((l: any) => !existingIds.has(l.Id));
         
         if (newLogs.length === 0) return prevLogs;
 
         const combined = [...newLogs, ...prevLogs];
-        // Recortar al límite
-        return combined.slice(0, maxCount * 2);
+        return combined.slice(0, maxCount * selectedConnections.length * 2);
       });
 
     } catch (err: any) {
@@ -851,6 +963,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     setCurrentFilter('');
     setLocalSearchQuery('');
     setActiveLevels(new Set(LOG_LEVELS));
+    setActiveConnectionFilters(new Set(connections.map(c => c.id)));
     setLogs([]);
     setRawSqlResult(null);
     showToast('Consola e inputs restablecidos', 'info');
@@ -1431,6 +1544,10 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
   // Filtrado local y por texto (Memoizado)
   const filteredLogs = useMemo(() => {
     return logs.filter(log => {
+      // Filtrar por conexión seleccionada
+      if (log.connectionId && !activeConnectionFilters.has(log.connectionId)) {
+        return false;
+      }
       const isSqlAggregation = !log.Timestamp || isNaN(Date.parse(log.Timestamp));
       if (!isSqlAggregation) {
         const level = log.Level || 'Information';
@@ -1451,7 +1568,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
 
       return message.includes(query) || propertiesStr.includes(query) || exceptionStr.includes(query);
     });
-  }, [logs, activeLevels, localSearchQuery]);
+  }, [logs, activeLevels, localSearchQuery, activeConnectionFilters]);
 
   // Toggle de nivel en los chips de filtro local
   const toggleLocalLevel = (lvl: string) => {
@@ -1530,36 +1647,83 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
               <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-3 flex flex-col gap-3.5 shadow-sm">
                 {/* FILA 1: Configuración de Herramientas */}
                 <div className="flex flex-wrap items-center justify-between gap-3 text-xs border-b border-neutral-100 dark:border-neutral-900 pb-3">
-                  <div className="flex flex-wrap items-center gap-3">
-                    {/* 1. Selector de Conexión */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold text-[#71BF44] uppercase tracking-wider whitespace-nowrap">Conexión:</span>
-                      <select
-                        value={selectedConnectionId}
-                        onChange={(e) => {
-                          const nextId = e.target.value;
-                          setSelectedConnectionId(nextId);
-                          setConnectionStatus('disconnected');
-                          setConnectionStatusText('Desconectado');
-                          if (nextId) {
-                            handleConnect(undefined, nextId);
-                          }
-                        }}
-                        className="bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg p-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] min-w-[130px]"
+                          {/* 1. Selector Múltiple de Conexiones */}
+                    <div className="relative" ref={connectionDropdownRef}>
+                      <button
+                        type="button"
+                        onClick={() => setIsConnectionDropdownOpen(!isConnectionDropdownOpen)}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg text-xs text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-850 transition-colors select-none whitespace-nowrap"
+                        title="Seleccionar orígenes de Seq"
                       >
-                        <option value="">-- Selecciona --</option>
-                        {connections.map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${
-                        connectionStatus === 'connected' ? 'bg-emerald-500 animate-pulse' :
-                        connectionStatus === 'connecting' ? 'bg-amber-500 animate-pulse' :
-                        connectionStatus === 'error' ? 'bg-red-500' : 'bg-neutral-450 dark:bg-neutral-600'
-                      }`} />
-                      <span className="text-[10px] text-neutral-550 dark:text-neutral-450 font-medium truncate max-w-[80px]" title={connectionStatusText}>
-                        {connectionStatus === 'connected' ? 'Conectado' : connectionStatus === 'connecting' ? 'Validando...' : connectionStatus === 'error' ? 'Error' : 'Desconectado'}
-                      </span>
+                        <Server className="w-3.5 h-3.5 text-[#71BF44]" />
+                        <span>
+                          {selectedConnectionIds.size === 0 ? 'Sin Conexión' : 
+                           selectedConnectionIds.size === connections.length ? 'Todas las Conexiones' : 
+                           `${selectedConnectionIds.size} de ${connections.length} Conexiones`}
+                        </span>
+                        <ChevronDown className="w-3 h-3 text-neutral-450" />
+                      </button>
+
+                      {isConnectionDropdownOpen && (
+                        <div className="absolute left-0 mt-1 bg-white dark:bg-[#151515] border border-neutral-250 dark:border-neutral-800 rounded-xl shadow-2xl p-3 z-40 w-64 flex flex-col gap-2 animate-scale-in">
+                          <div className="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-850 pb-1.5">
+                            <span className="text-[10px] text-[#71BF44] font-bold uppercase tracking-wider">Orígenes de Seq</span>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedConnectionIds(new Set(connections.map(c => c.id)));
+                                  showToast('Todos los orígenes seleccionados', 'info');
+                                }}
+                                className="text-[9px] text-[#71BF44] hover:underline font-semibold"
+                              >
+                                Todos
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedConnectionIds(new Set());
+                                  showToast('Orígenes limpiados', 'info');
+                                }}
+                                className="text-[9px] text-red-500 hover:underline font-semibold"
+                              >
+                                Ninguno
+                              </button>
+                            </div>
+                          </div>
+                          
+                          <div className="flex flex-col gap-1 max-h-48 overflow-y-auto pt-1">
+                            {connections.length === 0 ? (
+                              <span className="text-[11px] text-neutral-450 italic p-1">No hay conexiones configuradas</span>
+                            ) : (
+                              connections.map(c => {
+                                const isChecked = selectedConnectionIds.has(c.id);
+                                return (
+                                  <label
+                                    key={c.id}
+                                    className="flex items-center gap-2 p-1.5 hover:bg-neutral-50 dark:hover:bg-neutral-850 rounded-lg cursor-pointer text-xs select-none"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => {
+                                        setSelectedConnectionIds(prev => {
+                                          const next = new Set(prev);
+                                          if (next.has(c.id)) next.delete(c.id);
+                                          else next.add(c.id);
+                                          return next;
+                                        });
+                                      }}
+                                      className="rounded border-neutral-350 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-[#71BF44] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                                    />
+                                    <span className="font-medium text-neutral-800 dark:text-neutral-200 truncate">{c.name}</span>
+                                  </label>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-850" />
@@ -1917,28 +2081,61 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
 
               {/* Filtros Locales / Rápidos */}
               <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] text-neutral-400 dark:text-neutral-500 font-bold uppercase tracking-wider shrink-0">Nivel de Log:</span>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {LOG_LEVELS.map(lvl => {
-                      const isActive = activeLevels.has(lvl);
-                      return (
-                        <button
-                          key={lvl}
-                          onClick={() => toggleLocalLevel(lvl)}
-                          style={{
-                            borderColor: isActive ? LEVEL_COLORS[lvl] : 'transparent',
-                            backgroundColor: isActive ? `${LEVEL_COLORS[lvl]}15` : undefined,
-                            color: isActive ? LEVEL_COLORS[lvl] : undefined
-                          }}
-                          className={`px-2 py-1 rounded-md text-[10px] font-bold border transition-all ${
-                            isActive ? '' : 'bg-neutral-50 hover:bg-neutral-100 dark:bg-[#181818] text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 border-transparent'
-                          }`}
-                        >
-                          {lvl === 'Information' ? 'Info' : lvl}
-                        </button>
-                      );
-                    })}
+                <div className="flex items-center gap-3 flex-wrap flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] text-neutral-400 dark:text-neutral-500 font-bold uppercase tracking-wider shrink-0">Nivel de Log:</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {LOG_LEVELS.map(lvl => {
+                        const isActive = activeLevels.has(lvl);
+                        return (
+                          <button
+                            key={lvl}
+                            onClick={() => toggleLocalLevel(lvl)}
+                            style={{
+                              borderColor: isActive ? LEVEL_COLORS[lvl] : 'transparent',
+                              backgroundColor: isActive ? `${LEVEL_COLORS[lvl]}15` : undefined,
+                              color: isActive ? LEVEL_COLORS[lvl] : undefined
+                            }}
+                            className={`px-2 py-1 rounded-md text-[10px] font-bold border transition-all ${
+                              isActive ? '' : 'bg-neutral-50 hover:bg-neutral-100 dark:bg-[#181818] text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 border-transparent'
+                            }`}
+                          >
+                            {lvl === 'Information' ? 'Info' : lvl}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="w-px h-5 bg-neutral-200 dark:bg-neutral-850 hidden lg:block" />
+
+                  <div className="flex items-center gap-2 flex-wrap border-t lg:border-t-0 border-neutral-200 dark:border-neutral-800 pt-2 lg:pt-0">
+                    <span className="text-[10px] text-neutral-450 dark:text-neutral-500 font-bold uppercase tracking-wider shrink-0">Orígenes Visibles:</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {connections.map(c => {
+                        const isActive = activeConnectionFilters.has(c.id);
+                        return (
+                          <button
+                            key={c.id}
+                            onClick={() => {
+                              setActiveConnectionFilters(prev => {
+                                const next = new Set(prev);
+                                if (next.has(c.id)) next.delete(c.id);
+                                else next.add(c.id);
+                                return next;
+                              });
+                            }}
+                            className={`px-2 py-1 rounded-md text-[10px] font-bold border transition-all ${
+                              isActive 
+                                ? 'bg-[#71BF44]/15 border-[#71BF44]/35 text-[#71BF44]' 
+                                : 'bg-neutral-50 hover:bg-neutral-100 dark:bg-[#181818] text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 border-transparent'
+                            }`}
+                          >
+                            {c.name}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
 
@@ -2212,6 +2409,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                             onClick={() => {
                               setLocalSearchQuery('');
                               setActiveLevels(new Set(LOG_LEVELS));
+                              setActiveConnectionFilters(new Set(connections.map(c => c.id)));
                               showToast('Filtros locales restablecidos', 'success');
                             }}
                             className="mt-2 px-3 py-1.5 bg-[#71BF44]/10 hover:bg-[#71BF44]/20 border border-[#71BF44]/35 text-[#71BF44] dark:text-[#8ae65c] text-[10px] font-bold rounded-lg transition-all"
