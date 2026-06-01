@@ -1420,6 +1420,34 @@ return [
     }
   };
 
+  const handleUpdateAndSaveQuery = async () => {
+    if (!selectedQueryForAlert) return;
+    
+    const updated = savedQueries.map(q => {
+      if (q.id === selectedQueryForAlert.id) {
+        return {
+          ...q,
+          filter: alertQueryFilter
+        };
+      }
+      return q;
+    });
+    setSavedQueries(updated);
+    localStorage.setItem('seq_monitor_queries', JSON.stringify(updated));
+    
+    setIsLoadingLogs(true);
+    try {
+      stateRef.current.currentFilter = alertQueryFilter;
+      setCurrentFilter(alertQueryFilter);
+      await fetchLogs(false);
+      showToast('Consulta guardada y simulación actualizada', 'success');
+    } catch (e: any) {
+      showToast(`Error al guardar y actualizar consulta: ${e.message}`, 'error');
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  };
+
   // Agregar consulta al historial de ejecuciones (máximo 100, sin duplicados)
   const addToHistory = (query: string) => {
     const trimmed = query.trim();
@@ -3988,15 +4016,27 @@ return [
                 <div className="flex flex-col gap-1.5 border border-neutral-200 dark:border-neutral-800/80 p-2.5 rounded-lg">
                   <div className="flex items-center justify-between">
                     <label className="text-[9px] text-neutral-500 dark:text-neutral-400 font-bold uppercase">Consulta Evaluada</label>
-                    <button
-                      type="button"
-                      onClick={handleUpdateSimulation}
-                      className="text-[9px] font-bold text-[#71BF44] hover:underline flex items-center gap-1 cursor-pointer"
-                      title="Ejecutar consulta en Seq y actualizar logs de la simulación"
-                    >
-                      <RefreshCw className="w-2.5 h-2.5" />
-                      Actualizar Simulación
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleUpdateAndSaveQuery}
+                        className="text-[9px] font-bold text-[#71BF44] hover:underline flex items-center gap-1 cursor-pointer"
+                        title="Guardar la consulta editada en el monitor y refrescar simulación"
+                      >
+                        <Save className="w-2.5 h-2.5" />
+                        Guardar Filtro
+                      </button>
+                      <span className="text-neutral-300 dark:text-neutral-700 text-[10px]">|</span>
+                      <button
+                        type="button"
+                        onClick={handleUpdateSimulation}
+                        className="text-[9px] font-bold text-neutral-600 dark:text-neutral-400 hover:underline flex items-center gap-1 cursor-pointer"
+                        title="Ejecutar consulta en Seq y actualizar logs de la simulación"
+                      >
+                        <RefreshCw className="w-2.5 h-2.5" />
+                        Solo Simular
+                      </button>
+                    </div>
                   </div>
                   <textarea
                     value={alertQueryFilter}
