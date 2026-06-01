@@ -1582,6 +1582,30 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     });
   };
 
+  // Obtener el conteo de eventos filtrados por conexión (respetando filtros de nivel de log y buscador local)
+  const getConnectionLogCount = (connectionId: string) => {
+    return logs.filter(log => {
+      if (log.connectionId !== connectionId) return false;
+      const isSqlAggregation = !log.Timestamp || isNaN(Date.parse(log.Timestamp));
+      if (!isSqlAggregation) {
+        const level = log.Level || 'Information';
+        if (!activeLevels.has(level)) return false;
+      }
+      if (!localSearchQuery.trim()) return true;
+      const query = localSearchQuery.toLowerCase();
+      const message = isSqlAggregation
+        ? (log.Properties ? log.Properties.map(p => `${p.Name} ${JSON.stringify(p.Value)}`).join(' ') : '').toLowerCase()
+        : (log.RenderedMessage || log.MessageTemplate || '').toLowerCase();
+      
+      const propertiesStr = log.Properties 
+        ? log.Properties.map(p => `${p.Name} ${JSON.stringify(p.Value)}`).join(' ').toLowerCase() 
+        : '';
+      const exceptionStr = (log.Exception || '').toLowerCase();
+
+      return message.includes(query) || propertiesStr.includes(query) || exceptionStr.includes(query);
+    }).length;
+  };
+
   return (
     <div className="flex flex-col h-full bg-white dark:bg-[#0a0a0a] text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-800 rounded-xl overflow-hidden shadow-2xl relative">
       
@@ -2134,7 +2158,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                                 : 'bg-neutral-50 hover:bg-neutral-100 dark:bg-[#181818] text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 border-transparent'
                             }`}
                           >
-                            {c.name}
+                            {c.name} ({getConnectionLogCount(c.id)})
                           </button>
                         );
                       })}
