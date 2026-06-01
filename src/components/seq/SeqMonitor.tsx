@@ -1485,14 +1485,31 @@ return [
       'Excepcion'
     ];
 
-    const rows = logs.map(log => {
-      const message = stringifyValue(log.RenderedMessage || log.MessageTemplate || '');
-      const exception = stringifyValue(log.Exception || '');
-      const hostname = log.Properties?.find(p => p.Name === 'Hostname' || p.Name === '_hostname' || p.Name === 'hostname')?.Value || log._hostname || 'Desconocido';
-      const cliente = log.Properties?.find(p => p.Name === 'Cliente' || p.Name === '_cliente' || p.Name === 'cliente')?.Value || log._cliente || 'Desconocido';
-      const app = log.Properties?.find(p => p.Name === 'App' || p.Name === '_app' || p.Name === 'app')?.Value || log._app || 'Desconocido';
-      const version = log.Properties?.find(p => p.Name === 'Version' || p.Name === '_version' || p.Name === 'version')?.Value || log._version || 'Desconocido';
-      const origenConexion = log.connectionName || 'Desconocido';
+    // Aplanar los logs para la descarga y evitar errores de tipado en propiedades dinámicas
+    const flattenedLogs = logs.map(log => {
+      const flat: { [key: string]: any } = {
+        Timestamp: log.Timestamp,
+        Level: log.Level,
+        Message: log.RenderedMessage || log.MessageTemplate || '',
+        Exception: log.Exception || '',
+        Origen: log.connectionName || 'Desconocido',
+      };
+      if (log.Properties) {
+        log.Properties.forEach(p => {
+          flat[p.Name] = p.Value;
+        });
+      }
+      return flat;
+    });
+
+    const rows = flattenedLogs.map(log => {
+      const message = stringifyValue(log.Message);
+      const exception = stringifyValue(log.Exception);
+      const hostname = log.Hostname || log._hostname || log.hostname || 'Desconocido';
+      const cliente = log.Cliente || log._cliente || log.cliente || 'Desconocido';
+      const app = log.App || log._app || log.app || 'Desconocido';
+      const version = log.Version || log._version || log.version || 'Desconocido';
+      const origenConexion = log.Origen || 'Desconocido';
 
       let statusCode = null;
       const statusCodeMatch = exception.match(/"StatusCode"\s*:\s*(\d+)/) || 
