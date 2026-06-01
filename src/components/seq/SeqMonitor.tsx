@@ -180,6 +180,14 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
   const [isTimePickerOpen, setIsTimePickerOpen] = useState<boolean>(false);
   const [isSuggestionsOpen, setIsSuggestionsOpen] = useState<boolean>(false);
 
+  // Consultas guardadas interactivas
+  const [isSavedQueriesOpen, setIsSavedQueriesOpen] = useState<boolean>(false);
+  const [searchSavedQueryText, setSearchSavedQueryText] = useState<string>('');
+  const savedQueriesDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Series de tiempo ocultas
+  const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set());
+
   // Refs para interactividad
   const timePickerRef = useRef<HTMLDivElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
@@ -248,6 +256,9 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
           textareaRef.current && 
           !textareaRef.current.contains(event.target as Node)) {
         setIsSuggestionsOpen(false);
+      }
+      if (savedQueriesDropdownRef.current && !savedQueriesDropdownRef.current.contains(event.target as Node)) {
+        setIsSavedQueriesOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -594,6 +605,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
 
     if (!isAutoRefresh) {
       setIsLoadingLogs(true);
+      setHiddenSeries(new Set());
     }
 
     try {
@@ -759,10 +771,11 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     }
   };
 
-  // Conectarse manualmente a la conexión seleccionada
-  const handleConnect = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const conn = connections.find(c => c.id === selectedConnectionId);
+  // Conectarse a la conexión seleccionada
+  const handleConnect = async (e?: React.FormEvent, connectionId?: string) => {
+    if (e) e.preventDefault();
+    const targetId = connectionId || selectedConnectionId;
+    const conn = connections.find(c => c.id === targetId);
     if (!conn) return;
 
     setConnectionStatus('connecting');
@@ -1248,6 +1261,30 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     return clean;
   };
 
+  // Alternar visibilidad de una serie en la leyenda de la gráfica
+  const handleLegendClick = (props: any) => {
+    const seriesName = props.dataKey || props.value;
+    if (!seriesName) return;
+    setHiddenSeries(prev => {
+      const next = new Set(prev);
+      if (next.has(seriesName)) next.delete(seriesName);
+      else next.add(seriesName);
+      return next;
+    });
+  };
+
+  // Formatear texto de la leyenda (tachar/atenuar si está oculta)
+  const renderLegendText = (value: string) => {
+    const isHidden = hiddenSeries.has(value);
+    return (
+      <span className="cursor-pointer select-none transition-all duration-200 text-neutral-300 hover:text-white">
+        <span className={isHidden ? 'line-through opacity-35 text-neutral-500 font-normal' : 'text-neutral-200 font-semibold'}>
+          {value}
+        </span>
+      </span>
+    );
+  };
+
   // Buscar eventos por una propiedad de forma acumulativa
   const handleSearchProperty = (name: string, value: any) => {
     const cleanName = cleanPropertyName(name);
@@ -1452,133 +1489,306 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
           <>
             {/* Panel Principal */}
             <main className="flex-1 flex flex-col overflow-hidden bg-neutral-50 dark:bg-[#0a0a0a] p-4 gap-4">
-              {/* Controles de Conexión, Consultas Guardadas e Historial */}
-              <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-3 flex flex-col md:flex-row gap-4 items-center justify-between shadow-sm">
-                
-                {/* Conexión Activa */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2.5 w-full md:w-auto">
-                  <span className="text-[10px] font-bold text-[#71BF44] uppercase tracking-wider whitespace-nowrap">Conexión:</span>
-                  <form onSubmit={handleConnect} className="flex items-center gap-2 w-full sm:w-auto">
-                    <select
-                      value={selectedConnectionId}
-                      onChange={(e) => {
-                        setSelectedConnectionId(e.target.value);
-                        setConnectionStatus('disconnected');
-                        setConnectionStatusText('Desconectado');
-                      }}
-                      className="bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg p-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] min-w-[140px]"
-                    >
-                      <option value="">-- Selecciona --</option>
-                      {connections.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
+              {/*               {/* Barra de Controles y Entrada de Query (2 filas optimizadas) */}
+              <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-3 flex flex-col gap-3.5 shadow-sm">
+                {/* FILA 1: Configuración de Herramientas */}
+                <div className="flex flex-wrap items-center justify-between gap-3 text-xs border-b border-neutral-100 dark:border-neutral-900 pb-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    {/* 1. Selector de Conexión */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-[#71BF44] uppercase tracking-wider whitespace-nowrap">Conexión:</span>
+                      <select
+                        value={selectedConnectionId}
+                        onChange={(e) => {
+                          const nextId = e.target.value;
+                          setSelectedConnectionId(nextId);
+                          setConnectionStatus('disconnected');
+                          setConnectionStatusText('Desconectado');
+                          if (nextId) {
+                            handleConnect(undefined, nextId);
+                          }
+                        }}
+                        className="bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg p-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] min-w-[130px]"
+                      >
+                        <option value="">-- Selecciona --</option>
+                        {connections.map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${
+                        connectionStatus === 'connected' ? 'bg-emerald-500 animate-pulse' :
+                        connectionStatus === 'connecting' ? 'bg-amber-500 animate-pulse' :
+                        connectionStatus === 'error' ? 'bg-red-500' : 'bg-neutral-450 dark:bg-neutral-600'
+                      }`} />
+                      <span className="text-[10px] text-neutral-550 dark:text-neutral-450 font-medium truncate max-w-[80px]" title={connectionStatusText}>
+                        {connectionStatus === 'connected' ? 'Conectado' : connectionStatus === 'connecting' ? 'Validando...' : connectionStatus === 'error' ? 'Error' : 'Desconectado'}
+                      </span>
+                    </div>
+
+                    <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-850" />
+
+                    {/* 2. Dropdown de Consultas Guardadas con Buscador */}
+                    <div className="relative" ref={savedQueriesDropdownRef}>
+                      <button
+                        type="button"
+                        onClick={() => setIsSavedQueriesOpen(!isSavedQueriesOpen)}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg text-xs text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors select-none whitespace-nowrap"
+                        title="Buscar o cargar consultas guardadas"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-[#71BF44]" />
+                        <span>Consultas Guardadas</span>
+                        <ChevronDown className="w-3 h-3 text-neutral-450" />
+                      </button>
+
+                      {isSavedQueriesOpen && (
+                        <div className="absolute left-0 mt-1 bg-white dark:bg-[#151515] border border-neutral-250 dark:border-neutral-800 rounded-xl shadow-2xl p-3 z-40 w-72 flex flex-col gap-2.5 animate-scale-in">
+                          <h5 className="text-[10px] text-[#71BF44] font-bold uppercase tracking-wider">Consultas Guardadas</h5>
+                          
+                          <div className="relative">
+                            <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-neutral-450 dark:text-neutral-550" />
+                            <input
+                              type="text"
+                              autoFocus
+                              placeholder="Filtrar consultas..."
+                              value={searchSavedQueryText}
+                              onChange={(e) => setSearchSavedQueryText(e.target.value)}
+                              className="w-full bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-250 dark:border-neutral-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44]"
+                            />
+                          </div>
+
+                          <div className="flex flex-col gap-1 max-h-48 overflow-y-auto divide-y divide-neutral-100 dark:divide-neutral-850">
+                            {(() => {
+                              const term = searchSavedQueryText.trim().toLowerCase();
+                              const filtered = savedQueries.filter(q => q.name.toLowerCase().includes(term));
+                              if (filtered.length === 0) {
+                                return <span className="text-[11px] text-neutral-450 italic p-2 select-none">No se encontraron consultas</span>;
+                              }
+                              return filtered.map(q => (
+                                <div
+                                  key={q.id}
+                                  className="flex items-center justify-between p-2 hover:bg-[#71BF44]/5 dark:hover:bg-[#71BF44]/10 cursor-pointer rounded-lg group text-xs transition-colors"
+                                  onClick={() => {
+                                    setCurrentFilter(q.filter);
+                                    setTimeout(() => {
+                                      stateRef.current.currentFilter = q.filter;
+                                      fetchLogs(false);
+                                    }, 50);
+                                    setIsSavedQueriesOpen(false);
+                                    setSearchSavedQueryText('');
+                                  }}
+                                >
+                                  <span className="font-medium text-neutral-855 dark:text-neutral-200 truncate pr-3">{q.name}</span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteQuery(q.id);
+                                    }}
+                                    className="text-neutral-400 hover:text-red-500 dark:text-neutral-550 dark:hover:text-red-400 p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors shrink-0"
+                                    title="Eliminar consulta"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              ));
+                            })()}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setQueryNameInput('');
+                              setQueryFilterInput(currentFilter);
+                              setEditingQuery(null);
+                              setIsSaveQueryModalOpen(true);
+                              setIsSavedQueriesOpen(false);
+                            }}
+                            className="mt-1.5 w-full py-2 text-center text-[10px] font-bold text-[#71BF44] bg-[#71BF44]/5 hover:bg-[#71BF44]/10 border border-[#71BF44]/20 rounded-lg transition-all"
+                          >
+                            + Guardar Consulta Actual
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-850" />
+
+                    {/* 3. Selector de fecha / Time Picker al estilo de Seq */}
+                    <div className="relative" ref={timePickerRef}>
+                      <button
+                        onClick={() => setIsTimePickerOpen(!isTimePickerOpen)}
+                        type="button"
+                        className="flex items-center gap-2 px-3 py-2 bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg text-xs text-neutral-850 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors select-none whitespace-nowrap"
+                        title="Limitar rango de tiempo (FIRST to NOW)"
+                      >
+                        <Clock className="w-3.5 h-3.5 text-[#71BF44]" />
+                        <span>
+                          {queryStartTime ? new Date(queryStartTime).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'}) : 'FIRST'}
+                        </span>
+                        <span className="text-neutral-450 dark:text-neutral-600 font-bold px-0.5">to</span>
+                        <span>
+                          {queryEndTime ? new Date(queryEndTime).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'}) : 'NOW'}
+                        </span>
+                        {(queryStartTime || queryEndTime) && (
+                          <span 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setQueryStartTime('');
+                              setQueryEndTime('');
+                              showToast('Rango de tiempo restablecido (FIRST to NOW)', 'info');
+                            }}
+                            className="ml-1 p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-750 rounded text-neutral-400 hover:text-red-500 transition-colors"
+                            title="Limpiar rango"
+                          >
+                            <X className="w-3 h-3" />
+                          </span>
+                        )}
+                      </button>
+
+                      {isTimePickerOpen && (
+                        <div className="absolute left-0 mt-1 bg-white dark:bg-[#151515] border border-neutral-250 dark:border-neutral-800 rounded-xl shadow-2xl p-4 z-40 w-72 flex flex-col gap-3 animate-scale-in">
+                          <h5 className="text-[10px] text-[#71BF44] font-bold uppercase tracking-wider">Rango de Consulta</h5>
+                          
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-[10px] text-neutral-550 dark:text-neutral-450 font-bold uppercase">Desde (Inicio)</label>
+                            <input
+                              type="datetime-local"
+                              value={queryStartTime}
+                              onChange={(e) => setQueryStartTime(e.target.value)}
+                              className="bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-250 dark:border-neutral-800 rounded-lg p-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] w-full"
+                            />
+                          </div>
+
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-[10px] text-neutral-550 dark:text-neutral-450 font-bold uppercase">Hasta (Fin)</label>
+                            <input
+                              type="datetime-local"
+                              value={queryEndTime}
+                              onChange={(e) => setQueryEndTime(e.target.value)}
+                              className="bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-250 dark:border-neutral-800 rounded-lg p-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] w-full"
+                            />
+                          </div>
+
+                          <div className="border-t border-neutral-100 dark:border-neutral-850 pt-2 flex flex-col gap-1.5">
+                            <span className="text-[9px] text-neutral-450 dark:text-neutral-400 font-bold uppercase tracking-wider">Intervalos rápidos:</span>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {[
+                                { label: '30 Minutos', value: 30 },
+                                { label: '1 Hora', value: 60 },
+                                { label: '4 Horas', value: 240 },
+                                { label: '24 Horas', value: 1440 },
+                              ].map((opt) => (
+                                <button
+                                  key={opt.label}
+                                  type="button"
+                                  onClick={() => {
+                                    const now = new Date();
+                                    const start = new Date(now.getTime() - opt.value * 60 * 1000);
+                                    const tzOffset = start.getTimezoneOffset() * 60000;
+                                    const localISOTime = (new Date(start.getTime() - tzOffset)).toISOString().slice(0, 16);
+                                    
+                                    setQueryStartTime(localISOTime);
+                                    setQueryEndTime('');
+                                    setIsTimePickerOpen(false);
+                                    showToast(`Filtrando por: ${opt.label}`, 'info');
+                                  }}
+                                  className="px-2 py-1 bg-neutral-50 dark:bg-[#1c1c1c] border border-neutral-200 dark:border-neutral-800 hover:bg-[#71BF44]/10 hover:border-[#71BF44]/30 rounded text-[10px] text-neutral-600 dark:text-neutral-350 hover:text-[#71BF44] text-center transition-all font-semibold"
+                                >
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setQueryStartTime('');
+                                setQueryEndTime('');
+                                setIsTimePickerOpen(false);
+                                showToast('Filtro temporal limpiado', 'info');
+                              }}
+                              className="mt-1 w-full py-1 text-center text-[10px] font-bold text-red-500 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 rounded transition-all"
+                            >
+                              Limpiar Rango (FIRST to NOW)
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Botón rápido + 3h */}
                     <button
-                      type="submit"
-                      disabled={!selectedConnectionId || connectionStatus === 'connecting'}
-                      className="bg-[#71BF44] text-white dark:text-[#131313] hover:bg-[#71BF44]/90 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold py-2 px-3 rounded-lg flex items-center gap-1.5 transition-colors whitespace-nowrap"
+                      onClick={handleInjectTimeFilter}
+                      type="button"
+                      className="flex items-center gap-1.5 px-3 py-2 bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg text-xs text-neutral-700 dark:text-neutral-300 hover:bg-[#71BF44]/10 hover:text-[#71BF44] hover:border-[#71BF44]/30 transition-colors select-none whitespace-nowrap"
+                      title="Insertar condición de tiempo 'and @Timestamp >= Now() - 3h' al final del WHERE y antes del GROUP BY si existe"
                     >
-                      <Play className="w-3.5 h-3.5 fill-current" />
-                      Conectar
+                      <Clock className="w-3.5 h-3.5 text-[#71BF44]" />
+                      <span>+ 3h</span>
                     </button>
-                  </form>
-                  {/* Status indicator */}
-                  <div className="flex items-center gap-1.5">
-                    <span className={`w-2 h-2 rounded-full ${
-                      connectionStatus === 'connected' ? 'bg-emerald-500 animate-pulse' :
-                      connectionStatus === 'connecting' ? 'bg-amber-500 animate-pulse' :
-                      connectionStatus === 'error' ? 'bg-red-500' : 'bg-neutral-400 dark:bg-neutral-600'
-                    }`} />
-                    <span className="text-[10px] text-neutral-500 dark:text-neutral-450 font-medium truncate max-w-[100px]" title={connectionStatusText}>
-                      {connectionStatus === 'connected' ? 'Conectado' : connectionStatus === 'connecting' ? 'Validando...' : connectionStatus === 'error' ? 'Error' : 'Desconectado'}
-                    </span>
+
+                    <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-850" />
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-neutral-550 dark:text-neutral-450 font-bold uppercase tracking-wider whitespace-nowrap">Límite:</span>
+                      <input
+                        type="number"
+                        value={limit}
+                        onChange={(e) => {
+                          const val = Math.min(500, Math.max(1, parseInt(e.target.value) || 50));
+                          setLimit(val);
+                          localStorage.setItem('seq_monitor_limit', val.toString());
+                        }}
+                        className="w-14 bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg px-2 py-1.5 text-xs text-neutral-900 dark:text-white text-center focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Configuración de streaming & Limpiar a la derecha */}
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex items-center gap-1.5 bg-neutral-55 dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800 px-2 py-1 rounded-lg">
+                      <input
+                        type="checkbox"
+                        id="auto-refresh"
+                        checked={isStreaming}
+                        onChange={(e) => {
+                          if (e.target.checked) startStreaming();
+                          else stopStreaming();
+                        }}
+                        className="rounded border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-[#71BF44] focus:ring-0 w-3 h-3"
+                      />
+                      <label htmlFor="auto-refresh" className="text-[9px] text-neutral-550 dark:text-neutral-450 font-bold uppercase select-none cursor-pointer">Auto-refrescar</label>
+                    </div>
+
+                    <select
+                      value={autoRefreshInterval}
+                      onChange={(e) => setAutoRefreshInterval(parseInt(e.target.value))}
+                      disabled={!isStreaming}
+                      className="bg-neutral-50 dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800 disabled:opacity-50 text-neutral-850 dark:text-neutral-200 text-[10px] rounded-lg px-1.5 py-1 focus:outline-none"
+                    >
+                      <option value="3000">3s</option>
+                      <option value="5000">5s</option>
+                      <option value="10000">10s</option>
+                      <option value="30000">30s</option>
+                    </select>
+
+                    <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-850" />
+
+                    <button
+                      onClick={handleClearLogs}
+                      className="border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-[#181818] hover:bg-neutral-100 dark:hover:bg-neutral-850 text-neutral-500 hover:text-red-500 dark:text-neutral-400 dark:hover:text-red-400 p-1.5 rounded-lg transition-colors"
+                      title="Restablecer filtros y consola"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
 
-                {/* Queries Guardadas */}
-                <div className="flex items-center gap-2 w-full md:w-auto">
-                  <span className="text-[10px] font-bold text-[#71BF44] uppercase tracking-wider whitespace-nowrap">Guardadas:</span>
-                  <div className="flex items-center gap-1.5 flex-1 md:flex-none">
-                    <select
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val) {
-                          setCurrentFilter(val);
-                          setTimeout(() => {
-                            stateRef.current.currentFilter = val;
-                            fetchLogs(false);
-                          }, 50);
-                        }
-                      }}
-                      className="bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg p-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] w-full md:w-[180px]"
-                    >
-                      <option value="">-- Cargar Guardada --</option>
-                      {savedQueries.map(q => (
-                        <option key={q.id} value={q.filter}>{q.name}</option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={() => {
-                        setQueryNameInput('');
-                        setQueryFilterInput(currentFilter);
-                        setEditingQuery(null);
-                        setIsSaveQueryModalOpen(true);
-                      }}
-                      className="p-2 bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-850 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-white transition-colors"
-                      title="Guardar consulta actual"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Queries Guardadas */}
-                <div className="flex items-center gap-2 w-full md:w-auto">
-                  <span className="text-[10px] font-bold text-[#71BF44] uppercase tracking-wider whitespace-nowrap">Guardadas:</span>
-                  <div className="flex items-center gap-1.5 flex-1 md:flex-none">
-                    <select
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val) {
-                          setCurrentFilter(val);
-                          setTimeout(() => {
-                            stateRef.current.currentFilter = val;
-                            fetchLogs(false);
-                          }, 50);
-                        }
-                      }}
-                      className="bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg p-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] w-full md:w-[180px]"
-                    >
-                      <option value="">-- Cargar Guardada --</option>
-                      {savedQueries.map(q => (
-                        <option key={q.id} value={q.filter}>{q.name}</option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={() => {
-                        setQueryNameInput('');
-                        setQueryFilterInput(currentFilter);
-                        setEditingQuery(null);
-                        setIsSaveQueryModalOpen(true);
-                      }}
-                      className="p-2 bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-850 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-white transition-colors"
-                      title="Guardar consulta actual"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-
-              </div>
-              
-              {/* Barra de Búsqueda y Parámetros */}
-              <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-3 flex flex-col gap-3">
-                <div className="flex flex-col sm:flex-row gap-2">
+                {/* FILA 2: Entrada de Filtro y Acción */}
+                <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
                   <div className="flex-1 relative">
                     <Search className="absolute left-3 top-2.5 w-4 h-4 text-neutral-450 dark:text-neutral-500" />
                     <textarea
                       ref={textareaRef}
-                      placeholder="Filtro (ej: @Level = 'Error' or App = 'RAG' o propiedades estructuradas)"
+                      placeholder="Filtro (ej: @Level = 'Error' or @Message like '%error%' o select count(*) from stream...)"
                       value={currentFilter}
                       onChange={(e) => {
                         setCurrentFilter(e.target.value);
@@ -1595,10 +1805,10 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                           setIsSuggestionsOpen(false);
                         }
                       }}
-                      rows={2}
-                      className="w-full bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg pl-9 pr-16 py-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] font-mono resize-y"
+                      rows={1}
+                      className="w-full bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg pl-9 pr-16 py-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] font-mono resize-y min-h-[36px]"
                     />
-                    <div className="absolute right-2 bottom-2 text-[9px] text-neutral-400 dark:text-neutral-500 pointer-events-none select-none font-sans bg-neutral-100 dark:bg-[#111] px-1 rounded border border-neutral-200 dark:border-neutral-800">
+                    <div className="absolute right-2 bottom-1.5 text-[8px] text-neutral-450 dark:text-neutral-500 pointer-events-none select-none font-sans bg-neutral-100 dark:bg-[#111] px-1 rounded border border-neutral-200 dark:border-neutral-800">
                       Ctrl+Enter
                     </div>
 
@@ -1631,7 +1841,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                                 textareaRef.current?.focus();
                               }}
                             >
-                              <div className="flex items-center gap-2 truncate pr-4 text-neutral-850 dark:text-neutral-200">
+                              <div className="flex items-center gap-2 truncate pr-4 text-neutral-855 dark:text-neutral-200">
                                 <Clock className="w-3.5 h-3.5 text-neutral-450 dark:text-neutral-500 shrink-0" />
                                 <span className="font-mono truncate select-all">{h.query}</span>
                               </div>
@@ -1657,202 +1867,16 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                     )}
                   </div>
                   
-                  <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-                    {/* Selector de fecha / Time Picker al estilo de Seq */}
-                    <div className="relative" ref={timePickerRef}>
-                      <button
-                        onClick={() => setIsTimePickerOpen(!isTimePickerOpen)}
-                        type="button"
-                        className="flex items-center gap-2 px-3 py-2 bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg text-xs text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors select-none whitespace-nowrap"
-                        title="Limitar rango de tiempo (FIRST to NOW)"
-                      >
-                        <Clock className="w-3.5 h-3.5 text-[#71BF44]" />
-                        <span>
-                          {queryStartTime ? new Date(queryStartTime).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'}) : 'FIRST'}
-                        </span>
-                        <span className="text-neutral-450 dark:text-neutral-600 font-bold px-0.5">to</span>
-                        <span>
-                          {queryEndTime ? new Date(queryEndTime).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'}) : 'NOW'}
-                        </span>
-                        {(queryStartTime || queryEndTime) && (
-                          <span 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setQueryStartTime('');
-                              setQueryEndTime('');
-                              showToast('Rango de tiempo restablecido (FIRST to NOW)', 'info');
-                            }}
-                            className="ml-1 p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-750 rounded text-neutral-400 hover:text-red-500 transition-colors"
-                            title="Limpiar rango"
-                          >
-                            <X className="w-3 h-3" />
-                          </span>
-                        )}
-                      </button>
-
-                      {isTimePickerOpen && (
-                        <div className="absolute right-0 sm:left-0 mt-1 bg-white dark:bg-[#151515] border border-neutral-250 dark:border-neutral-800 rounded-xl shadow-2xl p-4 z-40 w-72 flex flex-col gap-3 animate-scale-in">
-                          <h5 className="text-[10px] text-[#71BF44] font-bold uppercase tracking-wider">Rango de Consulta</h5>
-                          
-                          <div className="flex flex-col gap-1.5">
-                            <label className="text-[10px] text-neutral-550 dark:text-neutral-400 font-bold uppercase">Desde (Inicio)</label>
-                            <input
-                              type="datetime-local"
-                              value={queryStartTime}
-                              onChange={(e) => setQueryStartTime(e.target.value)}
-                              className="bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-250 dark:border-neutral-800 rounded-lg p-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] w-full"
-                            />
-                          </div>
-
-                          <div className="flex flex-col gap-1.5">
-                            <label className="text-[10px] text-neutral-550 dark:text-neutral-400 font-bold uppercase">Hasta (Fin)</label>
-                            <input
-                              type="datetime-local"
-                              value={queryEndTime}
-                              onChange={(e) => setQueryEndTime(e.target.value)}
-                              className="bg-neutral-50 dark:bg-[#1e1e1e] border border-neutral-250 dark:border-neutral-800 rounded-lg p-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] w-full"
-                            />
-                          </div>
-
-                          <div className="border-t border-neutral-100 dark:border-neutral-850 pt-2 flex flex-col gap-1.5">
-                            <span className="text-[9px] text-neutral-450 dark:text-neutral-400 font-bold uppercase tracking-wider">Intervalos rápidos:</span>
-                            <div className="grid grid-cols-2 gap-1.5">
-                              {[
-                                { label: 'Últimos 30m', value: 30 },
-                                { label: 'Última 1h', value: 60 },
-                                { label: 'Últimas 4h', value: 240 },
-                                { label: 'Últimas 24h', value: 1440 },
-                              ].map((opt) => (
-                                <button
-                                  key={opt.label}
-                                  type="button"
-                                  onClick={() => {
-                                    const now = new Date();
-                                    const start = new Date(now.getTime() - opt.value * 60 * 1000);
-                                    
-                                    const tzOffset = start.getTimezoneOffset() * 60000;
-                                    const localISOTime = (new Date(start.getTime() - tzOffset)).toISOString().slice(0, 16);
-                                    
-                                    setQueryStartTime(localISOTime);
-                                    setQueryEndTime('');
-                                    setIsTimePickerOpen(false);
-                                    showToast(`Filtrando por: ${opt.label}`, 'info');
-                                  }}
-                                  className="px-2 py-1 bg-neutral-50 dark:bg-[#1c1c1c] border border-neutral-200 dark:border-neutral-800 hover:bg-[#71BF44]/10 hover:border-[#71BF44]/30 rounded text-[10px] text-neutral-600 dark:text-neutral-350 hover:text-[#71BF44] text-center transition-all font-semibold"
-                                >
-                                  {opt.label}
-                                </button>
-                              ))}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setQueryStartTime('');
-                                setQueryEndTime('');
-                                setIsTimePickerOpen(false);
-                                showToast('Filtro temporal limpiado', 'info');
-                              }}
-                              className="mt-1 w-full py-1 text-center text-[10px] font-bold text-red-500 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 rounded transition-all"
-                            >
-                              Limpiar Rango (FIRST to NOW)
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Botón para inyectar filtro temporal de 3h */}
-                    <button
-                      onClick={handleInjectTimeFilter}
-                      type="button"
-                      className="flex items-center gap-1.5 px-3 py-2 bg-neutral-50 dark:bg-[#181818] border border-neutral-255 dark:border-neutral-800 rounded-lg text-xs text-neutral-700 dark:text-neutral-300 hover:bg-[#71BF44]/10 hover:text-[#71BF44] hover:border-[#71BF44]/30 transition-colors select-none whitespace-nowrap"
-                      title="Insertar condición de tiempo 'and @Timestamp >= Now() - 3h' al final del WHERE y antes del GROUP BY si existe"
-                    >
-                      <Clock className="w-3.5 h-3.5 text-[#71BF44]" />
-                      <span>+ 3h</span>
-                    </button>
-
-                    <label className="text-[10px] text-neutral-550 dark:text-neutral-400 font-bold uppercase tracking-wider">Límite</label>
-                    <input
-                      type="number"
-                      value={limit}
-                      onChange={(e) => {
-                        const val = Math.min(500, Math.max(1, parseInt(e.target.value) || 50));
-                        setLimit(val);
-                        localStorage.setItem('seq_monitor_limit', val.toString());
-                      }}
-                      className="w-16 bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg px-2 py-2 text-xs text-neutral-900 dark:text-white text-center focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44]"
-                    />
-                     <button
-                      onClick={handleExecuteQuery}
-                      disabled={isLoadingLogs}
-                      className="bg-[#71BF44] hover:bg-[#71BF44]/90 disabled:opacity-60 disabled:cursor-not-allowed text-white dark:text-[#131313] text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-colors shrink-0"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isLoadingLogs ? 'animate-spin' : ''}`} />
-                      {isLoadingLogs ? 'Procesando...' : 'Ejecutar'}
-                    </button>
-                  </div>
+                  <button
+                    onClick={handleExecuteQuery}
+                    disabled={isLoadingLogs}
+                    className="bg-[#71BF44] hover:bg-[#71BF44]/90 disabled:opacity-60 disabled:cursor-not-allowed text-white dark:text-[#131313] text-xs font-bold px-4 py-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors shrink-0 h-[36px]"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLoadingLogs ? 'animate-spin' : ''}`} />
+                    {isLoadingLogs ? 'Procesando...' : 'Ejecutar'}
+                  </button>
                 </div>
-
-                {/* Controles de Streaming */}
-                <div className="flex flex-wrap items-center justify-between border-t border-neutral-100 dark:border-neutral-900 pt-2 gap-3 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${isStreaming ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-400 dark:bg-neutral-600'}`} />
-                    <span className="text-neutral-500 dark:text-neutral-400 text-[11px]">
-                      {isStreaming 
-                        ? `Monitoreando Seq en vivo (refresco ${autoRefreshInterval / 1000}s)` 
-                        : 'Streaming en tiempo real pausado'}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1.5 bg-neutral-55 dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800 px-2 py-1 rounded-lg">
-                      <input
-                        type="checkbox"
-                        id="auto-refresh"
-                        checked={isStreaming}
-                        onChange={(e) => {
-                          if (e.target.checked) startStreaming();
-                          else stopStreaming();
-                        }}
-                        className="rounded border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-[#71BF44] focus:ring-0"
-                      />
-                      <label htmlFor="auto-refresh" className="text-[10px] text-neutral-550 dark:text-neutral-450 font-bold uppercase select-none cursor-pointer">Auto-refrescar</label>
-                    </div>
-
-                    <select
-                      value={autoRefreshInterval}
-                      onChange={(e) => setAutoRefreshInterval(parseInt(e.target.value))}
-                      disabled={!isStreaming}
-                      className="bg-neutral-50 dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800 disabled:opacity-50 text-neutral-800 dark:text-neutral-200 text-[11px] rounded-lg px-2 py-1 focus:outline-none"
-                    >
-                      <option value="3000">3s</option>
-                      <option value="5000">5s</option>
-                      <option value="10000">10s</option>
-                      <option value="30000">30s</option>
-                    </select>
-
-                    <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-850" />
-
-                    <button
-                      onClick={isStreaming ? stopStreaming : startStreaming}
-                      className={`p-1.5 rounded-lg border transition-colors ${
-                        isStreaming 
-                          ? 'border-[#71BF44]/30 bg-[#71BF44]/10 text-[#71BF44] hover:bg-[#71BF44]/20' 
-                          : 'border-neutral-200 dark:border-neutral-800 bg-neutral-55 dark:bg-[#181818] text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-white'
-                      }`}
-                      title={isStreaming ? 'Pausar' : 'Iniciar Monitoreo'}
-                    >
-                      {isStreaming ? <Pause className="w-3.5 h-3.5 fill-[#71BF44]" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-                    </button>
-
-                    <button
-                      onClick={handleClearLogs}
-                      className="border border-neutral-200 dark:border-neutral-800 bg-neutral-55 dark:bg-[#181818] hover:bg-neutral-100 dark:hover:bg-neutral-850 text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-white p-1.5 rounded-lg transition-colors"
-                      title="Limpiar Consola"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+              </div>>
                   </div>
                 </div>
               </div>
@@ -1955,6 +1979,31 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                           Logs
                         </button>
                       </div>
+
+                      {sqlViewMode === 'chart' && (
+                        <>
+                          <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-800 hidden sm:block" />
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => setHiddenSeries(new Set())}
+                              className="text-[9px] font-bold px-2 py-1 bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-850 hover:bg-[#71BF44]/10 hover:border-[#71BF44]/30 text-neutral-750 dark:text-neutral-300 hover:text-[#71BF44] rounded transition-all select-none"
+                              title="Mostrar todas las series en el gráfico"
+                            >
+                              Mostrar Todas
+                            </button>
+                            <button
+                              onClick={() => {
+                                const { seriesList } = parseSqlChartData(rawSqlResult.columns, rawSqlResult.rows);
+                                setHiddenSeries(new Set(seriesList));
+                              }}
+                              className="text-[9px] font-bold px-2 py-1 bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-850 hover:bg-red-500/10 hover:border-red-500/30 text-neutral-750 dark:text-neutral-300 hover:text-red-500 rounded transition-all select-none"
+                              title="Ocultar todas las series en el gráfico"
+                            >
+                              Ocultar Todas
+                            </button>
+                          </div>
+                        </>
+                      )}
 
                       <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-800 hidden sm:block" />
 
@@ -2070,6 +2119,8 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                                   align="right" 
                                   iconSize={8}
                                   wrapperStyle={{ fontSize: '9px', color: '#888', paddingBottom: '15px' }}
+                                  onClick={handleLegendClick}
+                                  formatter={renderLegendText}
                                 />
                                 {seriesList.map((seriesName, index) => {
                                   const colors = [
@@ -2086,6 +2137,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                                       activeDot={{ r: 5 }}
                                       dot={{ r: 2 }}
                                       strokeWidth={1.5}
+                                      hide={hiddenSeries.has(seriesName)}
                                     />
                                   );
                                 })}
