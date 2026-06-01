@@ -1219,6 +1219,43 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     showToast(`Archivo ${fileName} descargado`, 'success');
   };
 
+  // Descargar todos los logs tradicionales (no SQL agregados) que se muestran actualmente
+  const handleDownloadAllLogsJson = () => {
+    if (filteredLogs.length === 0) return;
+    const formatted = filteredLogs.map(log => {
+      const propertiesData: { [key: string]: any } = {};
+      if (log.Properties) {
+        log.Properties.forEach(p => {
+          propertiesData[p.Name] = p.Value;
+        });
+      }
+      if (log.Exception) {
+        propertiesData['@Exception'] = log.Exception;
+      }
+      if (log.MessageTemplate && log.RenderedMessage !== log.MessageTemplate) {
+        propertiesData['@MessageTemplate'] = log.MessageTemplate;
+      }
+      return {
+        Id: log.Id,
+        Timestamp: log.Timestamp,
+        Level: log.Level || 'Information',
+        MessageTemplate: log.MessageTemplate,
+        RenderedMessage: log.RenderedMessage,
+        Properties: propertiesData
+      };
+    });
+
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(formatted, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    const fileName = `resultados_logs_${Date.now()}.json`;
+    downloadAnchor.setAttribute("download", fileName);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    showToast(`Archivo ${fileName} con ${filteredLogs.length} logs descargado`, 'success');
+  };
+
   // Expandir / colapsar log
   const toggleLogExpand = (id: string) => {
     setExpandedLogIds(prev => {
@@ -1941,6 +1978,19 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                     )}
                   </div>
 
+                  {!rawSqlResult && filteredLogs.length > 0 && (
+                    <div className="flex items-center gap-1.5 font-sans">
+                      <span className="text-[10px] text-neutral-450">Descargar resultados:</span>
+                      <button
+                        onClick={handleDownloadAllLogsJson}
+                        className="flex items-center gap-1 text-[10px] font-bold bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-850 hover:bg-[#71BF44]/10 hover:border-[#71BF44]/30 hover:text-[#71BF44] text-neutral-700 dark:text-neutral-300 px-2 py-1 rounded transition-all"
+                        title="Descargar todos los logs filtrados en formato JSON"
+                      >
+                        JSON ({filteredLogs.length})
+                      </button>
+                    </div>
+                  )}
+
                   {rawSqlResult && (
                     <div className="flex flex-wrap items-center gap-4">
                       {/* Selectores de vista SQL */}
@@ -2219,7 +2269,13 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                                 </span>
                               )}
                               
-                              <span className={`text-neutral-200 break-all flex-1 ${isExpanded ? 'line-clamp-none' : 'line-clamp-1'}`}>
+                              <span className={`text-neutral-200 break-all flex-1 ${
+                                isExpanded 
+                                  ? ((log.Properties && log.Properties.length > 0) || log.Exception) 
+                                    ? 'line-clamp-1 text-neutral-455 dark:text-neutral-500 font-medium' // Recortar y atenuar si hay más detalle organizado abajo
+                                    : 'line-clamp-none' 
+                                  : 'line-clamp-1'
+                              }`}>
                                 {message}
                               </span>
 
@@ -2297,6 +2353,18 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                                               >
                                                 Otros
                                               </button>
+                                              <button
+                                                onClick={() => {
+                                                  const propJson = JSON.stringify({ [p.Name]: p.Value }, null, 2);
+                                                  navigator.clipboard.writeText(propJson)
+                                                    .then(() => showToast(`Propiedad '${p.Name}' copiada`, 'success'))
+                                                    .catch(err => showToast(`Error al copiar: ${err.message}`, 'error'));
+                                                }}
+                                                className="text-[9px] font-bold bg-neutral-800 hover:bg-neutral-700 text-neutral-350 px-1.5 py-0.5 rounded transition-colors"
+                                                title="Copiar propiedad y valor en formato JSON"
+                                              >
+                                                Copiar
+                                              </button>
                                             </td>
                                           </tr>
                                         ))}
@@ -2316,6 +2384,18 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
                                                 className="text-[9px] font-bold bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-1.5 py-0.5 rounded transition-colors"
                                               >
                                                 Otros
+                                              </button>
+                                              <button
+                                                onClick={() => {
+                                                  const excJson = JSON.stringify({ "@Exception": log.Exception }, null, 2);
+                                                  navigator.clipboard.writeText(excJson)
+                                                    .then(() => showToast('Excepción copiada', 'success'))
+                                                    .catch(err => showToast(`Error al copiar: ${err.message}`, 'error'));
+                                                }}
+                                                className="text-[9px] font-bold bg-neutral-800 hover:bg-neutral-700 text-neutral-350 px-1.5 py-0.5 rounded transition-colors"
+                                                title="Copiar excepción en formato JSON"
+                                              >
+                                                Copiar
                                               </button>
                                             </td>
                                           </tr>
