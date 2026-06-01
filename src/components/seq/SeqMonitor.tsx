@@ -370,8 +370,8 @@ function getGenericMessage(msg, exc) {
 }
 
 logs.forEach(log => {
-  const message = log.Message || log.RenderedMessage || '';
-  const exception = log.Exception || log.exception || log['@Exception'] || '';
+  const message = String(log.Message || log.RenderedMessage || '');
+  const exception = String(log.Exception || log.exception || log['@Exception'] || '');
   const hostname = log.Hostname || log._hostname || log.hostname || 'Desconocido';
   const cliente = log.Cliente || log._cliente || log.cliente || 'Desconocido';
   const app = log.App || log._app || log.app || 'Desconocido';
@@ -2025,8 +2025,8 @@ return [
     let erroresServidorCount = 0;
 
     flattenedLogs.forEach(log => {
-      const message = log.Message || '';
-      const exception = log.Exception || '';
+      const message = String(log.Message || '');
+      const exception = String(log.Exception || '');
       const hostname = log.Hostname || log._hostname || log.hostname || 'Desconocido';
       const cliente = log.Cliente || log._cliente || log.cliente || 'Desconocido';
       const app = log.App || log._app || log.app || 'Desconocido';
