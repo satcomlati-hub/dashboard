@@ -2286,7 +2286,7 @@ return [
         });
       }
       return flat;
-    };
+    });
 
     // Agrupamientos
     const clientGroups: { [key: string]: any } = {};
