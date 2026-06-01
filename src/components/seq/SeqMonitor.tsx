@@ -194,6 +194,33 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
   });
   const [generatedJsAlert, setGeneratedJsAlert] = useState<string>('');
   const [alertModalTab, setAlertModalTab] = useState<'script' | 'simulation'>('script');
+  const [alertQueryFilter, setAlertQueryFilter] = useState<string>('');
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    actionLabel: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    actionLabel: 'Eliminar',
+    onConfirm: () => {}
+  });
+
+  const triggerConfirm = (title: string, message: string, actionLabel: string, onConfirm: () => void) => {
+    setConfirmModal({
+      isOpen: true,
+      title,
+      message,
+      actionLabel,
+      onConfirm: () => {
+        onConfirm();
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+      }
+    });
+  };
   
   // Ediciones en Modales
   const [editingTask, setEditingTask] = useState<SeqTask | null>(null);
@@ -280,7 +307,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     if (!selectedQueryForAlert) return;
     
     const queryName = selectedQueryForAlert.name;
-    const queryFilter = selectedQueryForAlert.filter || '';
+    const queryFilter = alertQueryFilter || '';
     const cleanFilter = cleanFilterPrefix(queryFilter);
     const formattedFilter = formatFilterForSeq(cleanFilter);
 
@@ -517,6 +544,7 @@ if (clientesServidorCriticos.length >= UMBRAL_SERVIDOR_CLIENTES) {
 return [
   {
     json: {
+      consultaEvaluada: "${queryFilter.replace(/"/g, '\\"')}",
       alertaGenerada: alertasMesaDeAyuda.length > 0 || alertasInfraestructura.triggered,
       resumen: {
         totalErroresEvaluados: totalErrores,
@@ -533,7 +561,7 @@ return [
 ];
 `;
     setGeneratedJsAlert(jsCode);
-  }, [selectedQueryForAlert, alertConfig]);
+  }, [selectedQueryForAlert, alertQueryFilter, alertConfig]);
 
   // Cerrar popups al hacer clic afuera
   useEffect(() => {
@@ -743,26 +771,34 @@ return [
   };
 
   const deleteConnection = async (id: string) => {
-    if (!confirm('¿Seguro que deseas eliminar esta conexión?')) return;
-    try {
-      const res = await fetch(`/api/seq/connections?id=${id}`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        showToast('Conexión eliminada', 'info');
-        if (selectedConnectionId === id) {
-          setSelectedConnectionId('');
-          setConnectionStatus('disconnected');
-          setConnectionStatusText('Desconectado');
-          setLogs([]);
+    const conn = connections.find(c => c.id === id);
+    const connName = conn ? `"${conn.name}"` : 'esta conexión';
+    triggerConfirm(
+      'Eliminar Conexión',
+      `¿Seguro que deseas eliminar la conexión ${connName}?`,
+      'Eliminar',
+      async () => {
+        try {
+          const res = await fetch(`/api/seq/connections?id=${id}`, {
+            method: 'DELETE'
+          });
+          if (res.ok) {
+            showToast('Conexión eliminada', 'info');
+            if (selectedConnectionId === id) {
+              setSelectedConnectionId('');
+              setConnectionStatus('disconnected');
+              setConnectionStatusText('Desconectado');
+              setLogs([]);
+            }
+            fetchConnections();
+          } else {
+            showToast('Error al eliminar conexión', 'error');
+          }
+        } catch (err: any) {
+          showToast(`Error: ${err.message}`, 'error');
         }
-        fetchConnections();
-      } else {
-        showToast('Error al eliminar conexión', 'error');
       }
-    } catch (err: any) {
-      showToast(`Error: ${err.message}`, 'error');
-    }
+    );
   };
 
   // CRUD Tareas
@@ -831,20 +867,28 @@ return [
   };
 
   const deleteTask = async (id: string) => {
-    if (!confirm('¿Seguro que deseas eliminar esta tarea?')) return;
-    try {
-      const res = await fetch(`/api/seq/tasks?id=${id}`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        showToast('Tarea eliminada', 'info');
-        fetchTasks();
-      } else {
-        showToast('Error al eliminar tarea', 'error');
+    const task = tasks.find(t => t.id === id);
+    const taskName = task ? `"${task.name}"` : 'esta tarea';
+    triggerConfirm(
+      'Eliminar Tarea',
+      `¿Seguro que deseas eliminar la tarea de monitoreo ${taskName}?`,
+      'Eliminar',
+      async () => {
+        try {
+          const res = await fetch(`/api/seq/tasks?id=${id}`, {
+            method: 'DELETE'
+          });
+          if (res.ok) {
+            showToast('Tarea eliminada', 'info');
+            fetchTasks();
+          } else {
+            showToast('Error al eliminar tarea', 'error');
+          }
+        } catch (err: any) {
+          showToast(`Error: ${err.message}`, 'error');
+        }
       }
-    } catch (err: any) {
-      showToast(`Error: ${err.message}`, 'error');
-    }
+    );
   };
 
   // Limpiar título/prefijo de la consulta si incluye un select precedido de ":"
@@ -1292,11 +1336,17 @@ return [
   const handleDeleteQuery = (id: string) => {
     const targetQuery = savedQueries.find(q => q.id === id);
     const qName = targetQuery ? `"${targetQuery.name}"` : 'esta consulta';
-    if (!window.confirm(`¿Seguro que deseas eliminar la consulta guardada ${qName}?`)) return;
-    const updated = savedQueries.filter(q => q.id !== id);
-    setSavedQueries(updated);
-    localStorage.setItem('seq_monitor_queries', JSON.stringify(updated));
-    showToast('Consulta guardada eliminada', 'info');
+    triggerConfirm(
+      'Eliminar Consulta Guardada',
+      `¿Seguro que deseas eliminar la consulta guardada ${qName}?`,
+      'Eliminar',
+      () => {
+        const updated = savedQueries.filter(q => q.id !== id);
+        setSavedQueries(updated);
+        localStorage.setItem('seq_monitor_queries', JSON.stringify(updated));
+        showToast('Consulta guardada eliminada', 'info');
+      }
+    );
   };
 
   // Guardar la configuración de la alerta para una consulta guardada
@@ -1307,6 +1357,7 @@ return [
       if (q.id === selectedQueryForAlert.id) {
         return {
           ...q,
+          filter: alertQueryFilter, // Guardar también la consulta editada
           alertConfig: {
             timeWindowMinutes: alertConfig.timeWindowMinutes,
             clientEventsThreshold: alertConfig.clientEventsThreshold,
@@ -1325,7 +1376,21 @@ return [
 
     setSavedQueries(updated);
     localStorage.setItem('seq_monitor_queries', JSON.stringify(updated));
-    showToast(`Configuración de alerta para "${selectedQueryForAlert.name}" guardada`, 'success');
+    showToast(`Configuración de alerta y consulta para "${selectedQueryForAlert.name}" guardada`, 'success');
+  };
+
+  const handleUpdateSimulation = async () => {
+    setIsLoadingLogs(true);
+    try {
+      stateRef.current.currentFilter = alertQueryFilter;
+      setCurrentFilter(alertQueryFilter);
+      await fetchLogs(false);
+      showToast('Simulación actualizada con los nuevos logs', 'success');
+    } catch (e: any) {
+      showToast(`Error al actualizar simulación: ${e.message}`, 'error');
+    } finally {
+      setIsLoadingLogs(false);
+    }
   };
 
   // Agregar consulta al historial de ejecuciones (máximo 100, sin duplicados)
@@ -1894,6 +1959,7 @@ return [
   const simulatedResult = useMemo(() => {
     if (!selectedQueryForAlert || logs.length === 0) {
       return {
+        consultaEvaluada: alertQueryFilter || (selectedQueryForAlert ? selectedQueryForAlert.filter : ''),
         alertaGenerada: false,
         resumen: {
           totalErroresEvaluados: 0,
@@ -2131,6 +2197,7 @@ return [
     const alertaGenerada = alertasMesaDeAyuda.length > 0 || alertasInfraestructura.triggered;
 
     return {
+      consultaEvaluada: alertQueryFilter || selectedQueryForAlert.filter,
       alertaGenerada,
       resumen: {
         totalErroresEvaluados: totalErrores,
@@ -2143,7 +2210,7 @@ return [
       alertasMesaDeAyuda,
       alertasInfraestructura
     };
-  }, [selectedQueryForAlert, logs, alertConfig]);
+  }, [selectedQueryForAlert, logs, alertConfig, alertQueryFilter]);
 
   // Toggle de nivel en los chips de filtro local
   const toggleLocalLevel = (lvl: string) => {
@@ -2409,6 +2476,7 @@ return [
                                              isActive: true
                                            });
                                          }
+                                         setAlertQueryFilter(q.filter);
                                          setGeneratedJsAlert('');
                                          setIsAlertModalOpen(true);
                                          setIsSavedQueriesOpen(false);
@@ -2416,9 +2484,9 @@ return [
                                        className={`p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors ${
                                          q.alertConfig 
                                            ? q.alertConfig.isActive
-                                             ? 'text-amber-500 hover:text-amber-600 dark:text-amber-500 dark:hover:text-amber-400' 
-                                             : 'text-neutral-400/40 hover:text-amber-500 dark:text-neutral-550/40' 
-                                           : 'text-neutral-400 hover:text-[#71BF44] dark:text-neutral-550 dark:hover:text-[#71BF44]'
+                                             ? 'text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300 font-bold' 
+                                             : 'text-emerald-500/40 hover:text-emerald-500 dark:text-emerald-400/30 dark:hover:text-emerald-400' 
+                                           : 'text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300'
                                        }`}
                                        title={q.alertConfig ? `Alerta configurada (${q.alertConfig.isActive ? 'Activa' : 'Inactiva'}). Clic para editar` : "Configurar alerta para n8n"}
                                      >
@@ -2653,7 +2721,7 @@ return [
                         }
                       }}
                       rows={1}
-                      className="w-full bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg pl-9 pr-16 py-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] font-mono resize-y min-h-[36px]"
+                      className="w-full bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded-lg pl-9 pr-16 py-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] font-mono resize-y min-h-[36px] placeholder:opacity-35"
                     />
                     <div className="absolute right-2 bottom-1.5 text-[8px] text-neutral-450 dark:text-neutral-500 pointer-events-none select-none font-sans bg-neutral-100 dark:bg-[#111] px-1 rounded border border-neutral-200 dark:border-neutral-800">
                       Ctrl+Enter
@@ -3862,6 +3930,28 @@ return [
                   </label>
                 </div>
 
+                {/* Editor de la Consulta evaluada */}
+                <div className="flex flex-col gap-1.5 border border-neutral-200 dark:border-neutral-800/80 p-2.5 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[9px] text-neutral-500 dark:text-neutral-400 font-bold uppercase">Consulta Evaluada</label>
+                    <button
+                      type="button"
+                      onClick={handleUpdateSimulation}
+                      className="text-[9px] font-bold text-[#71BF44] hover:underline flex items-center gap-1 cursor-pointer"
+                      title="Ejecutar consulta en Seq y actualizar logs de la simulación"
+                    >
+                      <RefreshCw className="w-2.5 h-2.5" />
+                      Actualizar Simulación
+                    </button>
+                  </div>
+                  <textarea
+                    value={alertQueryFilter}
+                    onChange={(e) => setAlertQueryFilter(e.target.value)}
+                    placeholder="Filtro de consulta..."
+                    className="bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800/80 rounded-lg p-2 text-xs text-neutral-900 dark:text-white font-mono h-16 resize-y focus:outline-none focus:border-[#71BF44] placeholder:opacity-30"
+                  />
+                </div>
+
                 <div className="flex flex-col gap-1">
                   <label className="text-[9px] text-neutral-400 font-bold uppercase">Ventana de Tiempo (Minutos)</label>
                   <input
@@ -4055,6 +4145,37 @@ return [
               >
                 <Check className="w-3.5 h-3.5" />
                 Copiar y Guardar Alerta
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL DE CONFIRMACIÓN PERSONALIZADO --- */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-[#111] border border-neutral-250 dark:border-neutral-800 rounded-xl p-5 w-full max-w-sm shadow-2xl animate-scale-in flex flex-col gap-4">
+            <div className="flex items-center gap-2 text-red-500 dark:text-red-400">
+              <AlertTriangle className="w-5 h-5 shrink-0" />
+              <h3 className="text-sm font-bold uppercase tracking-wider">{confirmModal.title}</h3>
+            </div>
+            <p className="text-xs text-neutral-600 dark:text-neutral-350 leading-relaxed">
+              {confirmModal.message}
+            </p>
+            <div className="flex items-center justify-end gap-2 mt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                className="border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-[#181818] hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs font-bold px-4 py-2 rounded-lg text-neutral-600 dark:text-neutral-350 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmModal.onConfirm}
+                className="bg-red-500 hover:bg-red-600 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors"
+              >
+                {confirmModal.actionLabel}
               </button>
             </div>
           </div>
