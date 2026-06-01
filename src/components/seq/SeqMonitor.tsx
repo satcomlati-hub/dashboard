@@ -302,7 +302,8 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     };
   }, [connections, selectedConnectionIds, currentFilter, limit, isStreaming, queryStartTime, queryEndTime]);
 
-  // Regenerar script de alerta dinámica en base a inputs de configurac  useEffect(() => {
+  // Regenerar script de alerta dinámica en base a inputs de configuración
+  useEffect(() => {
     if (!selectedQueryForAlert) return;
     
     const queryName = selectedQueryForAlert.name;
@@ -568,10 +569,10 @@ for (const key in clientGroups) {
     }
 
     alertasMesaDeAyuda.push({
-      origen: `${g.cliente} / ${g.hostname}`,
+      origen: \`\${g.cliente} / \${g.hostname}\`,
       totalEventos: g.eventos,
       erroresAgrupados,
-      mensaje: `Alerta Mesa de Ayuda: El cliente ${g.cliente} en ${g.hostname} ha superado el límite con ${g.eventos} errores de cliente en los últimos ${VENTANA_TIEMPO_MINUTOS} minutos.`
+      mensaje: \`Alerta Mesa de Ayuda: El cliente \${g.cliente} en \${g.hostname} ha superado el límite con \${g.eventos} errores de cliente en los últimos \${VENTANA_TIEMPO_MINUTOS} minutos.\`
     });
   }
 }
@@ -595,7 +596,7 @@ if (clientesServidorCriticos.length >= UMBRAL_SERVIDOR_CLIENTES) {
     for (const msgKey in g.errores) {
       const errGroup = g.errores[msgKey];
       agrupadosPorOrigen.push({
-        origen: `${g.cliente} / ${g.hostname}`,
+        origen: \`\${g.cliente} / \${g.hostname}\`,
         errorGenerico: msgKey,
         cantidad: errGroup.cantidad,
         ejemplo: {
@@ -612,11 +613,11 @@ if (clientesServidorCriticos.length >= UMBRAL_SERVIDOR_CLIENTES) {
     alertasInfraestructura.erroresAgrupados.push(...agrupadosPorOrigen);
   });
 
-  alertasInfraestructura.mensaje = `Alerta de Infraestructura: Posible falla generalizada del Servidor de APIs. Afecta a ${clientesServidorCriticos.length} clientes con más de ${UMBRAL_SERVIDOR_EVENTOS} errores de conexión cada uno.`;
+  alertasInfraestructura.mensaje = \`Alerta de Infraestructura: Posible falla generalizada del Servidor de APIs. Afecta a \${clientesServidorCriticos.length} clientes con más de \${UMBRAL_SERVIDOR_EVENTOS} errores de conexión cada uno.\`;
 }
 
 const rangoHorario = minTimestamp && maxTimestamp 
-  ? `${minTimestamp} a ${maxTimestamp}`
+  ? \`\${minTimestamp} a \${maxTimestamp}\`
   : 'No disponible';
 
 return [
@@ -640,7 +641,7 @@ return [
 ];
 `;
     setGeneratedJsAlert(jsCode);
-  }, [selectedQueryForAlert, alertQueryFilter, alertConfig, connections]);rtQueryFilter, alertConfig]);
+  }, [selectedQueryForAlert, alertQueryFilter, alertConfig, connections]);
 
   // Cerrar popups al hacer clic afuera
   useEffect(() => {
