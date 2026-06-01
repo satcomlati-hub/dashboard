@@ -84,6 +84,8 @@ interface SeqLog {
   MessageTemplate?: string;
   Properties?: SeqLogProperty[];
   Exception?: string;
+  connectionId?: string;
+  connectionName?: string;
 }
 
 interface ToastMessage {
