@@ -326,6 +326,22 @@ let totalErrores = 0;
 let erroresClienteCount = 0;
 let erroresServidorCount = 0;
 
+// Helper para limpiar/generalizar mensajes
+function getGenericMessage(msg, exc) {
+  let clean = msg || '';
+  if (exc) {
+    const firstLine = exc.split('\\\\n')[0].trim();
+    if (firstLine) {
+      clean = firstLine;
+    }
+  }
+  clean = clean.replace(/FLIP-[A-Za-z0-9\\\\-+[\\]]+/g, 'FLIP-[ARCHIVO]');
+  clean = clean.replace(/\\\\b\\\\d{6,}\\\\b/g, '[ID]');
+  clean = clean.replace(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g, '[GUID]');
+  clean = clean.replace(/https?:\\\\/\\\\/[^\\\\s'"]+/g, '[URL]');
+  return clean.substring(0, 150).trim();
+}
+
 logs.forEach(log => {
   const message = log.Message || log.RenderedMessage || '';
   const exception = log.Exception || log.exception || log['@Exception'] || '';
@@ -354,16 +370,13 @@ logs.forEach(log => {
 
   let isClient = false;
   let isServer = false;
-  let tipoError = 'Desconocido';
 
   // Clasificación por código HTTP
   if (statusCode) {
     if (statusCode >= 400 && statusCode < 500) {
       isClient = true;
-      tipoError = \`HTTP \${statusCode}\`;
     } else if (statusCode >= 500) {
       isServer = true;
-      tipoError = \`HTTP \${statusCode}\`;
     }
   }
 
@@ -374,18 +387,14 @@ logs.forEach(log => {
     
     if (excLower.includes('timeout') || msgLower.includes('timeout') || msgLower.includes('tiempo de espera')) {
       isServer = true;
-      tipoError = 'Timeout / Tiempo de espera';
     } else if (excLower.includes('conexión') || excLower.includes('conexion') || 
                excLower.includes('connectfailure') || excLower.includes('httprequestexception') || 
                msgLower.includes('conexión') || msgLower.includes('conexion') || msgLower.includes('failed to connect')) {
       isServer = true;
-      tipoError = 'Fallo de Conexión / Red';
     } else if (excLower.includes('bad request') || msgLower.includes('bad request')) {
       isClient = true;
-      tipoError = 'HTTP 400 - Bad Request';
     } else if (excLower.includes('not found') || msgLower.includes('not found')) {
       isClient = true;
-      tipoError = 'HTTP 404 - Not Found';
     }
   }
 
@@ -404,25 +413,29 @@ logs.forEach(log => {
     origenConsulta: 'Seq (Consulta: ${queryName.replace(/'/g, "\\'")})'
   };
 
+  const genericMsg = getGenericMessage(message, exception);
+
   if (isClient) {
     erroresClienteCount++;
     const key = \`\${cliente} | \${hostname}\`;
     if (!clientGroups[key]) {
-      clientGroups[key] = { cliente, hostname, eventos: 0, errores: [] };
+      clientGroups[key] = { cliente, hostname, eventos: 0, errores: {} };
     }
     clientGroups[key].eventos++;
-    if (clientGroups[key].errores.length < 10) {
-      clientGroups[key].errores.push(payloadComun);
+    if (!clientGroups[key].errores[genericMsg]) {
+      clientGroups[key].errores[genericMsg] = { cantidad: 0, ejemplo: payloadComun };
     }
+    clientGroups[key].errores[genericMsg].cantidad++;
   } else if (isServer) {
     erroresServidorCount++;
     if (!serverGroups[cliente]) {
-      serverGroups[cliente] = { cliente, hostname, eventos: 0, errores: [] };
+      serverGroups[cliente] = { cliente, hostname, eventos: 0, errores: {} };
     }
     serverGroups[cliente].eventos++;
-    if (serverGroups[cliente].errores.length < 10) {
-      serverGroups[cliente].errores.push(payloadComun);
+    if (!serverGroups[cliente].errores[genericMsg]) {
+      serverGroups[cliente].errores[genericMsg] = { cantidad: 0, ejemplo: payloadComun };
     }
+    serverGroups[cliente].errores[genericMsg].cantidad++;
   }
 });
 
@@ -431,7 +444,7 @@ const alertasMesaDeAyuda = []; // Para errores del cliente
 const alertasInfraestructura = {
   triggered: false,
   clientesAfectados: [],
-  detalleAlertas: [],
+  erroresAgrupados: [],
   mensaje: ""
 }; // Para errores del servidor
 
@@ -439,16 +452,26 @@ const alertasInfraestructura = {
 for (const key in clientGroups) {
   const g = clientGroups[key];
   if (g.eventos >= UMBRAL_CLIENTE_EVENTOS) {
+    const erroresAgrupados = [];
+    for (const msgKey in g.errores) {
+      const errGroup = g.errores[msgKey];
+      erroresAgrupados.push({
+        errorGenerico: msgKey,
+        cantidad: errGroup.cantidad,
+        ejemplo: {
+          destino: errGroup.ejemplo.destino,
+          error: errGroup.ejemplo.mensajeError,
+          version: errGroup.ejemplo.version,
+          app: errGroup.ejemplo.app,
+          origenConsulta: errGroup.ejemplo.origenConsulta
+        }
+      });
+    }
+
     alertasMesaDeAyuda.push({
       origen: \`\${g.cliente} / \${g.hostname}\`,
-      eventos: g.eventos,
-      detalles: g.errores.map(err => ({
-        destino: err.destino,
-        error: err.mensajeError,
-        version: err.version,
-        app: err.app,
-        origenConsulta: err.origenConsulta
-      })),
+      totalEventos: g.eventos,
+      erroresAgrupados,
       mensaje: \`Alerta Mesa de Ayuda: El cliente \${g.cliente} en \${g.hostname} ha superado el límite con \${g.eventos} errores de cliente en los últimos \${VENTANA_TIEMPO_MINUTOS} minutos.\`
     });
   }
@@ -466,18 +489,26 @@ for (const cliente in serverGroups) {
 if (clientesServidorCriticos.length >= UMBRAL_SERVIDOR_CLIENTES) {
   alertasInfraestructura.triggered = true;
   alertasInfraestructura.clientesAfectados = clientesServidorCriticos.map(c => c.cliente);
+  alertasInfraestructura.erroresAgrupados = [];
   
   clientesServidorCriticos.forEach(g => {
-    g.errores.forEach(err => {
-      alertasInfraestructura.detalleAlertas.push({
+    const agrupadosPorOrigen = [];
+    for (const msgKey in g.errores) {
+      const errGroup = g.errores[msgKey];
+      agrupadosPorOrigen.push({
         origen: \`\${g.cliente} / \${g.hostname}\`,
-        destino: err.destino,
-        error: err.mensajeError,
-        version: err.version,
-        app: err.app,
-        origenConsulta: err.origenConsulta
+        errorGenerico: msgKey,
+        cantidad: errGroup.cantidad,
+        ejemplo: {
+          destino: errGroup.ejemplo.destino,
+          error: errGroup.ejemplo.mensajeError,
+          version: errGroup.ejemplo.version,
+          app: errGroup.ejemplo.app,
+          origenConsulta: errGroup.ejemplo.origenConsulta
+        }
       });
-    });
+    }
+    alertasInfraestructura.erroresAgrupados.push(...agrupadosPorOrigen);
   });
 
   alertasInfraestructura.mensaje = \`Alerta de Infraestructura: Posible falla generalizada del Servidor de APIs. Afecta a \${clientesServidorCriticos.length} clientes con más de \${UMBRAL_SERVIDOR_EVENTOS} errores de conexión cada uno.\`;
@@ -1852,14 +1883,7 @@ return [
       
       const propertiesStr = log.Properties 
         ? log.Properties.map(p => `${p.Name} ${JSON.stringify(p.Value)}`).join(' ').toLowerCase() 
-        : '';
-      const exceptionStr = (log.Exception || '').toLowerCase();
-
-      return message.includes(query) || propertiesStr.includes(query) || exceptionStr.includes(query);
-    });
-  }, [logs, activeLevels, localSearchQuery, activeConnectionFilters]);
-
-  // Simulación local de alerta en base a logs cargados en pantalla
+// Simulación local de alerta en base a logs cargados en pantalla
   const simulatedResult = useMemo(() => {
     if (!selectedQueryForAlert || logs.length === 0) {
       return {
@@ -1876,7 +1900,7 @@ return [
         alertasInfraestructura: {
           triggered: false,
           clientesAfectados: [] as string[],
-          detalleAlertas: [] as any[],
+          erroresAgrupados: [] as any[],
           mensaje: "No hay logs cargados en pantalla para evaluar."
         }
       };
@@ -1886,6 +1910,22 @@ return [
     const UMBRAL_CLIENTE_EVENTOS = alertConfig.clientEventsThreshold;
     const UMBRAL_SERVIDOR_EVENTOS = alertConfig.serverEventsThreshold;
     const UMBRAL_SERVIDOR_CLIENTES = alertConfig.serverClientsThreshold;
+
+    // Helper de limpieza genérica de mensajes
+    const getGenericMessage = (msg: string, exc: string) => {
+      let clean = msg || '';
+      if (exc) {
+        const firstLine = exc.split('\n')[0].trim();
+        if (firstLine) {
+          clean = firstLine;
+        }
+      }
+      clean = clean.replace(/FLIP-[A-Za-z0-9\-+\[\]]+/g, 'FLIP-[ARCHIVO]');
+      clean = clean.replace(/\b\d{6,}\b/g, '[ID]');
+      clean = clean.replace(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g, '[GUID]');
+      clean = clean.replace(/https?:\/\/[^\s'"]+/g, '[URL]');
+      return clean.substring(0, 150).trim();
+    };
 
     // Aplanar los logs para simulación
     const flattenedLogs = logs.map(log => {
@@ -1981,33 +2021,37 @@ return [
         origenConsulta: `Seq (Consulta: ${selectedQueryForAlert.name})`
       };
 
+      const genericMsg = getGenericMessage(message, exception);
+
       if (isClient) {
         erroresClienteCount++;
         const key = `${cliente} | ${hostname}`;
         if (!clientGroups[key]) {
-          clientGroups[key] = { cliente, hostname, eventos: 0, errores: [] as any[] };
+          clientGroups[key] = { cliente, hostname, eventos: 0, errores: {} };
         }
         clientGroups[key].eventos++;
-        if (clientGroups[key].errores.length < 10) {
-          clientGroups[key].errores.push(payloadComun);
+        if (!clientGroups[key].errores[genericMsg]) {
+          clientGroups[key].errores[genericMsg] = { cantidad: 0, ejemplo: payloadComun };
         }
+        clientGroups[key].errores[genericMsg].cantidad++;
       } else if (isServer) {
         erroresServidorCount++;
         if (!serverGroups[cliente]) {
-          serverGroups[cliente] = { cliente, hostname, eventos: 0, errores: [] as any[] };
+          serverGroups[cliente] = { cliente, hostname, eventos: 0, errores: {} };
         }
         serverGroups[cliente].eventos++;
-        if (serverGroups[cliente].errores.length < 10) {
-          serverGroups[cliente].errores.push(payloadComun);
+        if (!serverGroups[cliente].errores[genericMsg]) {
+          serverGroups[cliente].errores[genericMsg] = { cantidad: 0, ejemplo: payloadComun };
         }
+        serverGroups[cliente].errores[genericMsg].cantidad++;
       }
     });
 
-    const alertasMesaDeAyuda = [];
-    const alertasInfraestructura = {
+    const alertasMesaDeAyuda: any[] = [];
+    const alertasInfraestructura: any = {
       triggered: false,
       clientesAfectados: [] as string[],
-      detalleAlertas: [] as any[],
+      erroresAgrupados: [] as any[],
       mensaje: "No se superaron los umbrales de infraestructura."
     };
 
@@ -2015,16 +2059,26 @@ return [
     for (const key in clientGroups) {
       const g = clientGroups[key];
       if (g.eventos >= UMBRAL_CLIENTE_EVENTOS) {
+        const erroresAgrupados: any[] = [];
+        for (const msgKey in g.errores) {
+          const errGroup = g.errores[msgKey];
+          erroresAgrupados.push({
+            errorGenerico: msgKey,
+            cantidad: errGroup.cantidad,
+            ejemplo: {
+              destino: errGroup.ejemplo.destino,
+              error: errGroup.ejemplo.mensajeError,
+              version: errGroup.ejemplo.version,
+              app: errGroup.ejemplo.app,
+              origenConsulta: errGroup.ejemplo.origenConsulta
+            }
+          });
+        }
+
         alertasMesaDeAyuda.push({
           origen: `${g.cliente} / ${g.hostname}`,
-          eventos: g.eventos,
-          detalles: g.errores.map((err: any) => ({
-            destino: err.destino,
-            error: err.mensajeError,
-            version: err.version,
-            app: err.app,
-            origenConsulta: err.origenConsulta
-          })),
+          totalEventos: g.eventos,
+          erroresAgrupados,
           mensaje: `Alerta Mesa de Ayuda: El cliente ${g.cliente} en ${g.hostname} ha superado el límite con ${g.eventos} errores de cliente en los últimos ${VENTANA_TIEMPO_MINUTOS} minutos.`
         });
       }
@@ -2042,19 +2096,26 @@ return [
     if (clientesServidorCriticos.length >= UMBRAL_SERVIDOR_CLIENTES) {
       alertasInfraestructura.triggered = true;
       alertasInfraestructura.clientesAfectados = clientesServidorCriticos.map(c => c.cliente);
-      alertasInfraestructura.detalleAlertas = [];
+      alertasInfraestructura.erroresAgrupados = [];
       
       clientesServidorCriticos.forEach(g => {
-        g.errores.forEach((err: any) => {
-          alertasInfraestructura.detalleAlertas.push({
+        const agrupadosPorOrigen: any[] = [];
+        for (const msgKey in g.errores) {
+          const errGroup = g.errores[msgKey];
+          agrupadosPorOrigen.push({
             origen: `${g.cliente} / ${g.hostname}`,
-            destino: err.destino,
-            error: err.mensajeError,
-            version: err.version,
-            app: err.app,
-            origenConsulta: err.origenConsulta
+            errorGenerico: msgKey,
+            cantidad: errGroup.cantidad,
+            ejemplo: {
+              destino: errGroup.ejemplo.destino,
+              error: errGroup.ejemplo.mensajeError,
+              version: errGroup.ejemplo.version,
+              app: errGroup.ejemplo.app,
+              origenConsulta: errGroup.ejemplo.origenConsulta
+            }
           });
-        });
+        }
+        alertasInfraestructura.erroresAgrupados.push(...agrupadosPorOrigen);
       });
 
       alertasInfraestructura.mensaje = `Alerta de Infraestructura: Posible falla generalizada del Servidor de APIs. Afecta a ${clientesServidorCriticos.length} clientes con más de ${UMBRAL_SERVIDOR_EVENTOS} errores de conexión cada uno.`;
@@ -3899,7 +3960,7 @@ return [
                     </button>
                   </div>
 
-                  {alertModalTab === 'script' && (
+                  {alertModalTab === 'script' ? (
                     <button
                       onClick={() => {
                         navigator.clipboard.writeText(generatedJsAlert);
@@ -3910,6 +3971,18 @@ return [
                     >
                       <Copy className="w-3.5 h-3.5" />
                       Copiar Script
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(JSON.stringify(simulatedResult, null, 2));
+                        showToast('Resultado de simulación copiado al portapapeles', 'success');
+                      }}
+                      type="button"
+                      className="flex items-center gap-1 px-2.5 py-1.5 bg-[#71BF44]/10 border border-[#71BF44]/30 hover:bg-[#71BF44] hover:text-white dark:hover:text-[#131313] text-[#71BF44] rounded-lg transition-all text-[10px] font-bold"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      Copiar JSON
                     </button>
                   )}
                 </div>
