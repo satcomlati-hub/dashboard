@@ -2213,7 +2213,9 @@ return [
 
       return message.includes(query) || propertiesStr.includes(query) || exceptionStr.includes(query);
     });
-  }, [logs, activeLevels, localSearchQ  const simulatedResult = useMemo(() => {
+  }, [logs, activeLevels, localSearchQuery, activeConnectionFilters]);
+
+  const simulatedResult = useMemo(() => {
     if (!selectedQueryForAlert || logs.length === 0) {
       return {
         consultaEvaluada: alertQueryFilter || (selectedQueryForAlert ? selectedQueryForAlert.filter : ''),
