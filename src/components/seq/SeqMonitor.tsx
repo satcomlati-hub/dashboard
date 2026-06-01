@@ -474,6 +474,15 @@ logs.forEach(log => {
 
   totalErrores++;
 
+  function buildSeqQuery(originalFilter, cl, hn) {
+    const cleanFilter = originalFilter ? originalFilter.trim() : '';
+    const filterPart = cleanFilter ? '(' + cleanFilter + ')' : '';
+    const clientPart = cl && cl !== 'Desconocido' ? "(Cliente = '" + cl + "' or _cliente = '" + cl + "')" : '';
+    const hostPart = hn && hn !== 'Desconocido' ? "(Hostname = '" + hn + "' or _hostname = '" + hn + "')" : '';
+    const parts = [filterPart, clientPart, hostPart].filter(Boolean);
+    return parts.join(' and ');
+  }
+
   const payloadComun = {
     timestamp: log.Timestamp || log['@Timestamp'] || new Date().toISOString(),
     mensajeError: message,
@@ -484,7 +493,8 @@ logs.forEach(log => {
     ${alertConfig.includeApp ? 'app: app,' : ''}
     ${alertConfig.includeHostname ? 'hostname: hostname,' : ''}
     ${alertConfig.includeCliente ? 'cliente: cliente,' : ''}
-    origenConsulta: 'Seq (Origen: ' + origenConexion + ', Consulta: ${queryName.replace(/'/g, "\\'")})'
+    origenConsulta: 'Seq (Origen: ' + origenConexion + ', Consulta: ${queryName.replace(/'/g, "\\'")})',
+    seqQuery: buildSeqQuery("${queryFilter.replace(/"/g, '\\"')}", cliente, hostname)
   };
 
   const genericMsg = getGenericMessage(message, exception);
@@ -537,7 +547,8 @@ for (const key in clientGroups) {
           error: errGroup.ejemplo.mensajeError,
           version: errGroup.ejemplo.version,
           app: errGroup.ejemplo.app,
-          origenConsulta: errGroup.ejemplo.origenConsulta
+          origenConsulta: errGroup.ejemplo.origenConsulta,
+          seqQuery: errGroup.ejemplo.seqQuery
         }
       });
     }
@@ -578,7 +589,8 @@ if (clientesServidorCriticos.length >= UMBRAL_SERVIDOR_CLIENTES) {
           error: errGroup.ejemplo.mensajeError,
           version: errGroup.ejemplo.version,
           app: errGroup.ejemplo.app,
-          origenConsulta: errGroup.ejemplo.origenConsulta
+          origenConsulta: errGroup.ejemplo.origenConsulta,
+          seqQuery: errGroup.ejemplo.seqQuery
         }
       });
     }
@@ -2341,6 +2353,22 @@ return [
 
       totalErrores++;
 
+      const buildSeqQuery = (originalFilter: string, cl: string, hn: string): string => {
+        const cleanFilter = originalFilter ? originalFilter.trim() : '';
+        const filterPart = cleanFilter ? `(${cleanFilter})` : '';
+        
+        const clientPart = cl && cl !== 'Desconocido'
+          ? `(Cliente = '${cl}' or _cliente = '${cl}')`
+          : '';
+          
+        const hostPart = hn && hn !== 'Desconocido'
+          ? `(Hostname = '${hn}' or _hostname = '${hn}')`
+          : '';
+          
+        const parts = [filterPart, clientPart, hostPart].filter(Boolean);
+        return parts.join(' and ');
+      };
+
       const payloadComun = {
         timestamp: log.Timestamp || new Date().toISOString(),
         mensajeError: message,
@@ -2350,7 +2378,8 @@ return [
         app: alertConfig.includeApp ? app : undefined,
         hostname: alertConfig.includeHostname ? hostname : undefined,
         cliente: alertConfig.includeCliente ? cliente : undefined,
-        origenConsulta: `Seq (Origen: ${log.Origen || 'Desconocido'}, Consulta: ${selectedQueryForAlert.name})`
+        origenConsulta: `Seq (Origen: ${log.Origen || 'Desconocido'}, Consulta: ${selectedQueryForAlert.name})`,
+        seqQuery: buildSeqQuery(alertQueryFilter || selectedQueryForAlert.filter, cliente, hostname)
       };
 
       const genericMsg = getGenericMessage(message, exception);
@@ -2402,7 +2431,8 @@ return [
               error: errGroup.ejemplo.mensajeError,
               version: errGroup.ejemplo.version,
               app: errGroup.ejemplo.app,
-              origenConsulta: errGroup.ejemplo.origenConsulta
+              origenConsulta: errGroup.ejemplo.origenConsulta,
+              seqQuery: errGroup.ejemplo.seqQuery
             }
           });
         }
@@ -2443,7 +2473,8 @@ return [
               error: errGroup.ejemplo.mensajeError,
               version: errGroup.ejemplo.version,
               app: errGroup.ejemplo.app,
-              origenConsulta: errGroup.ejemplo.origenConsulta
+              origenConsulta: errGroup.ejemplo.origenConsulta,
+              seqQuery: errGroup.ejemplo.seqQuery
             }
           });
         }
