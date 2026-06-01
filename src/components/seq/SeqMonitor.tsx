@@ -1883,7 +1883,14 @@ return [
       
       const propertiesStr = log.Properties 
         ? log.Properties.map(p => `${p.Name} ${JSON.stringify(p.Value)}`).join(' ').toLowerCase() 
-// Simulación local de alerta en base a logs cargados en pantalla
+        : '';
+      const exceptionStr = (log.Exception || '').toLowerCase();
+
+      return message.includes(query) || propertiesStr.includes(query) || exceptionStr.includes(query);
+    });
+  }, [logs, activeLevels, localSearchQuery, activeConnectionFilters]);
+
+  // Simulación local de alerta en base a logs cargados en pantalla
   const simulatedResult = useMemo(() => {
     if (!selectedQueryForAlert || logs.length === 0) {
       return {
