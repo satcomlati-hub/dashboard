@@ -380,6 +380,11 @@ function getGenericMessage(msg, exc) {
   return clean.substring(0, 150).trim();
 }
 
+let minTimeMs = Infinity;
+let maxTimeMs = -Infinity;
+let minTimestamp = null;
+let maxTimestamp = null;
+
 logs.forEach(log => {
   const message = stringifyValue(log.Message || log.RenderedMessage || '');
   const exception = stringifyValue(log.Exception || log.exception || log['@Exception'] || '');
@@ -388,6 +393,21 @@ logs.forEach(log => {
   const app = log.App || log._app || log.app || 'Desconocido';
   const version = log.Version || log._version || log.version || 'Desconocido';
   const origenConexion = log.Origen || log.origen || 'Desconocido';
+
+  const ts = log.Timestamp || log['@Timestamp'];
+  if (ts) {
+    const timeMs = Date.parse(ts);
+    if (!isNaN(timeMs)) {
+      if (timeMs < minTimeMs) {
+        minTimeMs = timeMs;
+        minTimestamp = ts;
+      }
+      if (timeMs > maxTimeMs) {
+        maxTimeMs = timeMs;
+        maxTimestamp = ts;
+      }
+    }
+  }
 
   // Buscar StatusCode en Exception o Message
   let statusCode = null;
@@ -568,6 +588,10 @@ if (clientesServidorCriticos.length >= UMBRAL_SERVIDOR_CLIENTES) {
   alertasInfraestructura.mensaje = \`Alerta de Infraestructura: Posible falla generalizada del Servidor de APIs. Afecta a \${clientesServidorCriticos.length} clientes con más de \${UMBRAL_SERVIDOR_EVENTOS} errores de conexión cada uno.\`;
 }
 
+const rangoHorario = minTimestamp && maxTimestamp 
+  ? \`\${minTimestamp} a \${maxTimestamp}\`
+  : 'No disponible';
+
 return [
   {
     json: {
@@ -579,7 +603,8 @@ return [
         totalErroresServidor: erroresServidorCount,
         ventanaEvaluacionMinutos: VENTANA_TIEMPO_MINUTOS,
         alertaClienteCritico: alertasMesaDeAyuda.length > 0,
-        alertaServidorGlobal: alertasInfraestructura.triggered
+        alertaServidorGlobal: alertasInfraestructura.triggered,
+        rangoHorario: rangoHorario
       },
       alertasMesaDeAyuda, // Errores de cliente detallados
       alertasInfraestructura // Errores de servidor generalizados
@@ -2430,6 +2455,33 @@ return [
 
     const alertaGenerada = alertasMesaDeAyuda.length > 0 || alertasInfraestructura.triggered;
 
+    // Calcular rango de tiempo
+    let minTimestamp: string | null = null;
+    let maxTimestamp: string | null = null;
+    let minTimeMs = Infinity;
+    let maxTimeMs = -Infinity;
+
+    flattenedLogs.forEach(log => {
+      const ts = log.Timestamp;
+      if (ts) {
+        const timeMs = Date.parse(ts);
+        if (!isNaN(timeMs)) {
+          if (timeMs < minTimeMs) {
+            minTimeMs = timeMs;
+            minTimestamp = ts;
+          }
+          if (timeMs > maxTimeMs) {
+            maxTimeMs = timeMs;
+            maxTimestamp = ts;
+          }
+        }
+      }
+    });
+
+    const rangoHorario = minTimestamp && maxTimestamp 
+      ? `${minTimestamp} a ${maxTimestamp}`
+      : 'No disponible';
+
     return {
       consultaEvaluada: alertQueryFilter || selectedQueryForAlert.filter,
       alertaGenerada,
@@ -2439,7 +2491,8 @@ return [
         totalErroresServidor: erroresServidorCount,
         ventanaEvaluacionMinutos: VENTANA_TIEMPO_MINUTOS,
         alertaClienteCritico: alertasMesaDeAyuda.length > 0,
-        alertaServidorGlobal: alertasInfraestructura.triggered
+        alertaServidorGlobal: alertasInfraestructura.triggered,
+        rangoHorario
       },
       alertasMesaDeAyuda,
       alertasInfraestructura
