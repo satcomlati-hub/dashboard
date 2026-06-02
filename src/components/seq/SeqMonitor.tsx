@@ -1410,7 +1410,9 @@ return [
       const payload = {
         id: editingQuery?.id,
         name: queryNameInput.trim(),
-        filter: queryFilterInput
+        filter: queryFilterInput,
+        alertConfig: editingQuery?.alertConfig,
+        conexionesIds: editingQuery?.conexionesIds
       };
 
       const res = await fetch('/api/seq/queries', {
@@ -2849,7 +2851,21 @@ return [
                                       )}
                                     </div>
                                     <div className="flex items-center gap-1 shrink-0">
-                                      <button
+                                       <button
+                                         onClick={(e) => {
+                                           e.stopPropagation();
+                                           setQueryNameInput(q.name);
+                                           setQueryFilterInput(q.filter);
+                                           setEditingQuery(q);
+                                           setIsSaveQueryModalOpen(true);
+                                           setIsSavedQueriesOpen(false);
+                                         }}
+                                         className="text-neutral-400 hover:text-[#71BF44] p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors"
+                                         title="Editar consulta"
+                                       >
+                                         <Edit className="w-3.5 h-3.5" />
+                                       </button>
+                                       <button
                                          onClick={(e) => {
                                            e.stopPropagation();
                                            setSelectedQueryForAlert(q);
