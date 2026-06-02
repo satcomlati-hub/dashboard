@@ -225,8 +225,17 @@ export default function AgentEditorPage() {
             />
           </div>
           {(agent.system_sections ?? []).map((sec, i) => (
-            <div key={i}>
-              <label className="block text-xs text-neutral-500 mb-1">Sección {i + 1}</label>
+            <div key={i} className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-neutral-400 shrink-0">Sección {i + 1}</span>
+                <input
+                  type="text"
+                  className="flex-1 bg-transparent border-b border-neutral-200 dark:border-neutral-700 px-1 py-0.5 text-sm font-semibold text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44]"
+                  placeholder="Título de la sección (ej: Identidad, Reglas RAG, Canal cliente…)"
+                  value={sec.title ?? ''}
+                  onChange={e => updateSection(i, 'title', e.target.value)}
+                />
+              </div>
               <textarea
                 rows={4}
                 className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-white resize-none"
@@ -240,7 +249,7 @@ export default function AgentEditorPage() {
             type="button"
             onClick={() => setAgent(a => ({
               ...a,
-              system_sections: [...(a.system_sections ?? []), { title: 'user_system_instructions', content: '' }],
+              system_sections: [...(a.system_sections ?? []), { title: '', content: '' }],
             }))}
             className="text-xs text-[#71BF44] hover:underline"
           >
