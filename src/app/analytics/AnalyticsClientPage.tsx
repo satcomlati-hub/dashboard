@@ -33,7 +33,7 @@ export default function AnalyticsClientPage({ isAdmin }: AnalyticsClientPageProp
       connection: {
         type: 'Supabase',
         source: 'mySatcom.bitacora_eventos',
-        method: 'Consulta Directa SQL'
+        method: 'Tabla Directa: mySatcom.bitacora_eventos'
       }
     },
     {
@@ -50,7 +50,8 @@ export default function AnalyticsClientPage({ isAdmin }: AnalyticsClientPageProp
         type: 'n8n',
         source: 'https://sara.mysatcomla.com/webhook/DetalleEventosRabbit',
         flowName: 'API Detalle Eventos Rabbit',
-        flowId: 'MULTI_ENV'
+        flowId: 'MULTI_ENV',
+        method: 'Función: mysatcom.get_bitacora_eventos_v2'
       }
     },
     {
@@ -67,7 +68,8 @@ export default function AnalyticsClientPage({ isAdmin }: AnalyticsClientPageProp
         type: 'n8n',
         source: 'https://sara.mysatcomla.com/webhook/MonitorRabbit',
         flowName: 'API Monitoreo Rabbit',
-        flowId: '3vtUKb3F5pqASbya'
+        flowId: '3vtUKb3F5pqASbya',
+        method: 'Endpoint: API MonitorRabbit'
       }
     },
     {
@@ -102,7 +104,8 @@ export default function AnalyticsClientPage({ isAdmin }: AnalyticsClientPageProp
         type: 'n8n',
         source: 'https://sara.mysatcomla.com/webhook/GetData',
         flowName: 'Monitoreo Procesos Consulta SP',
-        flowId: 'VOfL2rAriW1s0TeQ'
+        flowId: 'VOfL2rAriW1s0TeQ',
+        method: 'SP: consulta_tablero_pendiente_info_reportes_2026'
       }
     },
     {
@@ -119,7 +122,8 @@ export default function AnalyticsClientPage({ isAdmin }: AnalyticsClientPageProp
         type: 'n8n',
         source: 'https://sara.mysatcomla.com/webhook/GetData',
         flowName: 'Consolidado MySatcom 2026',
-        flowId: 'MULTI_ENV'
+        flowId: 'MULTI_ENV',
+        method: 'SP: consulta_tablero_monitreo_mysatcom_2026'
       }
     },
     {
@@ -155,7 +159,7 @@ export default function AnalyticsClientPage({ isAdmin }: AnalyticsClientPageProp
         source: 'https://sara.mysatcomla.com/webhook/GetData',
         flowName: 'Monitoreo Procesos Consulta SP',
         flowId: 'VOfL2rAriW1s0TeQ',
-        method: 'SP: consulta_tablero_actividad_emisor_2026'
+        method: 'SPs: consulta_tablero_actividad_emisor_2026 / consulta_tablero_alertas_inactividad_2026 / consulta_tablero_ranking_errores_2026'
       }
     },
     {
