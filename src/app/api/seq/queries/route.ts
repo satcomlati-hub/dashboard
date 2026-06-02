@@ -7,7 +7,28 @@ export const dynamic = 'force-dynamic';
 // GET: Obtener todas las consultas y alertas de SEQ centralizadas
 export async function GET() {
   try {
-    // Asegurar que las columnas creado_por y actualizado_por existan (migración integrada)
+    // Asegurar que exista la tabla sat_monitoreo.seq_alertas_config
+    await query(`
+      CREATE TABLE IF NOT EXISTS sat_monitoreo.seq_alertas_config (
+        id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+        nombre          TEXT         NOT NULL,
+        query_filter    TEXT         NOT NULL,
+        conexiones_ids  UUID[]       DEFAULT NULL,
+        umbrales        JSONB        NOT NULL DEFAULT '{
+          "timeWindowMinutes": 1,
+          "clientEventsThreshold": 5,
+          "serverEventsThreshold": 30,
+          "serverClientsThreshold": 1
+        }',
+        es_activo       BOOLEAN      NOT NULL DEFAULT true,
+        creado_por      TEXT         DEFAULT 'sistema@mysatcomla.com',
+        actualizado_por TEXT         DEFAULT 'sistema@mysatcomla.com',
+        creado_en       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        actualizado_en  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    // Asegurar que las columnas creado_por y actualizado_por existan
     await query(`
       ALTER TABLE sat_monitoreo.seq_alertas_config 
       ADD COLUMN IF NOT EXISTS creado_por TEXT DEFAULT 'sistema@mysatcomla.com',
@@ -57,6 +78,27 @@ export async function POST(request: Request) {
   try {
     const session = await auth();
     const userEmail = session?.user?.email || 'anonimo@mysatcomla.com';
+
+    // Asegurar que exista la tabla sat_monitoreo.seq_alertas_config
+    await query(`
+      CREATE TABLE IF NOT EXISTS sat_monitoreo.seq_alertas_config (
+        id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+        nombre          TEXT         NOT NULL,
+        query_filter    TEXT         NOT NULL,
+        conexiones_ids  UUID[]       DEFAULT NULL,
+        umbrales        JSONB        NOT NULL DEFAULT '{
+          "timeWindowMinutes": 1,
+          "clientEventsThreshold": 5,
+          "serverEventsThreshold": 30,
+          "serverClientsThreshold": 1
+        }',
+        es_activo       BOOLEAN      NOT NULL DEFAULT true,
+        creado_por      TEXT         DEFAULT 'sistema@mysatcomla.com',
+        actualizado_por TEXT         DEFAULT 'sistema@mysatcomla.com',
+        creado_en       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        actualizado_en  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      );
+    `);
 
     const body = await request.json();
     const {
