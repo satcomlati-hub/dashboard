@@ -51,7 +51,7 @@ export default function RagCollectionsWidget() {
           </svg>
           <h2 className="text-sm font-semibold text-neutral-900 dark:text-white">Colecciones RAG</h2>
         </div>
-        <Link href="/credentials" className="text-xs text-[#71BF44] hover:underline font-medium">
+        <Link href="/projects/rag" className="text-xs text-[#71BF44] hover:underline font-medium">
           Ingesta &rarr;
         </Link>
       </div>

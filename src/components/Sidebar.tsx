@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import ThemeToggle from './ThemeToggle';
-import { ChevronLeft, ChevronRight, LayoutGrid, BarChart3, Workflow, CreditCard, MessageSquare, Settings, Home, Briefcase, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Bot, BarChart3, Workflow, CreditCard, MessageSquare, Settings, Home, Briefcase, X } from 'lucide-react';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -23,7 +23,7 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse
     { name: 'Workflows', href: '/workflows', permission: 'page:workflows', icon: <Workflow className="w-5 h-5" /> },
     { name: 'Finanzas y Uso', href: '/usage', permission: 'page:usage', icon: <CreditCard className="w-5 h-5" /> },
     { name: 'Satcom Analytics', href: '/analytics', permission: 'page:analytics', icon: <BarChart3 className="w-5 h-5" /> },
-    { name: 'Credenciales', href: '/credentials', permission: 'page:credentials', icon: <LayoutGrid className="w-5 h-5" /> },
+    { name: 'Agentes IA', href: '/projects/agentes', permission: 'page:projects', icon: <Bot className="w-5 h-5" /> },
     { name: 'SARA Chat', href: '/chat', permission: 'page:chat', icon: <MessageSquare className="w-5 h-5" /> },
     { name: 'Configuración', href: '/settings', permission: 'page:settings', icon: <Settings className="w-5 h-5" /> },
   ].filter(item => permissions.length === 0 || permissions.includes(item.permission));

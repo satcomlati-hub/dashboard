@@ -8,7 +8,7 @@ const LINKS = [
   { name: 'Workflows', href: '/workflows', permission: 'page:workflows', color: 'bg-purple-500/10 text-purple-500' },
   { name: 'Analytics', href: '/analytics', permission: 'page:analytics', color: 'bg-emerald-500/10 text-emerald-500' },
   { name: 'SARA Chat', href: '/chat', permission: 'page:chat', color: 'bg-amber-500/10 text-amber-500' },
-  { name: 'Credenciales', href: '/credentials', permission: 'page:credentials', color: 'bg-rose-500/10 text-rose-500' },
+  { name: 'Agentes IA', href: '/projects/agentes', permission: 'page:projects', color: 'bg-rose-500/10 text-rose-500' },
   { name: 'Finanzas', href: '/usage', permission: 'page:usage', color: 'bg-cyan-500/10 text-cyan-500' },
 ];
 

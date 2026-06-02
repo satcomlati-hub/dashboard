@@ -7,7 +7,6 @@ export const ROUTE_PERMISSION_MAP: Record<string, string> = {
   '/workflows': 'page:workflows',
   '/usage': 'page:usage',
   '/analytics': 'page:analytics',
-  '/credentials': 'page:credentials',
   '/chat': 'page:chat',
   '/settings': 'page:settings',
 };
