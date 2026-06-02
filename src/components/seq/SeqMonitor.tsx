@@ -75,6 +75,11 @@ interface SavedQuery {
     includeCliente: boolean;
     isActive: boolean;
   };
+  conexionesIds?: string[];
+  createdBy?: string;
+  updatedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface HistoryQuery {
@@ -106,12 +111,12 @@ interface ToastMessage {
 }
 
 const DEFAULT_QUERIES: SavedQuery[] = [
-  { id: 'q-all', name: 'Todos los Logs', filter: '' },
-  { id: 'q-err', name: 'Errores y Fatal', filter: "@Level = 'Error' or @Level = 'Fatal'" },
-  { id: 'q-warn', name: 'Advertencias (Warning)', filter: "@Level = 'Warning'" },
-  { id: 'q-info', name: 'Mensajes Informativos', filter: "@Level = 'Information'" },
-  { id: 'q-ai', name: 'AI & RAG Flows', filter: "App = 'RAG' or App = 'SARA' or @Message like '%RAG%' or @Message like '%SARA%'" },
-  { id: 'q-exc', name: 'Excepciones / Errores Críticos', filter: "has(@Exception) or @Level = 'Fatal'" }
+  { id: 'q-all', name: 'Todos los Logs', filter: '', createdBy: 'sistema@mysatcomla.com' },
+  { id: 'q-err', name: 'Errores y Fatal', filter: "@Level = 'Error' or @Level = 'Fatal'", createdBy: 'sistema@mysatcomla.com' },
+  { id: 'q-warn', name: 'Advertencias (Warning)', filter: "@Level = 'Warning'", createdBy: 'sistema@mysatcomla.com' },
+  { id: 'q-info', name: 'Mensajes Informativos', filter: "@Level = 'Information'", createdBy: 'sistema@mysatcomla.com' },
+  { id: 'q-ai', name: 'AI & RAG Flows', filter: "App = 'RAG' or App = 'SARA' or @Message like '%RAG%' or @Message like '%SARA%'", createdBy: 'sistema@mysatcomla.com' },
+  { id: 'q-exc', name: 'Excepciones / Errores Críticos', filter: "has(@Exception) or @Level = 'Fatal'", createdBy: 'sistema@mysatcomla.com' }
 ];
 
 const LOG_LEVELS = ['Verbose', 'Debug', 'Information', 'Warning', 'Error', 'Fatal'];
@@ -714,14 +719,8 @@ return [
 
   // Cargar Ajustes y Datos al inicio
   useEffect(() => {
-    // Cargar queries guardadas de localStorage
-    const saved = localStorage.getItem('seq_monitor_queries');
-    if (saved) {
-      setSavedQueries(JSON.parse(saved));
-    } else {
-      setSavedQueries(DEFAULT_QUERIES);
-      localStorage.setItem('seq_monitor_queries', JSON.stringify(DEFAULT_QUERIES));
-    }
+    // Cargar queries guardadas desde la base de datos
+    fetchSavedQueries();
 
     // Cargar historial de queries de localStorage
     const savedHistory = localStorage.getItem('seq_monitor_query_history_v2');
@@ -879,6 +878,27 @@ return [
         }
       }
     );
+  };
+
+  // CRUD Consultas Guardadas / Alertas centralizadas
+  const fetchSavedQueries = async () => {
+    try {
+      const res = await fetch('/api/seq/queries');
+      if (res.ok) {
+        const data = await res.json();
+        // Si no hay consultas configuradas en la base de datos, mostramos las DEFAULT_QUERIES de fallback
+        if (data.length === 0) {
+          setSavedQueries(DEFAULT_QUERIES);
+        } else {
+          setSavedQueries(data);
+        }
+      } else {
+        setSavedQueries(DEFAULT_QUERIES);
+      }
+    } catch (err) {
+      console.error('Error fetching queries:', err);
+      setSavedQueries(DEFAULT_QUERIES);
+    }
   };
 
   // CRUD Tareas
@@ -1382,34 +1402,37 @@ return [
   };
 
   // Guardar/editar consulta personalizada
-  const handleSaveQuery = (e: React.FormEvent) => {
+  const handleSaveQuery = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!queryNameInput.trim()) return;
 
-    let updated: SavedQuery[];
-    if (editingQuery) {
-      updated = savedQueries.map(q => 
-        q.id === editingQuery.id 
-          ? { ...q, name: queryNameInput.trim(), filter: queryFilterInput }
-          : q
-      );
-      showToast(`Consulta "${queryNameInput.trim()}" actualizada con éxito`, 'success');
-    } else {
-      const newQuery: SavedQuery = {
-        id: 'q-custom-' + Date.now(),
+    try {
+      const payload = {
+        id: editingQuery?.id,
         name: queryNameInput.trim(),
         filter: queryFilterInput
       };
-      updated = [...savedQueries, newQuery];
-      showToast(`Consulta "${newQuery.name}" guardada`, 'success');
-    }
 
-    setSavedQueries(updated);
-    localStorage.setItem('seq_monitor_queries', JSON.stringify(updated));
-    setIsSaveQueryModalOpen(false);
-    setEditingQuery(null);
-    setQueryNameInput('');
-    setQueryFilterInput('');
+      const res = await fetch('/api/seq/queries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        showToast(editingQuery ? 'Consulta actualizada con éxito' : 'Consulta guardada con éxito', 'success');
+        setIsSaveQueryModalOpen(false);
+        setEditingQuery(null);
+        setQueryNameInput('');
+        setQueryFilterInput('');
+        fetchSavedQueries();
+      } else {
+        const err = await res.json();
+        showToast(`Error al guardar: ${err.error}`, 'error');
+      }
+    } catch (err: any) {
+      showToast(`Error al guardar consulta: ${err.message}`, 'error');
+    }
   };
 
   // Borrar consulta guardada
@@ -1420,43 +1443,62 @@ return [
       'Eliminar Consulta Guardada',
       `¿Seguro que deseas eliminar la consulta guardada ${qName}?`,
       'Eliminar',
-      () => {
-        const updated = savedQueries.filter(q => q.id !== id);
-        setSavedQueries(updated);
-        localStorage.setItem('seq_monitor_queries', JSON.stringify(updated));
-        showToast('Consulta guardada eliminada', 'info');
+      async () => {
+        try {
+          const res = await fetch(`/api/seq/queries?id=${id}`, {
+            method: 'DELETE'
+          });
+          if (res.ok) {
+            showToast('Consulta guardada eliminada', 'info');
+            fetchSavedQueries();
+          } else {
+            showToast('Error al eliminar consulta', 'error');
+          }
+        } catch (err: any) {
+          showToast(`Error: ${err.message}`, 'error');
+        }
       }
     );
   };
 
   // Guardar la configuración de la alerta para una consulta guardada
-  const handleSaveAlertConfig = () => {
+  const handleSaveAlertConfig = async () => {
     if (!selectedQueryForAlert) return;
     
-    const updated = savedQueries.map(q => {
-      if (q.id === selectedQueryForAlert.id) {
-        return {
-          ...q,
-          filter: alertQueryFilter, // Guardar también la consulta editada
-          alertConfig: {
-            timeWindowMinutes: alertConfig.timeWindowMinutes,
-            clientEventsThreshold: alertConfig.clientEventsThreshold,
-            serverEventsThreshold: alertConfig.serverEventsThreshold,
-            serverClientsThreshold: alertConfig.serverClientsThreshold,
-            includeVersion: alertConfig.includeVersion,
-            includeApp: alertConfig.includeApp,
-            includeHostname: alertConfig.includeHostname,
-            includeCliente: alertConfig.includeCliente,
-            isActive: alertConfig.isActive
-          }
-        };
-      }
-      return q;
-    });
+    try {
+      const payload = {
+        id: selectedQueryForAlert.id,
+        name: selectedQueryForAlert.name,
+        filter: alertQueryFilter,
+        alertConfig: {
+          timeWindowMinutes: alertConfig.timeWindowMinutes,
+          clientEventsThreshold: alertConfig.clientEventsThreshold,
+          serverEventsThreshold: alertConfig.serverEventsThreshold,
+          serverClientsThreshold: alertConfig.serverClientsThreshold,
+          includeVersion: alertConfig.includeVersion,
+          includeApp: alertConfig.includeApp,
+          includeHostname: alertConfig.includeHostname,
+          includeCliente: alertConfig.includeCliente,
+          isActive: alertConfig.isActive
+        }
+      };
 
-    setSavedQueries(updated);
-    localStorage.setItem('seq_monitor_queries', JSON.stringify(updated));
-    showToast(`Configuración de alerta y consulta para "${selectedQueryForAlert.name}" guardada`, 'success');
+      const res = await fetch('/api/seq/queries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        showToast(`Configuración de alerta y consulta para "${selectedQueryForAlert.name}" guardada`, 'success');
+        fetchSavedQueries();
+      } else {
+        const err = await res.json();
+        showToast(`Error al guardar configuración: ${err.error}`, 'error');
+      }
+    } catch (err: any) {
+      showToast(`Error: ${err.message}`, 'error');
+    }
   };
 
   const handleUpdateSimulation = async () => {
@@ -1476,24 +1518,31 @@ return [
   const handleUpdateAndSaveQuery = async () => {
     if (!selectedQueryForAlert) return;
     
-    const updated = savedQueries.map(q => {
-      if (q.id === selectedQueryForAlert.id) {
-        return {
-          ...q,
-          filter: alertQueryFilter
-        };
-      }
-      return q;
-    });
-    setSavedQueries(updated);
-    localStorage.setItem('seq_monitor_queries', JSON.stringify(updated));
-    
     setIsLoadingLogs(true);
     try {
-      stateRef.current.currentFilter = alertQueryFilter;
-      setCurrentFilter(alertQueryFilter);
-      await fetchLogs(false);
-      showToast('Consulta guardada y simulación actualizada', 'success');
+      const payload = {
+        id: selectedQueryForAlert.id,
+        name: selectedQueryForAlert.name,
+        filter: alertQueryFilter,
+        alertConfig: selectedQueryForAlert.alertConfig
+      };
+
+      const res = await fetch('/api/seq/queries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        stateRef.current.currentFilter = alertQueryFilter;
+        setCurrentFilter(alertQueryFilter);
+        await fetchLogs(false);
+        showToast('Consulta guardada y simulación actualizada', 'success');
+        fetchSavedQueries();
+      } else {
+        const err = await res.json();
+        showToast(`Error al guardar: ${err.error}`, 'error');
+      }
     } catch (e: any) {
       showToast(`Error al guardar y actualizar consulta: ${e.message}`, 'error');
     } finally {
@@ -2777,80 +2826,87 @@ return [
                               if (filtered.length === 0) {
                                 return <span className="text-[11px] text-neutral-450 italic p-2 select-none">No se encontraron consultas</span>;
                               }
-                              return filtered.map(q => (
-                                <div
-                                  key={q.id}
-                                  className="flex items-center justify-between p-2 hover:bg-[#71BF44]/5 dark:hover:bg-[#71BF44]/10 cursor-pointer rounded-lg group text-xs transition-colors"
-                                  onClick={() => {
-                                    setCurrentFilter(q.filter);
-                                    setTimeout(() => {
-                                      stateRef.current.currentFilter = q.filter;
-                                      fetchLogs(false);
-                                    }, 50);
-                                    setIsSavedQueriesOpen(false);
-                                    setSearchSavedQueryText('');
-                                  }}
-                                >
-                                  <span className="font-medium text-neutral-855 dark:text-neutral-200 truncate pr-3">{q.name}</span>
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    <button
-                                       onClick={(e) => {
-                                         e.stopPropagation();
-                                         setSelectedQueryForAlert(q);
-                                         if (q.alertConfig) {
-                                           setAlertConfig({
-                                             timeWindowMinutes: q.alertConfig.timeWindowMinutes,
-                                             clientEventsThreshold: q.alertConfig.clientEventsThreshold,
-                                             serverEventsThreshold: q.alertConfig.serverEventsThreshold,
-                                             serverClientsThreshold: q.alertConfig.serverClientsThreshold,
-                                             includeVersion: q.alertConfig.includeVersion,
-                                             includeApp: q.alertConfig.includeApp,
-                                             includeHostname: q.alertConfig.includeHostname,
-                                             includeCliente: q.alertConfig.includeCliente,
-                                             isActive: q.alertConfig.isActive !== undefined ? q.alertConfig.isActive : true
-                                           });
-                                         } else {
-                                           setAlertConfig({
-                                             timeWindowMinutes: 10,
-                                             clientEventsThreshold: 30,
-                                             serverEventsThreshold: 30,
-                                             serverClientsThreshold: 3,
-                                             includeVersion: true,
-                                             includeApp: true,
-                                             includeHostname: true,
-                                             includeCliente: true,
-                                             isActive: true
-                                           });
-                                         }
-                                         setAlertQueryFilter(q.filter);
-                                         setGeneratedJsAlert('');
-                                         setIsAlertModalOpen(true);
-                                         setIsSavedQueriesOpen(false);
-                                       }}
-                                       className={`p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors ${
-                                         q.alertConfig 
-                                           ? q.alertConfig.isActive
-                                             ? 'text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300 font-bold' 
-                                             : 'text-emerald-500/40 hover:text-emerald-500 dark:text-emerald-400/30 dark:hover:text-emerald-400' 
-                                           : 'text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300'
-                                       }`}
-                                       title={q.alertConfig ? `Alerta configurada (${q.alertConfig.isActive ? 'Activa' : 'Inactiva'}). Clic para editar` : "Configurar alerta para n8n"}
-                                     >
-                                       <Bell className="w-3.5 h-3.5" />
-                                     </button>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteQuery(q.id);
-                                      }}
-                                      className="text-neutral-400 hover:text-red-500 dark:text-neutral-550 dark:hover:text-red-400 p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors"
-                                      title="Eliminar consulta"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
+                                return filtered.map(q => (
+                                  <div
+                                    key={q.id}
+                                    className="flex items-center justify-between p-2 hover:bg-[#71BF44]/5 dark:hover:bg-[#71BF44]/10 cursor-pointer rounded-lg group text-xs transition-colors"
+                                    onClick={() => {
+                                      setCurrentFilter(q.filter);
+                                      setTimeout(() => {
+                                        stateRef.current.currentFilter = q.filter;
+                                        fetchLogs(false);
+                                      }, 50);
+                                      setIsSavedQueriesOpen(false);
+                                      setSearchSavedQueryText('');
+                                    }}
+                                  >
+                                    <div className="flex flex-col min-w-0 pr-3">
+                                      <span className="font-medium text-neutral-855 dark:text-neutral-200 truncate">{q.name}</span>
+                                      {(q.createdBy || q.updatedBy) && (
+                                        <span className="text-[8px] text-neutral-450 dark:text-neutral-500 truncate mt-0.5">
+                                          Autor: {q.updatedBy || q.createdBy}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                         onClick={(e) => {
+                                           e.stopPropagation();
+                                           setSelectedQueryForAlert(q);
+                                           if (q.alertConfig) {
+                                             setAlertConfig({
+                                               timeWindowMinutes: q.alertConfig.timeWindowMinutes,
+                                               clientEventsThreshold: q.alertConfig.clientEventsThreshold,
+                                               serverEventsThreshold: q.alertConfig.serverEventsThreshold,
+                                               serverClientsThreshold: q.alertConfig.serverClientsThreshold,
+                                               includeVersion: q.alertConfig.includeVersion,
+                                               includeApp: q.alertConfig.includeApp,
+                                               includeHostname: q.alertConfig.includeHostname,
+                                               includeCliente: q.alertConfig.includeCliente,
+                                               isActive: q.alertConfig.isActive !== undefined ? q.alertConfig.isActive : true
+                                             });
+                                           } else {
+                                             setAlertConfig({
+                                               timeWindowMinutes: 10,
+                                               clientEventsThreshold: 30,
+                                               serverEventsThreshold: 30,
+                                               serverClientsThreshold: 3,
+                                               includeVersion: true,
+                                               includeApp: true,
+                                               includeHostname: true,
+                                               includeCliente: true,
+                                               isActive: true
+                                             });
+                                           }
+                                           setAlertQueryFilter(q.filter);
+                                           setGeneratedJsAlert('');
+                                           setIsAlertModalOpen(true);
+                                           setIsSavedQueriesOpen(false);
+                                         }}
+                                         className={`p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors ${
+                                           q.alertConfig 
+                                             ? q.alertConfig.isActive
+                                               ? 'text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300 font-bold' 
+                                               : 'text-emerald-500/40 hover:text-emerald-500 dark:text-emerald-400/30 dark:hover:text-emerald-400' 
+                                             : 'text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300'
+                                         }`}
+                                         title={q.alertConfig ? `Alerta configurada (${q.alertConfig.isActive ? 'Activa' : 'Inactiva'}). Clic para editar` : "Configurar alerta para n8n"}
+                                       >
+                                         <Bell className="w-3.5 h-3.5" />
+                                       </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteQuery(q.id);
+                                        }}
+                                        className="text-neutral-400 hover:text-red-500 dark:text-neutral-550 dark:hover:text-red-400 p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors"
+                                        title="Eliminar consulta"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
                                   </div>
-                                </div>
-                              ));
+                                ));
                             })()}
                           </div>
 
