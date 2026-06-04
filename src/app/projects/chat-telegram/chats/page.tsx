@@ -109,14 +109,13 @@ function ChatsContent() {
   }, [selectedChat]);
 
   useEffect(() => {
-    const t = setInterval(() => fetchChats(), 20000);
+    const t = setInterval(() => fetchChats(true), 20000);
     return () => clearInterval(t);
   }, []);
 
-  const fetchChats = async () => {
-    const isFirstLoad = chats.length === 0;
-    if (isFirstLoad) setLoading(true);
-
+  const fetchChats = async (silent = false) => {
+    // El polling pasa silent=true para no tocar el loader (evita el parpadeo
+    // "Cargando chats…" en cada refresco).
     try {
       const res = await fetch('/api/db/sara-chats');
       const data = await res.json();
@@ -126,7 +125,7 @@ function ChatsContent() {
     } catch (error) {
       console.error('Error fetching chats:', error);
     } finally {
-      if (isFirstLoad) setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -138,7 +137,16 @@ function ChatsContent() {
       const res = await fetch(`/api/db/sara-history?chat_id=${chatId}`);
       const data = await res.json();
       if (Array.isArray(data)) {
-        setHistory(data);
+        // Solo actualiza (y dispara auto-scroll) si el historial cambió de verdad;
+        // evita que la vista salte al fondo en cada poll sin mensajes nuevos.
+        setHistory(prev => {
+          const a = prev[prev.length - 1];
+          const b = data[data.length - 1];
+          if (prev.length === data.length && a?.fecha === b?.fecha && a?.texto === b?.texto) {
+            return prev;
+          }
+          return data;
+        });
       }
     } catch (error) {
       console.error('Error fetching history:', error);
