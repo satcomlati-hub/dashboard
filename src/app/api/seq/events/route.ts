@@ -21,6 +21,7 @@ export async function GET(request: Request) {
     }
 
     const isColombia = seqUrl && seqUrl.includes('logs-colombia.mysatcomla.com');
+    const isSqlQuery = !!(filter && filter.trim().toLowerCase().startsWith('select '));
     let filterToSend = filter;
     let clientSideLevelFilter: string | null = null;
     let clientSideLevelList: string[] | null = null;
@@ -64,7 +65,6 @@ export async function GET(request: Request) {
 
     // Construir la URL final de Seq
     // Seq usa el endpoint /api/events para consultar eventos, y /api/data para consultas SQL (select ...)
-    const isSqlQuery = filterToSend && filterToSend.trim().toLowerCase().startsWith('select ');
     const targetUrl = new URL(isSqlQuery ? '/api/data' : '/api/events', seqUrl);
     
     if (isSqlQuery) {
