@@ -4,12 +4,17 @@ import { useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 
+// Agente SARA Público — Asistente de Clientes (RAG). El bot @Satcomla_bot está
+// conectado directo a este agente vía agentes-api (canal en ag_channels).
+const SARA_PUBLICO_AGENT_ID = '2be1c249-6cd6-481b-9d9a-aaddab0edb22';
+
 interface Chat {
   chat_id: string;
   nombre: string;
   correo?: string;
   empresa?: string;
   last_activity?: string;
+  paused?: boolean;
   [key: string]: any;
 }
 
@@ -39,14 +44,36 @@ function ChatsContent() {
   const [history, setHistory] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [channelId, setChannelId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const searchParams = useSearchParams();
   const chatIdFromUrl = searchParams.get('chatId') || searchParams.get('IdChat');
 
+  // Estado de pausa (handoff) del chat seleccionado, derivado de la lista.
+  const selectedInList = chats.find(c => String(c.chat_id) === String(selectedChat?.chat_id));
+  const isPaused = !!(selectedInList?.paused ?? selectedChat?.paused);
+
   useEffect(() => {
     fetchChats();
+    resolveChannel();
   }, []);
+
+  // Resuelve el canal de Telegram de SARA Público (para enviar/reanudar como bot).
+  const resolveChannel = async () => {
+    try {
+      const res = await fetch('/api/agentes/v1/channels');
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        const ch = data.find(
+          (c: any) => c.type === 'telegram' && c.agent_id === SARA_PUBLICO_AGENT_ID,
+        ) || data.find((c: any) => c.type === 'telegram');
+        if (ch) setChannelId(ch.id);
+      }
+    } catch (error) {
+      console.error('Error resolving channel:', error);
+    }
+  };
 
   // Auto-select chat from URL parameter
   useEffect(() => {
@@ -74,12 +101,24 @@ function ChatsContent() {
     }
   }, [history]);
 
+  // Polling ligero: refresca el historial del chat abierto cada 5s y la lista cada 20s.
+  useEffect(() => {
+    if (!selectedChat) return;
+    const t = setInterval(() => fetchHistory(selectedChat.chat_id, true), 5000);
+    return () => clearInterval(t);
+  }, [selectedChat]);
+
+  useEffect(() => {
+    const t = setInterval(() => fetchChats(), 20000);
+    return () => clearInterval(t);
+  }, []);
+
   const fetchChats = async () => {
     const isFirstLoad = chats.length === 0;
     if (isFirstLoad) setLoading(true);
-    
+
     try {
-      const res = await fetch('/api/db/chats');
+      const res = await fetch('/api/db/sara-chats');
       const data = await res.json();
       if (Array.isArray(data)) {
         setChats(data);
@@ -94,13 +133,11 @@ function ChatsContent() {
   const fetchHistory = async (chatId: string, isPolling = false) => {
     // Only show loading if we don't have any messages yet (first load of this chat)
     if (!isPolling && history.length === 0) setHistoryLoading(true);
-    
+
     try {
-      const res = await fetch(`/api/db/history?chat_id=${chatId}`);
+      const res = await fetch(`/api/db/sara-history?chat_id=${chatId}`);
       const data = await res.json();
       if (Array.isArray(data)) {
-        // Only update state if data actually changed to avoid unnecessary re-renders
-        // A simple length and last message check is often enough for polling
         setHistory(data);
       }
     } catch (error) {
@@ -110,12 +147,18 @@ function ChatsContent() {
     }
   };
 
+  const setPausedLocal = (chatId: string, paused: boolean) => {
+    setChats(prev => prev.map(c =>
+      String(c.chat_id) === String(chatId) ? { ...c, paused } : c,
+    ));
+  };
+
   const formatDateTime = (dateStr: string) => {
     try {
       const isoStr = dateStr.replace(' ', 'T');
       const date = new Date(isoStr);
       if (isNaN(date.getTime())) return 'Fecha no disp.';
-      
+
       const dayMonth = date.toLocaleDateString([], { day: '2-digit', month: '2-digit' });
       const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       return `${dayMonth} ${time}`;
@@ -126,25 +169,30 @@ function ChatsContent() {
 
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [resuming, setResuming] = useState(false);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedChat || !newMessage.trim() || sending) return;
+    if (!channelId) {
+      alert('No se encontró el canal de Telegram de SARA Público.');
+      return;
+    }
 
     setSending(true);
     try {
-      const res = await fetch('/api/db/send-message', {
+      const res = await fetch(`/api/agentes/v1/channels/${channelId}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          chatId: selectedChat.chat_id,
-          message: newMessage
-        })
+          chat_id: String(selectedChat.chat_id),
+          text: newMessage,
+        }),
       });
 
       if (res.ok) {
         setNewMessage('');
-        // Immediately fetch history to show the message we just sent
+        setPausedLocal(selectedChat.chat_id, true); // al intervenir, el bot queda en pausa
         fetchHistory(selectedChat.chat_id, true);
       } else {
         alert('Error al enviar el mensaje');
@@ -154,6 +202,28 @@ function ChatsContent() {
       alert('Error al enviar el mensaje');
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleResume = async () => {
+    if (!selectedChat || !channelId || resuming) return;
+    setResuming(true);
+    try {
+      const res = await fetch(`/api/agentes/v1/channels/${channelId}/resume`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: String(selectedChat.chat_id) }),
+      });
+      if (res.ok) {
+        setPausedLocal(selectedChat.chat_id, false);
+      } else {
+        alert('No se pudo devolver el control al bot');
+      }
+    } catch (error) {
+      console.error('Error resuming bot:', error);
+      alert('No se pudo devolver el control al bot');
+    } finally {
+      setResuming(false);
     }
   };
 
@@ -168,7 +238,10 @@ function ChatsContent() {
             Volver a Chat telegram
           </Link>
         </div>
-        <h2 className="text-2xl font-bold text-neutral-900 dark:text-[#e5e5e5] tracking-tight">Chats de Telegram</h2>
+        <h2 className="text-2xl font-bold text-neutral-900 dark:text-[#e5e5e5] tracking-tight">Chats de SARA Público</h2>
+        <p className="text-sm text-neutral-500 dark:text-[#ababab] mt-1">
+          Conversaciones del bot <span className="font-medium">@Satcomla_bot</span> con clientes. Puedes intervenir y responder como el bot.
+        </p>
       </header>
 
       <div className="flex-1 flex gap-4 overflow-hidden">
@@ -189,7 +262,8 @@ function ChatsContent() {
                   }`}
                 >
                   <div className="flex justify-between items-start mb-1">
-                    <span className="font-bold text-neutral-900 dark:text-white uppercase truncate">
+                    <span className="font-bold text-neutral-900 dark:text-white uppercase truncate flex items-center gap-1.5">
+                      {chat.paused && <span title="Intervención humana activa" className="inline-block w-2 h-2 rounded-full bg-red-500 shrink-0"></span>}
                       {chat.nombre}
                     </span>
                     <span className="text-[10px] text-neutral-400 whitespace-nowrap ml-2">
@@ -212,14 +286,35 @@ function ChatsContent() {
         <div className="flex-1 bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl flex flex-col shadow-sm overflow-hidden text-neutral-900 dark:text-white">
           {selectedChat ? (
             <>
-              <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-800/20 flex justify-between items-center">
-                <div>
-                  <h3 className="font-bold text-neutral-900 dark:text-white uppercase">
+              <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-800/20 flex justify-between items-center gap-3">
+                <div className="min-w-0">
+                  <h3 className="font-bold text-neutral-900 dark:text-white uppercase truncate">
                     {selectedChat.nombre}
                   </h3>
                   <p className="text-xs text-neutral-500 truncate">ID: {selectedChat.chat_id} • {selectedChat.correo}</p>
                 </div>
+                {isPaused ? (
+                  <button
+                    onClick={handleResume}
+                    disabled={resuming}
+                    className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-300 transition-colors disabled:opacity-50"
+                  >
+                    <span className="inline-block w-2 h-2 rounded-full bg-red-500"></span>
+                    {resuming ? 'Devolviendo…' : 'Devolver al bot'}
+                  </button>
+                ) : (
+                  <span className="shrink-0 inline-flex items-center gap-1.5 text-[11px] text-neutral-400">
+                    <span className="inline-block w-2 h-2 rounded-full bg-[#71BF44]"></span>
+                    Bot activo
+                  </span>
+                )}
               </div>
+
+              {isPaused && (
+                <div className="px-4 py-2 text-xs bg-amber-50 dark:bg-amber-900/15 text-amber-700 dark:text-amber-300 border-b border-amber-200 dark:border-amber-800/40">
+                  🔴 Intervención humana activa — SARA no responderá automáticamente a este cliente hasta que pulses «Devolver al bot».
+                </div>
+              )}
 
               <div ref={scrollRef} className="flex-1 p-6 overflow-y-auto flex flex-col gap-4">
                 {historyLoading ? (
@@ -229,17 +324,32 @@ function ChatsContent() {
                 ) : (
                   history.map((msg, index) => {
                     const isUser = msg.rol === 'Usuario';
+                    const isOperator = msg.rol === 'Operador';
+                    const isSystem = msg.rol === 'Sistema';
+
+                    if (isSystem) {
+                      return (
+                        <div key={index} className="self-center max-w-[85%] text-center text-xs italic text-neutral-500 bg-neutral-100 dark:bg-neutral-800/60 rounded-lg px-3 py-1.5">
+                          {msg.texto}
+                        </div>
+                      );
+                    }
+
+                    const bubbleClass = isUser
+                      ? 'bg-[#71BF44] text-white self-end rounded-tr-none'
+                      : isOperator
+                        ? 'bg-amber-500 text-white self-start rounded-tl-none'
+                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 self-start rounded-tl-none border border-neutral-200 dark:border-neutral-700';
+
                     return (
-                      <div
-                        key={index}
-                        className={`max-w-[80%] p-3 rounded-2xl ${
-                          isUser
-                            ? 'bg-[#71BF44] text-white self-end rounded-tr-none'
-                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 self-start rounded-tl-none border border-neutral-200 dark:border-neutral-700'
-                        }`}
-                      >
+                      <div key={index} className={`max-w-[80%] p-3 rounded-2xl ${bubbleClass}`}>
+                        {isOperator && (
+                          <div className="text-[10px] font-semibold mb-1 opacity-90 flex items-center gap-1">
+                            👤 Operador (como el bot)
+                          </div>
+                        )}
                         <p className="text-sm whitespace-pre-wrap">{msg.texto}</p>
-                        <div className={`text-[10px] mt-1 opacity-70 ${isUser ? 'text-[#e5ffda]' : 'text-neutral-500'}`}>
+                        <div className={`text-[10px] mt-1 opacity-70 ${isUser || isOperator ? 'text-white/80' : 'text-neutral-500'}`}>
                           {formatDateTime(msg.fecha)}
                         </div>
                       </div>
@@ -254,7 +364,7 @@ function ChatsContent() {
                   type="text"
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Escribe un mensaje..."
+                  placeholder={isPaused ? 'Responde como el bot…' : 'Escribe para intervenir (el bot quedará en pausa)…'}
                   className="flex-1 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-[#71BF44] transition-colors"
                   disabled={sending}
                 />

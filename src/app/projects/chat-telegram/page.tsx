@@ -5,7 +5,7 @@ export default function ChatTelegramDashboard() {
     {
       id: 'chats',
       name: 'Chats',
-      description: 'Visualiza todos los chats recientes y activos de Telegram.',
+      description: 'Conversaciones del bot SARA Público (@Satcomla_bot) con clientes. Interviene y responde como el bot.',
       href: '/projects/chat-telegram/chats',
       icon: (
         <svg className="w-6 h-6 text-[#71BF44]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
