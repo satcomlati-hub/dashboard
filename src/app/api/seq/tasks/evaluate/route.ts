@@ -52,6 +52,10 @@ export async function POST(request: Request) {
             filterToSend = stripped === '' ? null : stripped;
           }
 
+          if (filterToSend) {
+            filterToSend = replaceNowWithAbsolute(filterToSend);
+          }
+
           // Construir URL para consultar eventos en Seq
           // Seq API requiere /api/events para obtener eventos
           const targetUrl = new URL('/api/events', task.seq_url);
@@ -245,4 +249,45 @@ function extractAllowedLevels(filter: string): string[] | null {
   }
   
   return allowedLevels.size > 0 ? Array.from(allowedLevels) : null;
+}
+
+function replaceNowWithAbsolute(filter: string): string {
+  if (!filter) return filter;
+  
+  // 1. Primero reemplazar Now() - X o Now() + X
+  let res = filter.replace(/Now\(\)\s*([-+])\s*(\d+)\s*([dhms])/gi, (match, operator, valueStr, unit) => {
+    const value = parseInt(valueStr, 10);
+    const date = new Date();
+    let offsetMs = 0;
+    
+    switch (unit.toLowerCase()) {
+      case 'd':
+        offsetMs = value * 24 * 60 * 60 * 1000;
+        break;
+      case 'h':
+        offsetMs = value * 60 * 60 * 1000;
+        break;
+      case 'm':
+        offsetMs = value * 60 * 1000;
+        break;
+      case 's':
+        offsetMs = value * 1000;
+        break;
+    }
+    
+    if (operator === '-') {
+      date.setTime(date.getTime() - offsetMs);
+    } else {
+      date.setTime(date.getTime() + offsetMs);
+    }
+    
+    return `DateTime('${date.toISOString()}')`;
+  });
+  
+  // 2. Luego reemplazar cualquier Now() huérfano
+  res = res.replace(/Now\(\)/gi, () => {
+    return `DateTime('${new Date().toISOString()}')`;
+  });
+  
+  return res;
 }
