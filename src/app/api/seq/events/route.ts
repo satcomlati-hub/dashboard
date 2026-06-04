@@ -43,7 +43,7 @@ export async function GET(request: Request) {
         }
       }
 
-      if (clientSideLevelFilter || clientSideLevelList) {
+      if ((clientSideLevelFilter || clientSideLevelList) && filterToSend) {
         // Limpiar operadores residuales
         filterToSend = filterToSend.replace(/\(\s*\)/g, '').trim();
         filterToSend = filterToSend.replace(/\band\s+and\b/gi, 'and').trim();
