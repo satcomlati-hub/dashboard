@@ -44,35 +44,12 @@ export async function POST(request: Request) {
         try {
           const isColombia = task.seq_url && task.seq_url.includes('logs-colombia.mysatcomla.com');
           let filterToSend = task.consulta;
-          let clientSideLevelFilter: string | null = null;
-          let clientSideLevelList: string[] | null = null;
+          let clientSideLevels: string[] | null = null;
 
           if (isColombia && task.consulta) {
-            // Detectar filtros de nivel simple: @Level == 'Warning' o @Level = 'Warning'
-            const levelPattern = /@Level\s*(==|=)\s*'([^']+)'/i;
-            const match = task.consulta.match(levelPattern);
-            if (match) {
-              clientSideLevelFilter = match[2].toLowerCase();
-              filterToSend = task.consulta.replace(levelPattern, '').trim();
-            } else {
-              // Detectar filtros IN: @Level in ['Warning', 'Error']
-              const inPattern = /@Level\s+in\s+\[\s*([^\]]+)\s*\]/i;
-              const inMatch = task.consulta.match(inPattern);
-              if (inMatch) {
-                clientSideLevelList = inMatch[1].split(',').map((l: string) => l.replace(/['"\s]/g, '').toLowerCase());
-                filterToSend = task.consulta.replace(inPattern, '').trim();
-              }
-            }
-
-            if (clientSideLevelFilter || clientSideLevelList) {
-              // Limpiar operadores residuales
-              filterToSend = filterToSend.replace(/\(\s*\)/g, '').trim();
-              filterToSend = filterToSend.replace(/\band\s+and\b/gi, 'and').trim();
-              filterToSend = filterToSend.replace(/^\s*and\s+/gi, '').replace(/\s+and\s*$/gi, '').trim();
-              if (filterToSend === '') {
-                filterToSend = null;
-              }
-            }
+            clientSideLevels = extractAllowedLevels(task.consulta);
+            const stripped = stripLevelFilter(task.consulta);
+            filterToSend = stripped === '' ? null : stripped;
           }
 
           // Construir URL para consultar eventos en Seq
@@ -81,8 +58,8 @@ export async function POST(request: Request) {
           if (filterToSend) {
             targetUrl.searchParams.append('filter', filterToSend);
           }
-          // Si es Colombia, pedir más eventos para compensar el filtrado en memoria
-          const countLimit = isColombia && (clientSideLevelFilter || clientSideLevelList) ? '250' : '50';
+          // Si es Colombia y filtramos por nivel, pedir más eventos para compensar el filtrado en memoria
+          const countLimit = isColombia && clientSideLevels ? '250' : '50';
           targetUrl.searchParams.append('count', countLimit);
 
           const headers: HeadersInit = {
@@ -109,16 +86,10 @@ export async function POST(request: Request) {
           let events = data.Events || [];
 
           // Filtrar en memoria si es Colombia
-          if (isColombia && (clientSideLevelFilter || clientSideLevelList)) {
+          if (isColombia && clientSideLevels) {
             events = events.filter((event: any) => {
               const eventLevel = (event.Level || '').toLowerCase();
-              if (clientSideLevelFilter) {
-                return eventLevel === clientSideLevelFilter;
-              }
-              if (clientSideLevelList) {
-                return clientSideLevelList.includes(eventLevel);
-              }
-              return true;
+              return clientSideLevels!.includes(eventLevel);
             });
             // Mantener el límite esperado
             events = events.slice(0, 50);
@@ -223,4 +194,55 @@ export async function POST(request: Request) {
 // Permitir GET también por comodidad en CRONs simples de curl
 export async function GET(request: Request) {
   return POST(request);
+}
+
+// Funciones de apoyo para limpiar filtros y evadir bloqueos de WAF
+function stripLevelFilter(filter: string): string {
+  let res = filter;
+  // 1. Reemplazar condiciones de nivel (ej. @Level = 'Fatal', @Level in ['Error'])
+  res = res.replace(/@Level\s*(==|!=|=)\s*['"][^'"]+['"]/gi, '');
+  res = res.replace(/@Level\s+in\s+\[\s*([^\]]+)\s*\]/gi, '');
+  
+  // 2. Limpiar operadores lógicos redundantes o huérfanos
+  res = res.replace(/\s+/g, ' ');
+  
+  let prev;
+  do {
+    prev = res;
+    res = res
+      .replace(/\(\s*\)/g, '') // Paréntesis vacíos
+      .replace(/\(\s*and\b/gi, '(')
+      .replace(/\(\s*or\b/gi, '(')
+      .replace(/\band\s*\)/gi, ')')
+      .replace(/\bor\s*\)/gi, ')')
+      .replace(/\band\s+and\b/gi, 'and')
+      .replace(/\bor\s+or\b/gi, 'or')
+      .replace(/\band\s+or\b/gi, 'or')
+      .replace(/\bor\s+and\b/gi, 'and')
+      .trim();
+  } while (res !== prev);
+  
+  res = res
+    .replace(/^(and|or)\b/gi, '')
+    .replace(/\b(and|or)$/gi, '')
+    .trim();
+    
+  return res;
+}
+
+function extractAllowedLevels(filter: string): string[] | null {
+  const allowedLevels = new Set<string>();
+  
+  const singleMatches = filter.matchAll(/@Level\s*(==|=)\s*['"]([^'"]+)['"]/gi);
+  for (const match of singleMatches) {
+    allowedLevels.add(match[2].toLowerCase());
+  }
+  
+  const inMatches = filter.matchAll(/@Level\s+in\s+\[\s*([^\]]+)\s*\]/gi);
+  for (const match of inMatches) {
+    const levels = match[1].split(',').map((l: string) => l.replace(/['"\s]/g, '').toLowerCase());
+    levels.forEach(l => allowedLevels.add(l));
+  }
+  
+  return allowedLevels.size > 0 ? Array.from(allowedLevels) : null;
 }
