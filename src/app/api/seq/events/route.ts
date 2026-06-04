@@ -26,14 +26,14 @@ export async function GET(request: Request) {
     let filterToSend = filter;
     let clientSideLevels: string[] | null = null;
 
-    if (isColombia && filter && !isSqlQuery) {
-      clientSideLevels = extractAllowedLevels(filter);
-      const stripped = stripLevelFilter(filter);
-      filterToSend = stripped === '' ? null : stripped;
-    }
-
     if (filterToSend && !isSqlQuery) {
       filterToSend = replaceNowWithAbsolute(filterToSend);
+    }
+
+    if (isColombia && filterToSend && !isSqlQuery) {
+      clientSideLevels = extractAllowedLevels(filterToSend);
+      const stripped = stripLevelFilter(filterToSend);
+      filterToSend = stripped === '' ? null : stripped;
     }
 
     // Si es Colombia y filtramos por nivel, pedir más logs de Seq para compensar el filtrado en memoria
@@ -184,8 +184,8 @@ function extractAllowedLevels(filter: string): string[] | null {
 function replaceNowWithAbsolute(filter: string): string {
   if (!filter) return filter;
   
-  // 1. Primero reemplazar Now() - X o Now() + X
-  let res = filter.replace(/Now\(\)\s*([-+])\s*(\d+)\s*([dhms])/gi, (match, operator, valueStr, unit) => {
+  // 1. Primero reemplazar Now() - X o Now - X
+  let res = filter.replace(/\bNow(?:\(\))?\s*([-+])\s*(\d+)\s*([dhms])\b/gi, (match, operator, valueStr, unit) => {
     const value = parseInt(valueStr, 10);
     const date = new Date();
     let offsetMs = 0;
@@ -214,8 +214,8 @@ function replaceNowWithAbsolute(filter: string): string {
     return `DateTime('${date.toISOString()}')`;
   });
   
-  // 2. Luego reemplazar cualquier Now() huérfano
-  res = res.replace(/Now\(\)/gi, () => {
+  // 2. Luego reemplazar cualquier Now() o Now huérfano
+  res = res.replace(/\bNow(?:\(\))?\b/gi, () => {
     return `DateTime('${new Date().toISOString()}')`;
   });
   
