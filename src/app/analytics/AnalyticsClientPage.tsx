@@ -4,7 +4,6 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Database, Webhook, Link2, ExternalLink } from 'lucide-react';
 import Tabs from '@/components/Tabs';
-import SeqMonitor from '@/components/seq/SeqMonitor';
 
 interface AnalyticsClientPageProps {
   isAdmin: boolean;
@@ -16,7 +15,6 @@ export default function AnalyticsClientPage({ isAdmin }: AnalyticsClientPageProp
   const tabs = [
     { id: 'monitoreo', label: 'Monitoreo' },
     { id: 'mysatcom-bdd', label: 'mySatcom BDD' },
-    { id: 'seq-monitor', label: 'Seq Monitor' },
   ];
 
   const monitoreoSections = [
@@ -232,76 +230,72 @@ export default function AnalyticsClientPage({ isAdmin }: AnalyticsClientPageProp
       {/* Selector de Pestañas */}
       <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
 
-      {activeTab !== 'seq-monitor' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {currentSections.map((section) => (
-            <div key={section.id} className="flex flex-col">
-              <Link 
-                href={section.href}
-                className={`flex-1 group bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 p-6 shadow-sm hover:border-[#71BF44] transition-all ${isAdmin ? 'rounded-t-xl' : 'rounded-xl'}`}
-              >
-                <div className="w-12 h-12 rounded-lg bg-[#71BF44]/10 flex items-center justify-center mb-4 group-hover:bg-[#71BF44]/20 transition-colors">
-                  {section.icon}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {currentSections.map((section) => (
+          <div key={section.id} className="flex flex-col">
+            <Link 
+              href={section.href}
+              className={`flex-1 group bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 p-6 shadow-sm hover:border-[#71BF44] transition-all ${isAdmin ? 'rounded-t-xl' : 'rounded-xl'}`}
+            >
+              <div className="w-12 h-12 rounded-lg bg-[#71BF44]/10 flex items-center justify-center mb-4 group-hover:bg-[#71BF44]/20 transition-colors">
+                {section.icon}
+              </div>
+              <h3 className="text-lg font-bold text-neutral-900 dark:text-white mb-2">{section.name}</h3>
+              <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
+                {section.description}
+              </p>
+            </Link>
+            
+            {isAdmin && (
+              <div className="bg-neutral-50 dark:bg-[#0a0a0a] border-x border-b border-neutral-200 dark:border-neutral-800 rounded-b-xl px-4 py-3 flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  {section.connection.type === 'Supabase' ? (
+                    <Database className="w-3.5 h-3.5 text-blue-500" />
+                  ) : (
+                    <Webhook className="w-3.5 h-3.5 text-orange-500" />
+                  )}
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                    Conexión: {section.connection.type}
+                  </span>
                 </div>
-                <h3 className="text-lg font-bold text-neutral-900 dark:text-white mb-2">{section.name}</h3>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
-                  {section.description}
-                </p>
-              </Link>
-              
-              {isAdmin && (
-                <div className="bg-neutral-50 dark:bg-[#0a0a0a] border-x border-b border-neutral-200 dark:border-neutral-800 rounded-b-xl px-4 py-3 flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    {section.connection.type === 'Supabase' ? (
-                      <Database className="w-3.5 h-3.5 text-blue-500" />
-                    ) : (
-                      <Webhook className="w-3.5 h-3.5 text-orange-500" />
-                    )}
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">
-                      Conexión: {section.connection.type}
+                
+                <div className="space-y-1">
+                  <div className="flex items-start gap-1.5 group/source">
+                    <Link2 className="w-3 h-3 text-neutral-400 mt-0.5 shrink-0" />
+                    <span className="text-[11px] text-neutral-600 dark:text-neutral-500 break-all line-clamp-1 group-hover/source:line-clamp-none transition-all cursor-default">
+                      {section.connection.source}
                     </span>
                   </div>
                   
-                  <div className="space-y-1">
-                    <div className="flex items-start gap-1.5 group/source">
-                      <Link2 className="w-3 h-3 text-neutral-400 mt-0.5 shrink-0" />
-                      <span className="text-[11px] text-neutral-600 dark:text-neutral-500 break-all line-clamp-1 group-hover/source:line-clamp-none transition-all cursor-default">
-                        {section.connection.source}
+                  {section.connection.type === 'n8n' && (
+                    <div className="flex items-center gap-1.5">
+                      <ExternalLink className="w-3 h-3 text-[#71BF44] shrink-0" />
+                      <span className="text-[11px] font-medium text-neutral-700 dark:text-neutral-300">
+                        {section.connection.flowName} 
+                        {section.connection.flowId && <span className="text-neutral-500 ml-1">({section.connection.flowId})</span>}
                       </span>
                     </div>
-                    
-                    {section.connection.type === 'n8n' && (
-                      <div className="flex items-center gap-1.5">
-                        <ExternalLink className="w-3 h-3 text-[#71BF44] shrink-0" />
-                        <span className="text-[11px] font-medium text-neutral-700 dark:text-neutral-300">
-                          {section.connection.flowName} 
-                          {section.connection.flowId && <span className="text-neutral-500 ml-1">({section.connection.flowId})</span>}
-                        </span>
-                      </div>
-                    )}
-                    
-                    {section.connection.method && (
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-1 h-1 rounded-full bg-blue-500 ml-1 shrink-0" />
-                        <span className="text-[11px] italic text-neutral-500">
-                          {section.connection.method}
-                        </span>
-                      </div>
-                    )}
-                  </div>
+                  )}
+                  
+                  {section.connection.method && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-1 h-1 rounded-full bg-blue-500 ml-1 shrink-0" />
+                      <span className="text-[11px] italic text-neutral-500">
+                        {section.connection.method}
+                      </span>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          ))}
-          
-          {/* Marcador de posición para futuras secciones analíticas */}
-          <div className="bg-neutral-50 dark:bg-[#0a0a0a] border border-dashed border-neutral-200 dark:border-neutral-800 rounded-xl p-6 flex flex-col items-center justify-center text-center opacity-60">
-            <p className="text-sm font-medium text-neutral-400">Próximos Paneles...</p>
+              </div>
+            )}
           </div>
+        ))}
+        
+        {/* Marcador de posición para futuras secciones analíticas */}
+        <div className="bg-neutral-50 dark:bg-[#0a0a0a] border border-dashed border-neutral-200 dark:border-neutral-800 rounded-xl p-6 flex flex-col items-center justify-center text-center opacity-60">
+          <p className="text-sm font-medium text-neutral-400">Próximos Paneles...</p>
         </div>
-      ) : (
-        <SeqMonitor isAdmin={isAdmin} />
-      )}
+      </div>
     </>
   );
 }
