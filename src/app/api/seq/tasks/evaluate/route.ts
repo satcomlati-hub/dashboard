@@ -46,7 +46,15 @@ export async function POST(request: Request) {
           // Seq API requiere /api/events para obtener eventos
           const targetUrl = new URL('/api/events', task.seq_url);
           if (task.consulta) {
-            targetUrl.searchParams.append('filter', task.consulta);
+            let cleanedQuery = task.consulta;
+            cleanedQuery = cleanedQuery
+              .replace(/@Level\b/gi, '@l')
+              .replace(/@Timestamp\b/gi, '@t')
+              .replace(/@Message\b/gi, '@m')
+              .replace(/@Exception\b/gi, '@x')
+              .replace(/@MessageTemplate\b/gi, '@mt')
+              .replace(/@EventId\b/gi, '@i');
+            targetUrl.searchParams.append('filter', cleanedQuery);
           }
           targetUrl.searchParams.append('count', '50'); // Límite razonable de control
 

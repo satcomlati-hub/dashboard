@@ -20,15 +20,27 @@ export async function GET(request: Request) {
       );
     }
 
+    // Limpiar filtro para evitar bloqueos del WAF reemplazando propiedades del sistema por alias abreviados oficiales de Seq
+    let cleanedFilter = filter;
+    if (cleanedFilter) {
+      cleanedFilter = cleanedFilter
+        .replace(/@Level\b/gi, '@l')
+        .replace(/@Timestamp\b/gi, '@t')
+        .replace(/@Message\b/gi, '@m')
+        .replace(/@Exception\b/gi, '@x')
+        .replace(/@MessageTemplate\b/gi, '@mt')
+        .replace(/@EventId\b/gi, '@i');
+    }
+
     // Construir la URL final de Seq
     // Seq usa el endpoint /api/events para consultar eventos, y /api/data para consultas SQL (select ...)
-    const isSqlQuery = filter && filter.trim().toLowerCase().startsWith('select ');
+    const isSqlQuery = cleanedFilter && cleanedFilter.trim().toLowerCase().startsWith('select ');
     const targetUrl = new URL(isSqlQuery ? '/api/data' : '/api/events', seqUrl);
     
     if (isSqlQuery) {
-      targetUrl.searchParams.append('q', filter);
+      targetUrl.searchParams.append('q', cleanedFilter);
     } else {
-      if (filter) targetUrl.searchParams.append('filter', filter);
+      if (cleanedFilter) targetUrl.searchParams.append('filter', cleanedFilter);
       if (count) targetUrl.searchParams.append('count', count);
       if (render) targetUrl.searchParams.append('render', render);
       if (afterId) targetUrl.searchParams.append('afterId', afterId);
