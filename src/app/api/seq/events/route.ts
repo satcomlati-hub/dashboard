@@ -10,6 +10,7 @@ export async function GET(request: Request) {
     const count = searchParams.get('count');
     const render = searchParams.get('render');
     const afterId = searchParams.get('afterId');
+    const debug = searchParams.get('debug') === 'true';
 
     const apiKey = request.headers.get('x-seq-apikey');
 
@@ -77,13 +78,29 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           error: `Error de Seq (Status ${response.status})`,
-          details: errorText || 'Error sin descripción de Seq.'
+          details: errorText || 'Error sin descripción de Seq.',
+          debugInfo: debug ? {
+            targetUrl: targetUrl.toString(),
+            filterToSend,
+            headers
+          } : undefined
         },
         { status: response.status }
       );
     }
 
     let data = await response.json();
+
+    if (debug) {
+      return NextResponse.json({
+        debug: true,
+        targetUrl: targetUrl.toString(),
+        filterToSend,
+        isColombia,
+        clientSideLevels,
+        rawResponseSnippet: Array.isArray(data) ? data.slice(0, 3) : (data.Events ? data.Events.slice(0, 3) : data)
+      });
+    }
 
     // Aplicar filtrado del lado del cliente proxy si se removió el filtro de nivel para Colombia
     if (isColombia && clientSideLevels) {
