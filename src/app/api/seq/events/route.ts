@@ -38,7 +38,7 @@ export async function GET(request: Request) {
     const targetUrl = new URL(isSqlQuery ? '/api/data' : '/api/events', seqUrl);
     
     if (isSqlQuery) {
-      targetUrl.searchParams.append('q', cleanedFilter);
+      targetUrl.searchParams.append('q', cleanedFilter || '');
     } else {
       if (cleanedFilter) targetUrl.searchParams.append('filter', cleanedFilter);
       if (count) targetUrl.searchParams.append('count', count);
