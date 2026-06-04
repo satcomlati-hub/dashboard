@@ -59,7 +59,7 @@ export async function POST(request: Request) {
               const inPattern = /@Level\s+in\s+\[\s*([^\]]+)\s*\]/i;
               const inMatch = task.consulta.match(inPattern);
               if (inMatch) {
-                clientSideLevelList = inMatch[1].split(',').map(l => l.replace(/['"\s]/g, '').toLowerCase());
+                clientSideLevelList = inMatch[1].split(',').map((l: string) => l.replace(/['"\s]/g, '').toLowerCase());
                 filterToSend = task.consulta.replace(inPattern, '').trim();
               }
             }
