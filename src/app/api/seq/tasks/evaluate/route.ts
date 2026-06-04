@@ -42,24 +42,53 @@ export async function POST(request: Request) {
         );
 
         try {
+          const isColombia = task.seq_url && task.seq_url.includes('logs-colombia.mysatcomla.com');
+          let filterToSend = task.consulta;
+          let clientSideLevelFilter: string | null = null;
+          let clientSideLevelList: string[] | null = null;
+
+          if (isColombia && task.consulta) {
+            // Detectar filtros de nivel simple: @Level == 'Warning' o @Level = 'Warning'
+            const levelPattern = /@Level\s*(==|=)\s*'([^']+)'/i;
+            const match = task.consulta.match(levelPattern);
+            if (match) {
+              clientSideLevelFilter = match[2].toLowerCase();
+              filterToSend = task.consulta.replace(levelPattern, '').trim();
+            } else {
+              // Detectar filtros IN: @Level in ['Warning', 'Error']
+              const inPattern = /@Level\s+in\s+\[\s*([^\]]+)\s*\]/i;
+              const inMatch = task.consulta.match(inPattern);
+              if (inMatch) {
+                clientSideLevelList = inMatch[1].split(',').map(l => l.replace(/['"\s]/g, '').toLowerCase());
+                filterToSend = task.consulta.replace(inPattern, '').trim();
+              }
+            }
+
+            if (clientSideLevelFilter || clientSideLevelList) {
+              // Limpiar operadores residuales
+              filterToSend = filterToSend.replace(/\(\s*\)/g, '').trim();
+              filterToSend = filterToSend.replace(/\band\s+and\b/gi, 'and').trim();
+              filterToSend = filterToSend.replace(/^\s*and\s+/gi, '').replace(/\s+and\s*$/gi, '').trim();
+              if (filterToSend === '') {
+                filterToSend = null;
+              }
+            }
+          }
+
           // Construir URL para consultar eventos en Seq
           // Seq API requiere /api/events para obtener eventos
           const targetUrl = new URL('/api/events', task.seq_url);
-          if (task.consulta) {
-            let cleanedQuery = task.consulta;
-            cleanedQuery = cleanedQuery
-              .replace(/@Level\b/gi, '@l')
-              .replace(/@Timestamp\b/gi, '@t')
-              .replace(/@Message\b/gi, '@m')
-              .replace(/@Exception\b/gi, '@x')
-              .replace(/@MessageTemplate\b/gi, '@mt')
-              .replace(/@EventId\b/gi, '@i');
-            targetUrl.searchParams.append('filter', cleanedQuery);
+          if (filterToSend) {
+            targetUrl.searchParams.append('filter', filterToSend);
           }
-          targetUrl.searchParams.append('count', '50'); // Límite razonable de control
+          // Si es Colombia, pedir más eventos para compensar el filtrado en memoria
+          const countLimit = isColombia && (clientSideLevelFilter || clientSideLevelList) ? '250' : '50';
+          targetUrl.searchParams.append('count', countLimit);
 
           const headers: HeadersInit = {
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8'
           };
           if (task.api_key && task.api_key.trim() !== '') {
             headers['X-Seq-ApiKey'] = task.api_key.trim();
@@ -77,7 +106,24 @@ export async function POST(request: Request) {
           }
 
           const data = await seqResponse.json();
-          const events = data.Events || [];
+          let events = data.Events || [];
+
+          // Filtrar en memoria si es Colombia
+          if (isColombia && (clientSideLevelFilter || clientSideLevelList)) {
+            events = events.filter((event: any) => {
+              const eventLevel = (event.Level || '').toLowerCase();
+              if (clientSideLevelFilter) {
+                return eventLevel === clientSideLevelFilter;
+              }
+              if (clientSideLevelList) {
+                return clientSideLevelList.includes(eventLevel);
+              }
+              return true;
+            });
+            // Mantener el límite esperado
+            events = events.slice(0, 50);
+          }
+
           const count = events.length;
 
           // Evaluar la condición
