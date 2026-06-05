@@ -3927,11 +3927,6 @@ return [
                         </div>
                       </div>
                     </div>
-                  )}/div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
                   )}
 
                   {!rawSqlResult && filteredLogs.length > 0 && (
