@@ -645,7 +645,7 @@ logs.forEach(log => {
   }
 
   // Acumular por origen
-  const origenKey = `${cliente}|${app}|${hostname}`;
+  const origenKey = cliente + '|' + app + '|' + hostname;
   if (!origenMap[origenKey]) {
     origenMap[origenKey] = {
       cliente,
@@ -702,7 +702,7 @@ for (const key in origenMap) {
 }
 
 const rangoHorario = minTimestamp && maxTimestamp 
-  ? `${minTimestamp} a ${maxTimestamp}`
+  ? minTimestamp + ' a ' + maxTimestamp
   : 'No disponible';
 
 return [
