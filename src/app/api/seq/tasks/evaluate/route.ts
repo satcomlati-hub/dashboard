@@ -51,6 +51,7 @@ export async function POST(request: Request) {
           }
 
           if (isColombia && filterToSend) {
+            filterToSend = translateLikeToContains(filterToSend);
             clientSideLevels = extractAllowedLevels(filterToSend);
             const stripped = stripLevelFilter(filterToSend);
             filterToSend = stripped === '' ? null : stripped;
@@ -289,5 +290,18 @@ function replaceNowWithAbsolute(filter: string): string {
     return `DateTime('${new Date().toISOString()}')`;
   });
   
+  return res;
+}
+
+function translateLikeToContains(filter: string): string {
+  if (!filter) return filter;
+  // Reemplazar: Propiedad like '%valor%' -> Contains(Propiedad, 'valor')
+  let res = filter.replace(/([@\w\d_]+)\s+like\s+['"]%([^'"]+)%['"]/gi, "Contains($1, '$2')");
+  // Reemplazar: Propiedad like 'valor%' -> StartsWith(Propiedad, 'valor')
+  res = res.replace(/([@\w\d_]+)\s+like\s+['"]([^'"]+)%['"]/gi, "StartsWith($1, '$2')");
+  // Reemplazar: Propiedad like '%valor' -> EndsWith(Propiedad, 'valor')
+  res = res.replace(/([@\w\d_]+)\s+like\s+['"]%([^'"]+)['"]/gi, "EndsWith($1, '$2')");
+  // Reemplazar: Propiedad like 'valor' -> Propiedad = 'valor'
+  res = res.replace(/([@\w\d_]+)\s+like\s+['"]([^'"]+)['"]/gi, "$1 = '$2'");
   return res;
 }
