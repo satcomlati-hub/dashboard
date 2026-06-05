@@ -200,6 +200,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
   const [generatedJsAlert, setGeneratedJsAlert] = useState<string>('');
   const [alertModalTab, setAlertModalTab] = useState<'script' | 'simulation'>('script');
   const [alertQueryFilter, setAlertQueryFilter] = useState<string>('');
+  const [showLiveAnalysisPanel, setShowLiveAnalysisPanel] = useState<boolean>(false);
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -665,40 +666,78 @@ logs.forEach(log => {
 });
 
 // Estructuración de las Alertas definitivas
-const alertasMesaDeAyuda: any[] = []; // Alertas por origen (Clientes)
-const alertasInfraestructura: any[] = []; // Alertas por destino (Infraestructura)
+const alertasMesaDeAyuda = []; // Todos los orígenes
+const alertasInfraestructura = []; // Todos los destinos
 
-// Evaluar infraestructura: > 3 orígenes (clientes) distintos y > 10 eventos
+let algunaAlertaMesaAyudaSuperada = false;
+let algunaAlertaInfraestructuraSuperada = false;
+
+// Evaluar infraestructura: umbral = > 3 orígenes (clientes) distintos y > 10 eventos
 for (const dest in infraestructuraMap) {
   const data = infraestructuraMap[dest];
-  if (data.clientes.size > 3 && data.totalEventos > 10) {
-    alertasInfraestructura.push({
-      destino: data.destino,
-      cantidadClientesAfectados: data.clientes.size,
-      clientesAfectados: Array.from(data.clientes),
-      totalEventosError: data.totalEventos,
-      ejemplos: data.ejemplos,
-      mensaje: 'Alerta Infraestructura: Se detectaron ' + data.totalEventos + ' errores afectando a ' + data.clientes.size + ' clientes al invocar el destino ' + data.destino + '.'
-    });
+  const superaUmbral = data.clientes.size > 3 && data.totalEventos > 10;
+  if (superaUmbral) {
+    algunaAlertaInfraestructuraSuperada = true;
   }
+  
+  // Limpiar/Simplificar ejemplos para guardar únicamente el mensaje representativo del error
+  const ejemplosSimplificados = data.ejemplos.slice(0, 1).map(function(ej) {
+    return {
+      timestamp: ej.timestamp,
+      mensajeError: ej.mensajeError,
+      destino: ej.destino,
+      cliente: ej.cliente,
+      version: ej.version,
+      app: ej.app,
+      hostname: ej.hostname,
+      seqPermalink: ej.seqPermalink
+    };
+  });
+
+  alertasInfraestructura.push({
+    destino: data.destino,
+    superaUmbral: superaUmbral,
+    cantidadClientesAfectados: data.clientes.size,
+    clientesAfectados: Array.from(data.clientes),
+    totalEventosError: data.totalEventos,
+    ejemplo: ejemplosSimplificados[0] || null,
+    mensaje: 'Alerta Infraestructura: Se detectaron ' + data.totalEventos + ' errores afectando a ' + data.clientes.size + ' clientes al invocar el destino ' + data.destino + ' (Supera Umbral: ' + superaUmbral + ').'
+  });
 }
 
 // Evaluar origen (Cliente): >100 si es Cloud o >20 si es normal
 for (const key in origenMap) {
   const data = origenMap[key];
   const umbral = data.esCloud ? 100 : 20;
-  if (data.count > umbral) {
-    alertasMesaDeAyuda.push({
-      cliente: data.cliente,
-      app: data.app,
-      hostname: data.hostname,
-      tipoOrigen: data.esCloud ? 'Cloud mySatcom' : 'Cliente Dedicado/Normal',
-      eventosDetectados: data.count,
-      umbralSuperado: umbral,
-      ejemplos: data.ejemplos,
-      mensaje: 'Alerta Origen: El origen ' + data.cliente + ' | ' + data.app + ' | ' + data.hostname + ' (' + (data.esCloud ? 'Cloud' : 'Normal') + ') superó el umbral con ' + data.count + ' errores (Umbral: ' + umbral + ').'
-    });
+  const superaUmbral = data.count > umbral;
+  if (superaUmbral) {
+    algunaAlertaMesaAyudaSuperada = true;
   }
+
+  const ejemplosSimplificados = data.ejemplos.slice(0, 1).map(function(ej) {
+    return {
+      timestamp: ej.timestamp,
+      mensajeError: ej.mensajeError,
+      destino: ej.destino,
+      cliente: ej.cliente,
+      version: ej.version,
+      app: ej.app,
+      hostname: ej.hostname,
+      seqPermalink: ej.seqPermalink
+    };
+  });
+
+  alertasMesaDeAyuda.push({
+    cliente: data.cliente,
+    app: data.app,
+    hostname: data.hostname,
+    superaUmbral: superaUmbral,
+    tipoOrigen: data.esCloud ? 'Cloud mySatcom' : 'Cliente Dedicado/Normal',
+    eventosDetectados: data.count,
+    umbralDefinido: umbral,
+    ejemplo: ejemplosSimplificados[0] || null,
+    mensaje: 'Alerta Origen: El origen ' + data.cliente + ' | ' + data.app + ' | ' + data.hostname + ' (' + (data.esCloud ? 'Cloud' : 'Normal') + ') reporta ' + data.count + ' errores (Umbral: ' + umbral + ', Supera Umbral: ' + superaUmbral + ').'
+  });
 }
 
 const rangoHorario = minTimestamp && maxTimestamp 
@@ -709,16 +748,16 @@ return [
   {
     json: {
       consultaEvaluada: queryFilter,
-      alertaGenerada: alertasMesaDeAyuda.length > 0 || alertasInfraestructura.length > 0,
+      alertaGenerada: algunaAlertaMesaAyudaSuperada || algunaAlertaInfraestructuraSuperada,
       resumen: {
         totalErroresEvaluados: totalErrores,
         ventanaEvaluacionMinutos: VENTANA_TIEMPO_MINUTOS,
-        alertaClienteCritico: alertasMesaDeAyuda.length > 0,
-        alertaServidorGlobal: alertasInfraestructura.length > 0,
+        alertaClienteCritico: algunaAlertaMesaAyudaSuperada,
+        alertaServidorGlobal: algunaAlertaInfraestructuraSuperada,
         rangoHorario: rangoHorario
       },
-      alertasMesaDeAyuda,
-      alertasInfraestructura
+      alertasMesaDeAyuda: alertasMesaDeAyuda,
+      alertasInfraestructura: alertasInfraestructura
     }
   }
 ];
@@ -2345,9 +2384,9 @@ return [
   }, [logs, activeLevels, localSearchQuery, activeConnectionFilters]);
 
   const simulatedResult = useMemo(() => {
-    if (!selectedQueryForAlert || logs.length === 0) {
+    if (logs.length === 0) {
       return {
-        consultaEvaluada: alertQueryFilter || (selectedQueryForAlert ? selectedQueryForAlert.filter : ''),
+        consultaEvaluada: currentFilter,
         alertaGenerada: false,
         resumen: {
           totalErroresEvaluados: 0,
@@ -2358,12 +2397,7 @@ return [
           alertaServidorGlobal: false
         },
         alertasMesaDeAyuda: [] as any[],
-        alertasInfraestructura: {
-          triggered: false,
-          clientesAfectados: [] as string[],
-          erroresAgrupados: [] as any[],
-          mensaje: "No hay logs cargados en pantalla para evaluar."
-        }
+        alertasInfraestructura: [] as any[]
       };
     }
 
@@ -2532,8 +2566,8 @@ return [
         app: alertConfig.includeApp ? app : undefined,
         hostname: alertConfig.includeHostname ? hostname : undefined,
         cliente: alertConfig.includeCliente ? cliente : undefined,
-        origenConsulta: `Seq (Origen: ${log.Origen || 'Desconocido'}, Consulta: ${selectedQueryForAlert.name})`,
-        seqQuery: buildSeqQuery(alertQueryFilter || selectedQueryForAlert.filter, cliente, hostname),
+        origenConsulta: `Seq (Origen: ${log.Origen || 'Desconocido'}, Consulta: ${selectedQueryForAlert?.name || 'Consola en vivo'})`,
+        seqQuery: buildSeqQuery(alertQueryFilter || selectedQueryForAlert?.filter || currentFilter, cliente, hostname),
         seqPermalink: seqPermalink
       };
 
@@ -2564,84 +2598,113 @@ return [
     });
 
     const alertasMesaDeAyuda: any[] = [];
-    const alertasInfraestructura: any = {
-      triggered: false,
-      clientesAfectados: [] as string[],
-      erroresAgrupados: [] as any[],
-      mensaje: "No se superaron los umbrales de infraestructura."
-    };
+    const alertasInfraestructura: any[] = [];
+    let algunaAlertaMesaAyudaSuperada = false;
+    let algunaAlertaInfraestructuraSuperada = false;
 
-    // Evaluar Mesa de Ayuda (Cliente)
+    // Evaluar Mesa de Ayuda (Cliente): Todos los orígenes
     for (const key in clientGroups) {
       const g = clientGroups[key];
-      if (g.eventos >= UMBRAL_CLIENTE_EVENTOS) {
-        const erroresAgrupados: any[] = [];
-        for (const msgKey in g.errores) {
-          const errGroup = g.errores[msgKey];
-          erroresAgrupados.push({
-            errorGenerico: msgKey,
-            cantidad: errGroup.cantidad,
-            ejemplo: {
-              destino: errGroup.ejemplo.destino,
-              error: errGroup.ejemplo.mensajeError,
-              version: errGroup.ejemplo.version,
-              app: errGroup.ejemplo.app,
-              origenConsulta: errGroup.ejemplo.origenConsulta,
-              seqQuery: errGroup.ejemplo.seqQuery,
-              seqPermalink: errGroup.ejemplo.seqPermalink
-            }
-          });
-        }
+      const esCloud = CLOUD_CLIENTS.has(g.cliente);
+      const umbral = esCloud ? 100 : 20;
+      const superaUmbral = g.eventos > umbral;
+      if (superaUmbral) {
+        algunaAlertaMesaAyudaSuperada = true;
+      }
 
-        alertasMesaDeAyuda.push({
-          origen: `${g.cliente} / ${g.hostname}`,
-          totalEventos: g.eventos,
-          erroresAgrupados,
-          mensaje: `Alerta Mesa de Ayuda: El cliente ${g.cliente} en ${g.hostname} ha superado el límite con ${g.eventos} errores de cliente en los últimos ${VENTANA_TIEMPO_MINUTOS} minutos.`
+      const erroresAgrupados: any[] = [];
+      for (const msgKey in g.errores) {
+        const errGroup = g.errores[msgKey];
+        erroresAgrupados.push({
+          errorGenerico: msgKey,
+          cantidad: errGroup.cantidad,
+          ejemplo: {
+            destino: errGroup.ejemplo.destino,
+            error: errGroup.ejemplo.mensajeError,
+            version: errGroup.ejemplo.version,
+            app: errGroup.ejemplo.app,
+            origenConsulta: errGroup.ejemplo.origenConsulta,
+            seqQuery: errGroup.ejemplo.seqQuery,
+            seqPermalink: errGroup.ejemplo.seqPermalink
+          }
         });
       }
+
+      alertasMesaDeAyuda.push({
+        origen: `${g.cliente} / ${g.hostname}`,
+        totalEventos: g.eventos,
+        superaUmbral: superaUmbral,
+        umbralDefinido: umbral,
+        tipoOrigen: esCloud ? 'Cloud mySatcom' : 'Cliente Dedicado/Normal',
+        erroresAgrupados: erroresAgrupados.slice(0, 1), // Sólo el primer error representativo
+        mensaje: `Alerta Mesa de Ayuda: El origen ${g.cliente} en ${g.hostname} tiene ${g.eventos} errores (Umbral: ${umbral}, Supera Umbral: ${superaUmbral}).`
+      });
     }
 
-    // Evaluar Infraestructura (Servidor)
-    const clientesServidorCriticos = [];
-    for (const cliente in serverGroups) {
-      const g = serverGroups[cliente];
-      if (g.eventos >= UMBRAL_SERVIDOR_EVENTOS) {
-        clientesServidorCriticos.push(g);
+    // Evaluar Infraestructura (Servidor): Todos los destinos
+    const infraestructuraMap: { [key: string]: { destino: string, clientes: Set<string>, totalEventos: number, ejemplos: any[] } } = {};
+    flattenedLogs.forEach(log => {
+      let apiDestino = log.apiClientUrl || null;
+      if (!apiDestino && log.Exception) {
+        const urlMatch = log.Exception.match(/https?:\/\/[^\s/]+/i);
+        if (urlMatch) apiDestino = urlMatch[0];
       }
-    }
-
-    if (clientesServidorCriticos.length >= UMBRAL_SERVIDOR_CLIENTES) {
-      alertasInfraestructura.triggered = true;
-      alertasInfraestructura.clientesAfectados = clientesServidorCriticos.map(c => c.cliente);
-      alertasInfraestructura.erroresAgrupados = [];
-      
-      clientesServidorCriticos.forEach(g => {
-        const agrupadosPorOrigen: any[] = [];
-        for (const msgKey in g.errores) {
-          const errGroup = g.errores[msgKey];
-          agrupadosPorOrigen.push({
-            origen: `${g.cliente} / ${g.hostname}`,
-            errorGenerico: msgKey,
-            cantidad: errGroup.cantidad,
-            ejemplo: {
-              destino: errGroup.ejemplo.destino,
-              error: errGroup.ejemplo.mensajeError,
-              version: errGroup.ejemplo.version,
-              app: errGroup.ejemplo.app,
-              origenConsulta: errGroup.ejemplo.origenConsulta,
-              seqQuery: errGroup.ejemplo.seqQuery,
-              seqPermalink: errGroup.ejemplo.seqPermalink
-            }
+      if (!apiDestino && log.Exception && log.Exception.includes('api-colombia.mysatcomla.com')) {
+        apiDestino = 'https://api-colombia.mysatcomla.com';
+      }
+      if (apiDestino) {
+        // Extraer host/dominio
+        let destOrigin = apiDestino;
+        try {
+          if (destOrigin.startsWith('http://') || destOrigin.startsWith('https://')) {
+            destOrigin = new URL(destOrigin).origin;
+          }
+        } catch (e) {}
+        
+        if (!infraestructuraMap[destOrigin]) {
+          infraestructuraMap[destOrigin] = {
+            destino: destOrigin,
+            clientes: new Set(),
+            totalEventos: 0,
+            ejemplos: []
+          };
+        }
+        infraestructuraMap[destOrigin].clientes.add(log.Cliente || log._cliente || 'Desconocido');
+        infraestructuraMap[destOrigin].totalEventos++;
+        if (infraestructuraMap[destOrigin].ejemplos.length < 1) {
+          // Guardar solo un ejemplo simplificado
+          infraestructuraMap[destOrigin].ejemplos.push({
+            timestamp: log.Timestamp || new Date().toISOString(),
+            mensajeError: log.Message,
+            destino: destOrigin,
+            cliente: log.Cliente || log._cliente || 'Desconocido',
+            version: log.Version || log._version,
+            app: log.App || log._app,
+            hostname: log.Hostname || log._hostname,
+            seqPermalink: log.Id ? `http://logs-sender.mysatcomla.com:5341/#/events/?filter=@Id%20%3D%20%27${log.Id}%27&showExpanded` : ''
           });
         }
-        alertasInfraestructura.erroresAgrupados.push(...agrupadosPorOrigen);
-      });
+      }
+    });
 
-      alertasInfraestructura.mensaje = `Alerta de Infraestructura: Posible falla generalizada del Servidor de APIs. Afecta a ${clientesServidorCriticos.length} clientes con más de ${UMBRAL_SERVIDOR_EVENTOS} errores de conexión cada uno.`;
+    for (const dest in infraestructuraMap) {
+      const data = infraestructuraMap[dest];
+      const superaUmbral = data.clientes.size > 3 && data.totalEventos > 10;
+      if (superaUmbral) {
+        algunaAlertaInfraestructuraSuperada = true;
+      }
+      alertasInfraestructura.push({
+        destino: data.destino,
+        superaUmbral: superaUmbral,
+        cantidadClientesAfectados: data.clientes.size,
+        clientesAfectados: Array.from(data.clientes),
+        totalEventosError: data.totalEventos,
+        ejemplo: data.ejemplos[0] || null,
+        mensaje: `Alerta Infraestructura: Se detectaron ${data.totalEventos} errores afectando a ${data.clientes.size} clientes al invocar el destino ${data.destino} (Supera Umbral: ${superaUmbral}).`
+      });
     }
 
-    const alertaGenerada = alertasMesaDeAyuda.length > 0 || alertasInfraestructura.triggered;
+    const alertaGenerada = algunaAlertaMesaAyudaSuperada || algunaAlertaInfraestructuraSuperada;
 
     // Calcular rango de tiempo
     let minTimestamp: string | null = null;
@@ -2671,21 +2734,21 @@ return [
       : 'No disponible';
 
     return {
-      consultaEvaluada: alertQueryFilter || selectedQueryForAlert.filter,
+      consultaEvaluada: alertQueryFilter || selectedQueryForAlert?.filter || currentFilter,
       alertaGenerada,
       resumen: {
         totalErroresEvaluados: totalErrores,
         totalErroresCliente: erroresClienteCount,
         totalErroresServidor: erroresServidorCount,
         ventanaEvaluacionMinutos: VENTANA_TIEMPO_MINUTOS,
-        alertaClienteCritico: alertasMesaDeAyuda.length > 0,
-        alertaServidorGlobal: alertasInfraestructura.triggered,
+        alertaClienteCritico: algunaAlertaMesaAyudaSuperada,
+        alertaServidorGlobal: algunaAlertaInfraestructuraSuperada,
         rangoHorario
       },
       alertasMesaDeAyuda,
       alertasInfraestructura
     };
-  }, [selectedQueryForAlert, logs, alertConfig, alertQueryFilter, connections]);
+  }, [selectedQueryForAlert, logs, alertConfig, alertQueryFilter, connections, currentFilter]);
 
   // Toggle de nivel en los chips de filtro local
   const toggleLocalLevel = (lvl: string) => {
@@ -3379,11 +3442,203 @@ return [
                         SQL Dataset
                       </span>
                     ) : (
-                      <span className="text-[10px] bg-neutral-200 dark:bg-neutral-850 text-neutral-600 dark:text-neutral-400 px-2 py-0.5 rounded-full font-semibold">
-                        Mostrando {filteredLogs.length} de {logs.length} logs
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] bg-neutral-200 dark:bg-neutral-850 text-neutral-600 dark:text-neutral-400 px-2 py-0.5 rounded-full font-semibold">
+                          Mostrando {filteredLogs.length} de {logs.length} logs
+                        </span>
+                        <button
+                          onClick={() => setShowLiveAnalysisPanel(!showLiveAnalysisPanel)}
+                          type="button"
+                          className={`ml-2 flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all ${
+                            showLiveAnalysisPanel
+                              ? 'bg-[#71BF44] text-[#131313] border-[#71BF44]'
+                              : 'bg-[#71BF44]/10 text-[#71BF44] border-[#71BF44]/35 hover:bg-[#71BF44]/20'
+                          }`}
+                        >
+                          <Activity className="w-3.5 h-3.5" />
+                          <span>{showLiveAnalysisPanel ? 'Cerrar Análisis' : 'Analizar Errores 🔍'}</span>
+                        </button>
+                      </div>
                     )}
                   </div>
+
+                  {showLiveAnalysisPanel && !rawSqlResult && (
+                    <div className="absolute top-[37px] left-0 right-0 bg-[#151515] border-b border-neutral-800 p-4 z-20 shadow-2xl animate-slide-down max-h-[70vh] overflow-y-auto">
+                      <div className="flex flex-col gap-3 font-sans text-xs">
+                        <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
+                          <h4 className="text-sm font-bold text-[#71BF44] flex items-center gap-1.5">
+                            <Activity className="w-4 h-4 animate-pulse" />
+                            <span>Análisis de Errores y Alertas en Tiempo Real (Consola Activa)</span>
+                          </h4>
+                          <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-1 text-[10px] text-neutral-400">
+                              <span>¿Alerta Disparada?:</span>
+                              <span className={`px-2 py-0.5 rounded-full font-bold uppercase ${
+                                simulatedResult.alertaGenerada
+                                  ? 'bg-red-500/10 text-red-500 border border-red-500/20'
+                                  : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                              }`}>
+                                {simulatedResult.alertaGenerada ? 'SÍ (CRÍTICA)' : 'NO (SANO)'}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => setShowLiveAnalysisPanel(false)}
+                              className="text-neutral-450 hover:text-white p-1 hover:bg-neutral-850 rounded"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Controles de Umbrales Dinámicos */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#111] border border-neutral-850 p-3 rounded-lg">
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] text-neutral-450 font-bold uppercase">Ventana Evaluada (Min)</label>
+                            <input
+                              type="number"
+                              value={alertConfig.timeWindowMinutes}
+                              onChange={(e) => setAlertConfig(prev => ({ ...prev, timeWindowMinutes: Math.max(1, parseInt(e.target.value) || 10) }))}
+                              className="bg-[#181818] border border-neutral-800 rounded-md p-1.5 text-xs text-neutral-200 focus:outline-none focus:border-[#71BF44] text-center"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] text-neutral-450 font-bold uppercase">Umbral Cliente (Eventos)</label>
+                            <input
+                              type="number"
+                              value={alertConfig.clientEventsThreshold}
+                              onChange={(e) => setAlertConfig(prev => ({ ...prev, clientEventsThreshold: Math.max(1, parseInt(e.target.value) || 20) }))}
+                              className="bg-[#181818] border border-neutral-800 rounded-md p-1.5 text-xs text-neutral-200 focus:outline-none focus:border-[#71BF44] text-center"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] text-neutral-450 font-bold uppercase">Umbral Infraestructura (Eventos)</label>
+                            <input
+                              type="number"
+                              value={alertConfig.serverEventsThreshold}
+                              onChange={(e) => setAlertConfig(prev => ({ ...prev, serverEventsThreshold: Math.max(1, parseInt(e.target.value) || 10) }))}
+                              className="bg-[#181818] border border-neutral-800 rounded-md p-1.5 text-xs text-neutral-200 focus:outline-none focus:border-[#71BF44] text-center"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] text-neutral-450 font-bold uppercase">Mín. Clientes Afectados (Infra)</label>
+                            <input
+                              type="number"
+                              value={alertConfig.serverClientsThreshold}
+                              onChange={(e) => setAlertConfig(prev => ({ ...prev, serverClientsThreshold: Math.max(1, parseInt(e.target.value) || 3) }))}
+                              className="bg-[#181818] border border-neutral-800 rounded-md p-1.5 text-xs text-neutral-200 focus:outline-none focus:border-[#71BF44] text-center"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Desglose de Alertas y Conteo */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Columna Mesa de Ayuda (Clientes) */}
+                          <div className="border border-neutral-800 bg-[#121212] rounded-lg p-3 flex flex-col gap-2">
+                            <h5 className="text-[11px] font-bold text-neutral-350 uppercase tracking-wider border-b border-neutral-800 pb-1 flex items-center justify-between">
+                              <span>Errores por Origen (Clientes)</span>
+                              <span className="bg-neutral-850 px-2 py-0.5 rounded text-[10px] text-neutral-400">
+                                {simulatedResult.alertasMesaDeAyuda.length} detectados
+                              </span>
+                            </h5>
+                            <div className="flex flex-col gap-2 max-h-56 overflow-y-auto divide-y divide-neutral-900">
+                              {simulatedResult.alertasMesaDeAyuda.length === 0 ? (
+                                <span className="text-[11px] text-neutral-500 italic p-2">Sin orígenes de error reportados en esta ventana.</span>
+                              ) : (
+                                simulatedResult.alertasMesaDeAyuda.map((a, idx) => (
+                                  <div key={idx} className="pt-2 first:pt-0 flex flex-col gap-1 text-[11px]">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-semibold text-neutral-200">{a.origen}</span>
+                                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                                        a.superaUmbral
+                                          ? 'bg-red-500/10 text-red-400 border border-red-500/25 animate-pulse'
+                                          : 'bg-neutral-800 text-neutral-450 border border-transparent'
+                                      }`}>
+                                        {a.totalEventos} errores / Umbral {a.umbralDefinido}
+                                      </span>
+                                    </div>
+                                    {a.ejemplo && (
+                                      <div className="bg-[#181818] border border-neutral-850 p-2 rounded text-[10px] text-neutral-400 font-mono flex flex-col gap-1">
+                                        <div className="text-neutral-300 truncate">
+                                          <strong>Error:</strong> {a.ejemplo.error}
+                                        </div>
+                                        <div className="flex items-center gap-3 text-[9px] text-neutral-500">
+                                          <span><strong>App:</strong> {a.ejemplo.app || 'Desconocido'}</span>
+                                          <span><strong>Host:</strong> {a.ejemplo.hostname || 'Desconocido'}</span>
+                                          {a.ejemplo.seqPermalink && (
+                                            <a 
+                                              href={a.ejemplo.seqPermalink} 
+                                              target="_blank" 
+                                              rel="noopener noreferrer"
+                                              className="text-[#71BF44] hover:underline flex items-center gap-0.5"
+                                            >
+                                              Ver en Seq <ExternalLink className="w-2.5 h-2.5" />
+                                            </a>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Columna Infraestructura */}
+                          <div className="border border-neutral-800 bg-[#121212] rounded-lg p-3 flex flex-col gap-2">
+                            <h5 className="text-[11px] font-bold text-neutral-350 uppercase tracking-wider border-b border-neutral-800 pb-1 flex items-center justify-between">
+                              <span>Errores de Servidor (Infraestructura)</span>
+                              <span className="bg-neutral-850 px-2 py-0.5 rounded text-[10px] text-neutral-400">
+                                {simulatedResult.alertasInfraestructura.length} destinos
+                              </span>
+                            </h5>
+                            <div className="flex flex-col gap-2 max-h-56 overflow-y-auto divide-y divide-neutral-900">
+                              {simulatedResult.alertasInfraestructura.length === 0 ? (
+                                <span className="text-[11px] text-neutral-500 italic p-2">Sin fallas de infraestructura en esta ventana.</span>
+                              ) : (
+                                simulatedResult.alertasInfraestructura.map((a, idx) => (
+                                  <div key={idx} className="pt-2 first:pt-0 flex flex-col gap-1 text-[11px]">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-semibold text-neutral-200 truncate pr-2" title={a.destino}>{a.destino}</span>
+                                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold whitespace-nowrap ${
+                                        a.superaUmbral
+                                          ? 'bg-red-500/10 text-red-400 border border-red-500/25 animate-pulse'
+                                          : 'bg-neutral-800 text-neutral-450 border border-transparent'
+                                      }`}>
+                                        {a.totalEventosError} err / {a.cantidadClientesAfectados} clientes (Umbral: &gt;10 err y &gt;3 clientes)
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] text-neutral-450 pl-1">
+                                      <strong>Clientes Afectados:</strong> {a.clientesAfectados.join(', ')}
+                                    </div>
+                                    {a.ejemplo && (
+                                      <div className="bg-[#181818] border border-neutral-850 p-2 rounded text-[10px] text-neutral-400 font-mono flex flex-col gap-1">
+                                        <div className="text-neutral-300 truncate">
+                                          <strong>Error:</strong> {a.ejemplo.mensajeError}
+                                        </div>
+                                        <div className="flex items-center gap-3 text-[9px] text-neutral-500">
+                                          <span><strong>Host:</strong> {a.ejemplo.hostname || 'Desconocido'}</span>
+                                          {a.ejemplo.seqPermalink && (
+                                            <a 
+                                              href={a.ejemplo.seqPermalink} 
+                                              target="_blank" 
+                                              rel="noopener noreferrer"
+                                              className="text-[#71BF44] hover:underline flex items-center gap-0.5"
+                                            >
+                                              Ver en Seq <ExternalLink className="w-2.5 h-2.5" />
+                                            </a>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {!rawSqlResult && filteredLogs.length > 0 && (
                     <div className="flex items-center gap-1.5 font-sans">
