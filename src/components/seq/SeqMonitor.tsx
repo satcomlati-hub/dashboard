@@ -139,6 +139,14 @@ const LEVEL_TEXT_CLASSES: { [key: string]: string } = {
   Fatal: 'text-pink-400 bg-pink-500/10 border-pink-500/20'
 };
 
+const CLOUD_CLIENTS = new Set([
+  'HostingSAT',
+  'PAC',
+  'Panama2',
+  'BOLIVIA',
+  'HostingV5'
+]);
+
 export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
   const [activeTab, setActiveTab] = useState<'monitor' | 'tasks' | 'connections'>('monitor');
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -551,7 +559,7 @@ const alertasInfraestructura = {
   erroresAgrupados: [],
   mensaje: ""
 }; // Para e// Lista de clientes que se consideran "Cloud mySatcom"
-const CLOUD_CLIENTS = new Set([
+const SCRIPT_CLOUD_CLIENTS = new Set([
   'HostingSAT',
   'PAC',
   'Panama2',
