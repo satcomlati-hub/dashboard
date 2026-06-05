@@ -2016,7 +2016,7 @@ return [
       if (hasTimeFilter) {
         return query;
       }
-      timeFilterExpr = "@Timestamp >= Now() - 3h";
+      timeFilterExpr = "@Timestamp >= DateTimeNow() - Interval('3h')";
     }
 
     // Buscar si tiene la palabra clave WHERE

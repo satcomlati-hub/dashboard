@@ -50,9 +50,7 @@ export async function GET(request: Request) {
     // Seq usa el endpoint /api/events para consultar eventos, y /api/data para consultas SQL (select ...)
     const targetUrl = new URL(isSqlQuery ? '/api/data' : '/api/events', seqUrl);
     
-    if (isSqlQuery) {
-      targetUrl.searchParams.append('q', filterToSend || '');
-    } else {
+    if (!isSqlQuery) {
       if (filterToSend) targetUrl.searchParams.append('filter', filterToSend);
       if (countToSend) targetUrl.searchParams.append('count', countToSend);
       if (render) targetUrl.searchParams.append('render', render);
@@ -69,9 +67,14 @@ export async function GET(request: Request) {
       headers['X-Seq-ApiKey'] = apiKey.trim();
     }
 
+    if (isSqlQuery) {
+      headers['Content-Type'] = 'application/json';
+    }
+
     const response = await fetch(targetUrl.toString(), {
-      method: 'GET',
-      headers: headers
+      method: isSqlQuery ? 'POST' : 'GET',
+      headers: headers,
+      body: isSqlQuery ? JSON.stringify({ query: filterToSend }) : undefined
     });
 
     if (!response.ok) {
