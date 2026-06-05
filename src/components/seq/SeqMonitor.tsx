@@ -3546,7 +3546,10 @@ return [
                       <div className="flex flex-col gap-3 font-sans text-xs">
                         <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
                           <h4 className="text-sm font-bold text-[#71BF44] flex items-center gap-1.5">
-                            <Activity className="w-4 h-4 animate-pulse" />                          <div className="flex items-center gap-4">
+                            <Activity className="w-4 h-4 animate-pulse" />
+                            <span>Análisis de Errores y Alertas en Tiempo Real (Consola Activa)</span>
+                          </h4>
+                          <div className="flex items-center gap-4">
                             <button
                               onClick={handleDownloadAnalysisJson}
                               className="flex items-center gap-1 bg-[#71BF44]/10 hover:bg-[#71BF44]/25 text-[#71BF44] border border-[#71BF44]/30 px-2 py-0.5 rounded text-[10px] font-bold transition-all"
