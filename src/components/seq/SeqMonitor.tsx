@@ -678,7 +678,7 @@ for (const dest in infraestructuraMap) {
       clientesAfectados: Array.from(data.clientes),
       totalEventosError: data.totalEventos,
       ejemplos: data.ejemplos,
-      mensaje: `Alerta Infraestructura: Se detectaron ${data.totalEventos} errores afectando a ${data.clientes.size} clientes al invocar el destino ${data.destino}.`
+      mensaje: 'Alerta Infraestructura: Se detectaron ' + data.totalEventos + ' errores afectando a ' + data.clientes.size + ' clientes al invocar el destino ' + data.destino + '.'
     });
   }
 }
@@ -696,7 +696,7 @@ for (const key in origenMap) {
       eventosDetectados: data.count,
       umbralSuperado: umbral,
       ejemplos: data.ejemplos,
-      mensaje: `Alerta Origen: El origen ${data.cliente} | ${data.app} | ${data.hostname} (${data.esCloud ? 'Cloud' : 'Normal'}) superó el umbral con ${data.count} errores (Umbral: ${umbral}).`
+      mensaje: 'Alerta Origen: El origen ' + data.cliente + ' | ' + data.app + ' | ' + data.hostname + ' (' + (data.esCloud ? 'Cloud' : 'Normal') + ') superó el umbral con ' + data.count + ' errores (Umbral: ' + umbral + ').'
     });
   }
 }
