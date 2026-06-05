@@ -209,6 +209,10 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
   const [alertModalTab, setAlertModalTab] = useState<'script' | 'simulation'>('script');
   const [alertQueryFilter, setAlertQueryFilter] = useState<string>('');
   const [showLiveAnalysisPanel, setShowLiveAnalysisPanel] = useState<boolean>(false);
+  const [mesaAyudaSortBy, setMesaAyudaSortBy] = useState<'origen' | 'eventos'>('eventos');
+  const [mesaAyudaSortOrder, setMesaAyudaSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [infraSortBy, setInfraSortBy] = useState<'destino' | 'eventos'>('eventos');
+  const [infraSortOrder, setInfraSortOrder] = useState<'asc' | 'desc'>('desc');
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -2855,6 +2859,28 @@ return [
       ? `${minTimestamp} a ${maxTimestamp}`
       : 'No disponible';
 
+    // Ordenar alertas de Mesa de Ayuda
+    alertasMesaDeAyuda.sort((a, b) => {
+      let comparison = 0;
+      if (mesaAyudaSortBy === 'eventos') {
+        comparison = a.totalEventos - b.totalEventos;
+      } else {
+        comparison = a.origen.localeCompare(b.origen);
+      }
+      return mesaAyudaSortOrder === 'desc' ? -comparison : comparison;
+    });
+
+    // Ordenar alertas de Infraestructura
+    alertasInfraestructura.sort((a, b) => {
+      let comparison = 0;
+      if (infraSortBy === 'eventos') {
+        comparison = a.totalEventosError - b.totalEventosError;
+      } else {
+        comparison = a.destino.localeCompare(b.destino);
+      }
+      return infraSortOrder === 'desc' ? -comparison : comparison;
+    });
+
     return {
       consultaEvaluada: alertQueryFilter || selectedQueryForAlert?.filter || currentFilter,
       alertaGenerada,
@@ -2870,7 +2896,18 @@ return [
       alertasMesaDeAyuda,
       alertasInfraestructura
     };
-  }, [selectedQueryForAlert, logs, alertConfig, alertQueryFilter, connections, currentFilter]);
+  }, [
+    selectedQueryForAlert, 
+    logs, 
+    alertConfig, 
+    alertQueryFilter, 
+    connections, 
+    currentFilter, 
+    mesaAyudaSortBy, 
+    mesaAyudaSortOrder, 
+    infraSortBy, 
+    infraSortOrder
+  ]);
 
   // Toggle de nivel en los chips de filtro local
   const toggleLocalLevel = (lvl: string) => {
@@ -3549,14 +3586,14 @@ return [
               </div>
 
               {/* Visor de Eventos (Consola / Grid / Gráficas) */}
-              <div className="flex-1 flex flex-col border border-neutral-200 dark:border-neutral-800 bg-[#0d0d0d] rounded-xl overflow-hidden min-h-0 relative">
+              <div className="flex-1 flex flex-col border border-teal-200/35 dark:border-teal-900 bg-[#f0faf7] dark:bg-[#071714] text-[#0f2d26] dark:text-[#d3ebe6] rounded-xl overflow-hidden min-h-0 relative shadow-inner">
                 {isLoadingLogs && (
-                  <div className="absolute inset-0 bg-[#0d0d0d]/75 backdrop-blur-[1px] flex flex-col items-center justify-center gap-3 z-30 transition-all duration-300">
-                    <div className="w-8 h-8 rounded-full border-2 border-neutral-800 border-t-[#71BF44] animate-spin" />
-                    <span className="text-xs font-semibold text-neutral-400 font-mono tracking-wider animate-pulse">Procesando consulta en Seq...</span>
+                  <div className="absolute inset-0 bg-[#f0faf7]/75 dark:bg-[#071714]/75 backdrop-blur-[1px] flex flex-col items-center justify-center gap-3 z-30 transition-all duration-300">
+                    <div className="w-8 h-8 rounded-full border-2 border-teal-800 dark:border-teal-900 border-t-[#71BF44] animate-spin" />
+                    <span className="text-xs font-semibold text-teal-700 dark:text-teal-400 font-mono tracking-wider animate-pulse">Procesando consulta en Seq...</span>
                   </div>
                 )}
-                <div className="bg-neutral-100 dark:bg-[#181818] border-b border-neutral-200 dark:border-neutral-850 px-4 py-2 flex flex-col md:flex-row md:items-center justify-between text-xs font-bold text-neutral-600 dark:text-neutral-400 gap-2 select-none">
+                <div className="bg-[#e6f5f0] dark:bg-[#0b211d] border-b border-teal-200/50 dark:border-teal-950 px-4 py-2 flex flex-col md:flex-row md:items-center justify-between text-xs font-bold text-teal-850 dark:text-teal-400 gap-2 select-none">
                   <div className="flex items-center gap-2">
                     <span>Visor de Eventos</span>
                     {rawSqlResult ? (
@@ -3663,16 +3700,50 @@ return [
                         {/* Desglose de Alertas y Conteo */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {/* Columna Mesa de Ayuda (Clientes) */}
-                          <div className="border border-teal-200/50 dark:border-teal-850/60 bg-[#eefbf7] dark:bg-[#0b211d] text-[#12332c] dark:text-[#d3ebe6] rounded-xl p-3 flex flex-col gap-2 shadow-inner shadow-[#14b8a6]/5">
-                            <h5 className="text-[11px] font-bold text-teal-950 dark:text-teal-200 uppercase tracking-wider border-b border-teal-250/20 dark:border-teal-800/40 pb-1.5 flex items-center justify-between">
-                              <span>Errores por Origen (Clientes)</span>
-                              <span className="bg-teal-100/50 dark:bg-teal-950/40 px-2 py-0.5 rounded text-[10px] text-teal-800 dark:text-teal-300">
+                          <div className="border border-amber-250/50 dark:border-amber-900/30 bg-[#fffdf0] dark:bg-[#18160e] text-[#332e12] dark:text-[#ede4c0] rounded-xl p-3 flex flex-col gap-2 shadow-inner shadow-[#d97706]/5">
+                            <h5 className="text-[11px] font-bold text-amber-950 dark:text-amber-200 uppercase tracking-wider border-b border-amber-250/20 dark:border-amber-900/40 pb-1.5 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span>Errores por Origen (Clientes)</span>
+                                <div className="flex items-center gap-1 font-sans text-[9px] normal-case font-normal select-none">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setMesaAyudaSortBy('origen');
+                                      setMesaAyudaSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+                                    }}
+                                    className={`px-1.5 py-0.5 rounded border transition-colors ${
+                                      mesaAyudaSortBy === 'origen' 
+                                        ? 'bg-[#71BF44] text-[#131313] border-transparent font-bold' 
+                                        : 'bg-transparent text-neutral-450 dark:text-neutral-500 border-neutral-300 dark:border-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-300'
+                                    }`}
+                                    title="Ordenar por nombre de origen"
+                                  >
+                                    Origen {mesaAyudaSortBy === 'origen' && (mesaAyudaSortOrder === 'asc' ? '↑' : '↓')}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setMesaAyudaSortBy('eventos');
+                                      setMesaAyudaSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+                                    }}
+                                    className={`px-1.5 py-0.5 rounded border transition-colors ${
+                                      mesaAyudaSortBy === 'eventos' 
+                                        ? 'bg-[#71BF44] text-[#131313] border-transparent font-bold' 
+                                        : 'bg-transparent text-neutral-450 dark:text-neutral-500 border-neutral-300 dark:border-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-300'
+                                    }`}
+                                    title="Ordenar por número de eventos"
+                                  >
+                                    Eventos {mesaAyudaSortBy === 'eventos' && (mesaAyudaSortOrder === 'asc' ? '↑' : '↓')}
+                                  </button>
+                                </div>
+                              </div>
+                              <span className="bg-amber-100/50 dark:bg-amber-950/40 px-2 py-0.5 rounded text-[10px] text-amber-800 dark:text-amber-300 font-bold shrink-0">
                                 {simulatedResult.alertasMesaDeAyuda.length} detectados
                               </span>
                             </h5>
-                            <div className="flex flex-col gap-2.5 max-h-56 overflow-y-auto divide-y divide-teal-100/30 dark:divide-teal-900/30">
+                            <div className="flex flex-col gap-2.5 max-h-56 overflow-y-auto divide-y divide-amber-100/30 dark:divide-amber-900/30">
                               {simulatedResult.alertasMesaDeAyuda.length === 0 ? (
-                                <span className="text-[11px] text-teal-700/60 dark:text-teal-400/60 italic p-2">Sin orígenes de error reportados en esta ventana.</span>
+                                <span className="text-[11px] text-amber-750/60 dark:text-amber-400/60 italic p-2">Sin orígenes de error reportados en esta ventana.</span>
                               ) : (
                                 simulatedResult.alertasMesaDeAyuda.map((a, idx) => (
                                   <div key={idx} className="pt-2.5 first:pt-0 flex flex-col gap-1 text-[11px]">
@@ -3681,7 +3752,7 @@ return [
                                         <span className="font-semibold text-neutral-900 dark:text-white">{a.origen}</span>
                                         <button
                                           onClick={() => handleFilterByOrigin(a.cliente, a.hostname)}
-                                          className="text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-teal-100/50 dark:hover:bg-neutral-850 transition-colors"
+                                          className="text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-amber-100/50 dark:hover:bg-neutral-850 transition-colors"
                                           title={`Buscar / filtrar eventos para este origen: ${a.origen}`}
                                         >
                                           <Search className="w-3 h-3" />
@@ -3690,26 +3761,26 @@ return [
                                       <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
                                         a.superaUmbral
                                           ? 'bg-red-100 text-red-700 border border-red-200/50 dark:bg-red-950/35 dark:text-red-300 dark:border-red-900/30 animate-pulse'
-                                          : 'bg-teal-100/70 text-teal-900 dark:bg-teal-950/20 dark:text-teal-400'
+                                          : 'bg-amber-100/70 text-amber-900 dark:bg-amber-950/20 dark:text-amber-400'
                                       }`}>
                                         {a.totalEventos} errores / Umbral {a.umbralDefinido}
                                       </span>
                                     </div>
                                     {a.ejemplo && (
-                                      <div className="bg-white dark:bg-[#122b25] border border-teal-200/40 dark:border-[#1d443a] p-2 rounded text-[10px] text-[#12332c]/90 dark:text-teal-200/80 font-mono flex flex-col gap-1.5 shadow-sm">
-                                        <div className="text-neutral-900 dark:text-teal-100 truncate flex items-center justify-between gap-1.5">
+                                      <div className="bg-white dark:bg-[#201d12] border border-amber-200/40 dark:border-amber-900/20 p-2 rounded text-[10px] text-[#332e12]/90 dark:text-[#ede4c0]/80 font-mono flex flex-col gap-1.5 shadow-sm">
+                                        <div className="text-neutral-900 dark:text-amber-105 truncate flex items-center justify-between gap-1.5">
                                           <span className="truncate flex-1">
                                             <strong>Error:</strong> {a.ejemplo.error}
                                           </span>
                                           <button
                                             onClick={() => handleFilterByMessage(a.ejemplo.error)}
-                                            className="text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-teal-50 dark:hover:bg-teal-900 transition-colors shrink-0"
+                                            className="text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-amber-50 dark:hover:bg-amber-955 transition-colors shrink-0"
                                             title="Buscar / filtrar eventos por este mensaje de error"
                                           >
                                             <Search className="w-2.5 h-2.5" />
                                           </button>
                                         </div>
-                                        <div className="flex items-center gap-3 text-[9px] text-teal-700/80 dark:text-teal-400/60 border-t border-teal-100/20 dark:border-teal-900/20 pt-1">
+                                        <div className="flex items-center gap-3 text-[9px] text-amber-750/80 dark:text-amber-400/60 border-t border-amber-100/20 dark:border-amber-900/20 pt-1">
                                           <span><strong>App:</strong> {a.ejemplo.app || 'Desconocido'}</span>
                                           <span><strong>Host:</strong> {a.ejemplo.hostname || 'Desconocido'}</span>
                                           {a.ejemplo.id && (
@@ -3741,16 +3812,50 @@ return [
                           </div>
 
                           {/* Columna Infraestructura */}
-                          <div className="border border-teal-200/50 dark:border-teal-850/60 bg-[#eefbf7] dark:bg-[#0b211d] text-[#12332c] dark:text-[#d3ebe6] rounded-xl p-3 flex flex-col gap-2 shadow-inner shadow-[#14b8a6]/5">
-                            <h5 className="text-[11px] font-bold text-teal-950 dark:text-teal-200 uppercase tracking-wider border-b border-teal-250/20 dark:border-teal-800/40 pb-1.5 flex items-center justify-between">
-                              <span>Errores de Servidor (Infraestructura)</span>
-                              <span className="bg-teal-100/50 dark:bg-teal-950/40 px-2 py-0.5 rounded text-[10px] text-teal-800 dark:text-teal-300">
+                          <div className="border border-amber-250/50 dark:border-amber-900/30 bg-[#fffdf0] dark:bg-[#18160e] text-[#332e12] dark:text-[#ede4c0] rounded-xl p-3 flex flex-col gap-2 shadow-inner shadow-[#d97706]/5">
+                            <h5 className="text-[11px] font-bold text-amber-950 dark:text-amber-200 uppercase tracking-wider border-b border-amber-250/20 dark:border-amber-900/40 pb-1.5 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span>Errores de Servidor (Infraestructura)</span>
+                                <div className="flex items-center gap-1 font-sans text-[9px] normal-case font-normal select-none">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setInfraSortBy('destino');
+                                      setInfraSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+                                    }}
+                                    className={`px-1.5 py-0.5 rounded border transition-colors ${
+                                      infraSortBy === 'destino' 
+                                        ? 'bg-[#71BF44] text-[#131313] border-transparent font-bold' 
+                                        : 'bg-transparent text-neutral-450 dark:text-neutral-500 border-neutral-300 dark:border-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-300'
+                                    }`}
+                                    title="Ordenar por nombre de destino"
+                                  >
+                                    Destino {infraSortBy === 'destino' && (infraSortOrder === 'asc' ? '↑' : '↓')}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setInfraSortBy('eventos');
+                                      setInfraSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+                                    }}
+                                    className={`px-1.5 py-0.5 rounded border transition-colors ${
+                                      infraSortBy === 'eventos' 
+                                        ? 'bg-[#71BF44] text-[#131313] border-transparent font-bold' 
+                                        : 'bg-transparent text-neutral-450 dark:text-neutral-500 border-neutral-300 dark:border-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-300'
+                                    }`}
+                                    title="Ordenar por número de eventos"
+                                  >
+                                    Eventos {infraSortBy === 'eventos' && (infraSortOrder === 'asc' ? '↑' : '↓')}
+                                  </button>
+                                </div>
+                              </div>
+                              <span className="bg-amber-100/50 dark:bg-amber-950/40 px-2 py-0.5 rounded text-[10px] text-amber-800 dark:text-amber-300 font-bold shrink-0">
                                 {simulatedResult.alertasInfraestructura.length} destinos
                               </span>
                             </h5>
-                            <div className="flex flex-col gap-2.5 max-h-56 overflow-y-auto divide-y divide-teal-100/30 dark:divide-teal-900/30">
+                            <div className="flex flex-col gap-2.5 max-h-56 overflow-y-auto divide-y divide-amber-100/30 dark:divide-amber-900/30">
                               {simulatedResult.alertasInfraestructura.length === 0 ? (
-                                <span className="text-[11px] text-teal-700/60 dark:text-teal-400/60 italic p-2">Sin fallas de infraestructura en esta ventana.</span>
+                                <span className="text-[11px] text-amber-750/60 dark:text-amber-400/60 italic p-2">Sin fallas de infraestructura en esta ventana.</span>
                               ) : (
                                 simulatedResult.alertasInfraestructura.map((a, idx) => (
                                   <div key={idx} className="pt-2.5 first:pt-0 flex flex-col gap-1 text-[11px]">
@@ -3759,7 +3864,7 @@ return [
                                         <span className="font-semibold text-neutral-900 dark:text-white truncate pr-2" title={a.destino}>{a.destino}</span>
                                         <button
                                           onClick={() => handleFilterByDestino(a.destino)}
-                                          className="text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-teal-100/50 dark:hover:bg-neutral-850 transition-colors shrink-0"
+                                          className="text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-amber-100/50 dark:hover:bg-neutral-850 transition-colors shrink-0"
                                           title={`Buscar / filtrar eventos para este destino: ${a.destino}`}
                                         >
                                           <Search className="w-3 h-3" />
@@ -3768,29 +3873,29 @@ return [
                                       <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold whitespace-nowrap ${
                                         a.superaUmbral
                                           ? 'bg-red-100 text-red-700 border border-red-200/50 dark:bg-red-950/35 dark:text-red-300 dark:border-red-900/30 animate-pulse'
-                                          : 'bg-teal-100/70 text-teal-900 dark:bg-teal-950/20 dark:text-teal-400'
+                                          : 'bg-amber-100/70 text-amber-900 dark:bg-amber-950/20 dark:text-amber-400'
                                       }`}>
                                         {a.totalEventosError} err / {a.cantidadClientesAfectados} clientes (Umbral: &gt;10 err y &gt;3 clientes)
                                       </span>
                                     </div>
-                                    <div className="text-[10px] text-teal-700 dark:text-teal-300/80 pl-1 font-semibold">
+                                    <div className="text-[10px] text-amber-800 dark:text-amber-305 pl-1 font-semibold">
                                       <strong>Clientes Afectados:</strong> {a.clientesAfectados.join(', ')}
                                     </div>
                                     {a.ejemplo && (
-                                      <div className="bg-white dark:bg-[#122b25] border border-teal-200/40 dark:border-[#1d443a] p-2 rounded text-[10px] text-[#12332c]/90 dark:text-teal-200/80 font-mono flex flex-col gap-1.5 shadow-sm">
-                                        <div className="text-neutral-900 dark:text-teal-100 truncate flex items-center justify-between gap-1.5">
+                                      <div className="bg-white dark:bg-[#201d12] border border-amber-200/40 dark:border-amber-900/20 p-2 rounded text-[10px] text-[#332e12]/90 dark:text-[#ede4c0]/80 font-mono flex flex-col gap-1.5 shadow-sm">
+                                        <div className="text-neutral-900 dark:text-amber-105 truncate flex items-center justify-between gap-1.5">
                                           <span className="truncate flex-1">
                                             <strong>Error:</strong> {a.ejemplo.mensajeError}
                                           </span>
                                           <button
                                             onClick={() => handleFilterByMessage(a.ejemplo.mensajeError)}
-                                            className="text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-teal-50 dark:hover:bg-teal-900 transition-colors shrink-0"
+                                            className="text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-amber-50 dark:hover:bg-amber-955 transition-colors shrink-0"
                                             title="Buscar / filtrar eventos por este mensaje de error"
                                           >
                                             <Search className="w-2.5 h-2.5" />
                                           </button>
                                         </div>
-                                        <div className="flex items-center gap-3 text-[9px] text-teal-700/80 dark:text-teal-400/60 border-t border-teal-100/20 dark:border-teal-900/20 pt-1">
+                                        <div className="flex items-center gap-3 text-[9px] text-amber-750/80 dark:text-amber-400/60 border-t border-amber-100/20 dark:border-amber-900/20 pt-1">
                                           <span><strong>Host:</strong> {a.ejemplo.hostname || 'Desconocido'}</span>
                                           {a.ejemplo.id && (
                                             <button
@@ -3818,6 +3923,11 @@ return [
                                 ))
                               )}
                             </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}/div>
                           </div>
                         </div>
                       </div>
@@ -4092,19 +4202,30 @@ return [
                         return (
                           <div
                             key={rowId}
-                            className={`group flex flex-col rounded border border-transparent transition-all ${
-                              isExpanded ? 'bg-[#181818]/60 border-neutral-850 my-1' : 'hover:bg-[#181818]/30'
+                            className={`group flex flex-col rounded border transition-all ${
+                              isExpanded 
+                                ? 'bg-white/70 dark:bg-[#122e26] border-teal-200/50 dark:border-teal-800/40 my-1 text-[#0f2d26] dark:text-white shadow-sm' 
+                                : 'hover:bg-white/40 dark:hover:bg-[#112a23]/40 border-transparent text-[#12332c] dark:text-[#d1ebe6]'
                             }`}
                           >
                             <div
                               onClick={() => toggleLogExpand(rowId)}
                               className="flex items-start p-2 gap-2 cursor-pointer select-none"
                             >
-                              <button className="text-neutral-500 hover:text-white shrink-0 mt-0.5 transition-transform">
+                              <button className="text-teal-600/70 dark:text-teal-400 shrink-0 mt-0.5 transition-transform">
                                 <ChevronRight className={`w-3.5 h-3.5 transform transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
                               </button>
                               
-                              <span className="text-[10px] text-neutral-500 shrink-0 select-none mt-0.5">{timeStr}</span>
+                              <span className="text-[10px] text-teal-650 dark:text-teal-400 shrink-0 select-none mt-0.5 font-bold">{timeStr}</span>
+
+                              {log.connectionName && (
+                                <span 
+                                  className="text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider shrink-0 select-none bg-teal-100/60 dark:bg-teal-950/40 border-teal-200/30 dark:border-teal-900/30 text-teal-800 dark:text-teal-300"
+                                  title={`Origen: ${log.connectionName}`}
+                                >
+                                  {log.connectionName}
+                                </span>
+                              )}
                               
                               {isSqlAggregation ? (
                                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider shrink-0 select-none text-[#71BF44] bg-[#71BF44]/10 border-[#71BF44]/20">
@@ -4116,34 +4237,34 @@ return [
                                 </span>
                               )}
                               
-                              <span className={`text-neutral-200 break-all flex-1 ${
+                              <span className={`text-[#0f2d26] dark:text-[#d1ebe6] break-all flex-1 ${
                                 isExpanded 
                                   ? ((log.Properties && log.Properties.length > 0) || log.Exception) 
-                                    ? 'line-clamp-1 text-neutral-455 dark:text-neutral-500 font-medium' // Recortar y atenuar si hay más detalle organizado abajo
+                                    ? 'line-clamp-1 text-teal-900/60 dark:text-teal-500 font-medium' 
                                     : 'line-clamp-none' 
                                   : 'line-clamp-1'
                               }`}>
                                 {message}
                               </span>
-
+ 
                               <button
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     handleCopyLog(log);
                                 }}
-                                className="opacity-0 group-hover:opacity-100 text-neutral-550 hover:text-white p-0.5 shrink-0 transition-opacity"
+                                className="opacity-0 group-hover:opacity-100 text-teal-600/70 hover:text-teal-900 dark:text-teal-450 dark:hover:text-white p-0.5 shrink-0 transition-opacity"
                                 title="Copiar log completo (JSON)"
                               >
                                 <Copy className="w-3.5 h-3.5" />
                               </button>
                             </div>
-
+ 
                             {isExpanded && (
-                              <div className="border-t border-neutral-900 bg-[#131313]/50 p-3 flex flex-col gap-3 animate-fade-in text-[11px]">
+                              <div className="border-t border-teal-200/40 dark:border-[#1c3831] bg-white/45 dark:bg-[#0e211d]/50 p-3 flex flex-col gap-3 animate-fade-in text-[11px]">
                                 {log.MessageTemplate && !isSqlAggregation && (
                                   <div>
                                     <h5 className="text-[10px] text-[#71BF44] font-bold uppercase tracking-wider mb-1">Message Template</h5>
-                                    <div className="bg-[#181818] border border-neutral-850 p-2 rounded text-neutral-300 font-mono select-all">
+                                    <div className="bg-white/80 dark:bg-[#15332c] border border-teal-200/30 dark:border-teal-900/35 p-2 rounded text-teal-900 dark:text-teal-100 font-mono select-all">
                                       {log.MessageTemplate}
                                     </div>
                                   </div>
