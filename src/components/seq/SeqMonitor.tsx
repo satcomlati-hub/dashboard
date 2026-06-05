@@ -1897,6 +1897,44 @@ return [
     }, 100);
   };
 
+  // Filtrar y crear consulta de Seq a partir de un fragmento de mensaje de error
+  const handleFilterByMessage = (message: string) => {
+    if (!message) return;
+    
+    // Escapar comillas y limpiar espacios
+    const cleanMsg = message.replace(/'/g, "\\'").replace(/\r?\n|\r/g, " ").trim().substring(0, 80);
+    const baseFilter = "@Level = 'Error' or @Level = 'Fatal'";
+    const newFilter = `${baseFilter} and (@Message like '%${cleanMsg}%' or @Exception like '%${cleanMsg}%')`;
+    
+    setCurrentFilter(newFilter);
+    stateRef.current.currentFilter = newFilter;
+    setShowLiveAnalysisPanel(false);
+    showToast(`Filtrando por mensaje de error`, 'success');
+    
+    setTimeout(() => {
+      fetchLogs(false);
+    }, 100);
+  };
+
+  // Filtrar y buscar un ID de evento específico en todas las conexiones seleccionadas
+  const handleFilterById = (eventId: string) => {
+    if (!eventId) return;
+    
+    const newFilter = `@Id = '${eventId}'`;
+    
+    // Auto-seleccionar todos los orígenes de Seq disponibles
+    setSelectedConnectionIds(new Set(connections.map(c => c.id)));
+    
+    setCurrentFilter(newFilter);
+    stateRef.current.currentFilter = newFilter;
+    setShowLiveAnalysisPanel(false);
+    showToast(`Buscando Evento ID: ${eventId} en todas las conexiones`, 'success');
+    
+    setTimeout(() => {
+      fetchLogs(false);
+    }, 100);
+  };
+
   // Agregar consulta al historial de ejecuciones (máximo 100, sin duplicados)
   const addToHistory = (query: string) => {
     const trimmed = query.trim();
@@ -2634,6 +2672,7 @@ return [
       };
 
       const payloadComun = {
+        id: eventId,
         timestamp: log.Timestamp || new Date().toISOString(),
         mensajeError: message,
         excepcion: exception,
@@ -2724,6 +2763,10 @@ return [
     flattenedLogs.forEach(log => {
       let apiDestino = log.apiClientUrl || null;
       const exceptionStr = stringifyValue(log.Exception);
+      const origenConexion = log.Origen || 'Desconocido';
+      const matchingConn = connections.find(c => c.name === origenConexion);
+      const baseUrl = matchingConn ? matchingConn.url : 'http://logs-sender.mysatcomla.com:5341';
+
       if (!apiDestino && exceptionStr) {
         const urlMatch = exceptionStr.match(/https?:\/\/[^\s/]+/i);
         if (urlMatch) apiDestino = urlMatch[0];
@@ -2760,7 +2803,7 @@ return [
             version: log.Version || log._version,
             app: log.App || log._app,
             hostname: log.Hostname || log._hostname,
-            seqPermalink: log.Id ? `http://logs-sender.mysatcomla.com:5341/#/events/?filter=@Id%20%3D%20%27${log.Id}%27&showExpanded` : ''
+            seqPermalink: log.Id ? `${baseUrl}/#/events/?filter=@Id%20%3D%20%27${log.Id}%27&showExpanded` : ''
           });
         }
       }
@@ -3620,25 +3663,25 @@ return [
                         {/* Desglose de Alertas y Conteo */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {/* Columna Mesa de Ayuda (Clientes) */}
-                          <div className="border border-neutral-800 bg-[#121212] rounded-lg p-3 flex flex-col gap-2">
-                            <h5 className="text-[11px] font-bold text-neutral-350 uppercase tracking-wider border-b border-neutral-800 pb-1 flex items-center justify-between">
+                          <div className="border border-teal-200/50 dark:border-teal-850/60 bg-[#eefbf7] dark:bg-[#0b211d] text-[#12332c] dark:text-[#d3ebe6] rounded-xl p-3 flex flex-col gap-2 shadow-inner shadow-[#14b8a6]/5">
+                            <h5 className="text-[11px] font-bold text-teal-950 dark:text-teal-200 uppercase tracking-wider border-b border-teal-250/20 dark:border-teal-800/40 pb-1.5 flex items-center justify-between">
                               <span>Errores por Origen (Clientes)</span>
-                              <span className="bg-neutral-850 px-2 py-0.5 rounded text-[10px] text-neutral-400">
+                              <span className="bg-teal-100/50 dark:bg-teal-950/40 px-2 py-0.5 rounded text-[10px] text-teal-800 dark:text-teal-300">
                                 {simulatedResult.alertasMesaDeAyuda.length} detectados
                               </span>
                             </h5>
-                            <div className="flex flex-col gap-2 max-h-56 overflow-y-auto divide-y divide-neutral-900">
+                            <div className="flex flex-col gap-2.5 max-h-56 overflow-y-auto divide-y divide-teal-100/30 dark:divide-teal-900/30">
                               {simulatedResult.alertasMesaDeAyuda.length === 0 ? (
-                                <span className="text-[11px] text-neutral-500 italic p-2">Sin orígenes de error reportados en esta ventana.</span>
+                                <span className="text-[11px] text-teal-700/60 dark:text-teal-400/60 italic p-2">Sin orígenes de error reportados en esta ventana.</span>
                               ) : (
                                 simulatedResult.alertasMesaDeAyuda.map((a, idx) => (
-                                  <div key={idx} className="pt-2 first:pt-0 flex flex-col gap-1 text-[11px]">
+                                  <div key={idx} className="pt-2.5 first:pt-0 flex flex-col gap-1 text-[11px]">
                                     <div className="flex items-center justify-between">
                                       <div className="flex items-center gap-2">
-                                        <span className="font-semibold text-neutral-200">{a.origen}</span>
+                                        <span className="font-semibold text-neutral-900 dark:text-white">{a.origen}</span>
                                         <button
                                           onClick={() => handleFilterByOrigin(a.cliente, a.hostname)}
-                                          className="text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-neutral-850 transition-colors"
+                                          className="text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-teal-100/50 dark:hover:bg-neutral-850 transition-colors"
                                           title={`Buscar / filtrar eventos para este origen: ${a.origen}`}
                                         >
                                           <Search className="w-3 h-3" />
@@ -3646,26 +3689,44 @@ return [
                                       </div>
                                       <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
                                         a.superaUmbral
-                                          ? 'bg-red-500/10 text-red-400 border border-red-500/25 animate-pulse'
-                                          : 'bg-neutral-800 text-neutral-450 border border-transparent'
+                                          ? 'bg-red-100 text-red-700 border border-red-200/50 dark:bg-red-950/35 dark:text-red-300 dark:border-red-900/30 animate-pulse'
+                                          : 'bg-teal-100/70 text-teal-900 dark:bg-teal-950/20 dark:text-teal-400'
                                       }`}>
                                         {a.totalEventos} errores / Umbral {a.umbralDefinido}
                                       </span>
                                     </div>
                                     {a.ejemplo && (
-                                      <div className="bg-[#181818] border border-neutral-850 p-2 rounded text-[10px] text-neutral-400 font-mono flex flex-col gap-1">
-                                        <div className="text-neutral-300 truncate">
-                                          <strong>Error:</strong> {a.ejemplo.error}
+                                      <div className="bg-white dark:bg-[#122b25] border border-teal-200/40 dark:border-[#1d443a] p-2 rounded text-[10px] text-[#12332c]/90 dark:text-teal-200/80 font-mono flex flex-col gap-1.5 shadow-sm">
+                                        <div className="text-neutral-900 dark:text-teal-100 truncate flex items-center justify-between gap-1.5">
+                                          <span className="truncate flex-1">
+                                            <strong>Error:</strong> {a.ejemplo.error}
+                                          </span>
+                                          <button
+                                            onClick={() => handleFilterByMessage(a.ejemplo.error)}
+                                            className="text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-teal-50 dark:hover:bg-teal-900 transition-colors shrink-0"
+                                            title="Buscar / filtrar eventos por este mensaje de error"
+                                          >
+                                            <Search className="w-2.5 h-2.5" />
+                                          </button>
                                         </div>
-                                        <div className="flex items-center gap-3 text-[9px] text-neutral-500">
+                                        <div className="flex items-center gap-3 text-[9px] text-teal-700/80 dark:text-teal-400/60 border-t border-teal-100/20 dark:border-teal-900/20 pt-1">
                                           <span><strong>App:</strong> {a.ejemplo.app || 'Desconocido'}</span>
                                           <span><strong>Host:</strong> {a.ejemplo.hostname || 'Desconocido'}</span>
+                                          {a.ejemplo.id && (
+                                            <button
+                                              onClick={() => handleFilterById(a.ejemplo.id)}
+                                              className="text-[#71BF44] hover:underline flex items-center gap-0.5 font-sans whitespace-nowrap shrink-0"
+                                              title={`Buscar este evento ID (@Id = '${a.ejemplo.id}') en todos los orígenes de Seq`}
+                                            >
+                                              Buscar ID <Search className="w-2.5 h-2.5" />
+                                            </button>
+                                          )}
                                           {a.ejemplo.seqPermalink && (
                                             <a 
                                               href={a.ejemplo.seqPermalink} 
                                               target="_blank" 
                                               rel="noopener noreferrer"
-                                              className="text-[#71BF44] hover:underline flex items-center gap-0.5"
+                                              className="text-[#71BF44] hover:underline flex items-center gap-0.5 font-sans"
                                             >
                                               Ver en Seq <ExternalLink className="w-2.5 h-2.5" />
                                             </a>
@@ -3680,25 +3741,25 @@ return [
                           </div>
 
                           {/* Columna Infraestructura */}
-                          <div className="border border-neutral-800 bg-[#121212] rounded-lg p-3 flex flex-col gap-2">
-                            <h5 className="text-[11px] font-bold text-neutral-350 uppercase tracking-wider border-b border-neutral-800 pb-1 flex items-center justify-between">
+                          <div className="border border-teal-200/50 dark:border-teal-850/60 bg-[#eefbf7] dark:bg-[#0b211d] text-[#12332c] dark:text-[#d3ebe6] rounded-xl p-3 flex flex-col gap-2 shadow-inner shadow-[#14b8a6]/5">
+                            <h5 className="text-[11px] font-bold text-teal-950 dark:text-teal-200 uppercase tracking-wider border-b border-teal-250/20 dark:border-teal-800/40 pb-1.5 flex items-center justify-between">
                               <span>Errores de Servidor (Infraestructura)</span>
-                              <span className="bg-neutral-850 px-2 py-0.5 rounded text-[10px] text-neutral-400">
+                              <span className="bg-teal-100/50 dark:bg-teal-950/40 px-2 py-0.5 rounded text-[10px] text-teal-800 dark:text-teal-300">
                                 {simulatedResult.alertasInfraestructura.length} destinos
                               </span>
                             </h5>
-                            <div className="flex flex-col gap-2 max-h-56 overflow-y-auto divide-y divide-neutral-900">
+                            <div className="flex flex-col gap-2.5 max-h-56 overflow-y-auto divide-y divide-teal-100/30 dark:divide-teal-900/30">
                               {simulatedResult.alertasInfraestructura.length === 0 ? (
-                                <span className="text-[11px] text-neutral-500 italic p-2">Sin fallas de infraestructura en esta ventana.</span>
+                                <span className="text-[11px] text-teal-700/60 dark:text-teal-400/60 italic p-2">Sin fallas de infraestructura en esta ventana.</span>
                               ) : (
                                 simulatedResult.alertasInfraestructura.map((a, idx) => (
-                                  <div key={idx} className="pt-2 first:pt-0 flex flex-col gap-1 text-[11px]">
+                                  <div key={idx} className="pt-2.5 first:pt-0 flex flex-col gap-1 text-[11px]">
                                     <div className="flex items-center justify-between">
                                       <div className="flex items-center gap-2 min-w-0 flex-1">
-                                        <span className="font-semibold text-neutral-200 truncate pr-2" title={a.destino}>{a.destino}</span>
+                                        <span className="font-semibold text-neutral-900 dark:text-white truncate pr-2" title={a.destino}>{a.destino}</span>
                                         <button
                                           onClick={() => handleFilterByDestino(a.destino)}
-                                          className="text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-neutral-850 transition-colors shrink-0"
+                                          className="text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-teal-100/50 dark:hover:bg-neutral-850 transition-colors shrink-0"
                                           title={`Buscar / filtrar eventos para este destino: ${a.destino}`}
                                         >
                                           <Search className="w-3 h-3" />
@@ -3706,28 +3767,46 @@ return [
                                       </div>
                                       <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold whitespace-nowrap ${
                                         a.superaUmbral
-                                          ? 'bg-red-500/10 text-red-400 border border-red-500/25 animate-pulse'
-                                          : 'bg-neutral-800 text-neutral-450 border border-transparent'
+                                          ? 'bg-red-100 text-red-700 border border-red-200/50 dark:bg-red-950/35 dark:text-red-300 dark:border-red-900/30 animate-pulse'
+                                          : 'bg-teal-100/70 text-teal-900 dark:bg-teal-950/20 dark:text-teal-400'
                                       }`}>
                                         {a.totalEventosError} err / {a.cantidadClientesAfectados} clientes (Umbral: &gt;10 err y &gt;3 clientes)
                                       </span>
                                     </div>
-                                    <div className="text-[10px] text-neutral-450 pl-1">
+                                    <div className="text-[10px] text-teal-700 dark:text-teal-300/80 pl-1 font-semibold">
                                       <strong>Clientes Afectados:</strong> {a.clientesAfectados.join(', ')}
                                     </div>
                                     {a.ejemplo && (
-                                      <div className="bg-[#181818] border border-neutral-850 p-2 rounded text-[10px] text-neutral-400 font-mono flex flex-col gap-1">
-                                        <div className="text-neutral-300 truncate">
-                                          <strong>Error:</strong> {a.ejemplo.mensajeError}
+                                      <div className="bg-white dark:bg-[#122b25] border border-teal-200/40 dark:border-[#1d443a] p-2 rounded text-[10px] text-[#12332c]/90 dark:text-teal-200/80 font-mono flex flex-col gap-1.5 shadow-sm">
+                                        <div className="text-neutral-900 dark:text-teal-100 truncate flex items-center justify-between gap-1.5">
+                                          <span className="truncate flex-1">
+                                            <strong>Error:</strong> {a.ejemplo.mensajeError}
+                                          </span>
+                                          <button
+                                            onClick={() => handleFilterByMessage(a.ejemplo.mensajeError)}
+                                            className="text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-teal-50 dark:hover:bg-teal-900 transition-colors shrink-0"
+                                            title="Buscar / filtrar eventos por este mensaje de error"
+                                          >
+                                            <Search className="w-2.5 h-2.5" />
+                                          </button>
                                         </div>
-                                        <div className="flex items-center gap-3 text-[9px] text-neutral-500">
+                                        <div className="flex items-center gap-3 text-[9px] text-teal-700/80 dark:text-teal-400/60 border-t border-teal-100/20 dark:border-teal-900/20 pt-1">
                                           <span><strong>Host:</strong> {a.ejemplo.hostname || 'Desconocido'}</span>
+                                          {a.ejemplo.id && (
+                                            <button
+                                              onClick={() => handleFilterById(a.ejemplo.id)}
+                                              className="text-[#71BF44] hover:underline flex items-center gap-0.5 font-sans whitespace-nowrap shrink-0"
+                                              title={`Buscar este evento ID (@Id = '${a.ejemplo.id}') en todos los orígenes de Seq`}
+                                            >
+                                              Buscar ID <Search className="w-2.5 h-2.5" />
+                                            </button>
+                                          )}
                                           {a.ejemplo.seqPermalink && (
                                             <a 
                                               href={a.ejemplo.seqPermalink} 
                                               target="_blank" 
                                               rel="noopener noreferrer"
-                                              className="text-[#71BF44] hover:underline flex items-center gap-0.5"
+                                              className="text-[#71BF44] hover:underline flex items-center gap-0.5 font-sans"
                                             >
                                               Ver en Seq <ExternalLink className="w-2.5 h-2.5" />
                                             </a>
