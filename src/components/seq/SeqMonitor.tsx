@@ -1155,7 +1155,7 @@ return [
     }
     
     // Lista de operadores o palabras clave de filtro en Seq
-    const operators = ['=', '!=', '<', '<=', '>', '>=', ' like ', ' contains ', 'has(', 'not('];
+    const operators = ['=', '!=', '<', '<=', '>', '>=', ' like ', ' contains ', 'has(', 'not(', 'contains(', 'cs', 'ci', 'startswith(', 'endswith('];
     const hasOperator = operators.some(op => trimmed.toLowerCase().includes(op));
     
     if (!hasOperator) {
