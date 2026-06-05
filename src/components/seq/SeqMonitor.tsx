@@ -621,7 +621,7 @@ logs.forEach(log => {
     hostname: hostname,
     cliente: cliente,
     origenConsulta: 'Seq (Origen: ' + origenConexion + ', Consulta: ' + selectedQueryForAlert.name + ')',
-    seqPermalink: log.Id ? `\${(connections.find(c => c.name === origenConexion)?.url) || 'http://logs-sender.mysatcomla.com:5341'}/#/events/?filter=@Id%20%3D%20%27\${log.Id}%27&showExpanded` : ''
+    seqPermalink: log.Id ? ((connections.find(c => c.name === origenConexion)?.url || 'http://logs-sender.mysatcomla.com:5341') + '/#/events/?filter=@Id%20%3D%20%27' + log.Id + '%27&showExpanded') : ''
   };
 
   // Acumular infraestructura si hay destino
