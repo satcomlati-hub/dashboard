@@ -1825,8 +1825,76 @@ return [
     link.setAttribute("download", fileName);
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
     showToast(`Archivo CSV de simulación descargado`, 'success');
+  };
+
+  // Descargar el resumen completo del análisis en formato JSON
+  const handleDownloadAnalysisJson = () => {
+    if (!simulatedResult) return;
+    const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
+      JSON.stringify(simulatedResult, null, 2)
+    )}`;
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute('href', jsonString);
+    
+    const formattedDate = new Date().toISOString().substring(0, 10);
+    const queryName = selectedQueryForAlert ? selectedQueryForAlert.name.replace(/[^a-zA-Z0-9]/g, '_') : 'Consola';
+    downloadAnchor.setAttribute('download', `Analisis_Alertas_${queryName}_${formattedDate}.json`);
+    
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    showToast('Resumen del análisis descargado en JSON', 'success');
+  };
+
+  // Filtrar y crear consulta de Seq a partir de un cliente y hostname del resultado
+  const handleFilterByOrigin = (cliente: string, hostname: string) => {
+    let conds = [];
+    if (cliente && cliente !== 'Desconocido') {
+      conds.push(`(Cliente = '${cliente}' or _cliente = '${cliente}')`);
+    }
+    if (hostname && hostname !== 'Desconocido') {
+      conds.push(`(Hostname = '${hostname}' or _hostname = '${hostname}')`);
+    }
+    
+    let filterPart = conds.join(' and ');
+    if (!filterPart) {
+      showToast('No se puede filtrar por origen Desconocido', 'warning');
+      return;
+    }
+    
+    const baseFilter = "@Level = 'Error' or @Level = 'Fatal'";
+    const newFilter = `${baseFilter} and ${filterPart}`;
+    
+    setCurrentFilter(newFilter);
+    stateRef.current.currentFilter = newFilter;
+    setShowLiveAnalysisPanel(false);
+    showToast(`Filtrando por origen: ${cliente} / ${hostname}`, 'success');
+    
+    setTimeout(() => {
+      fetchLogs(false);
+    }, 100);
+  };
+
+  // Filtrar y crear consulta de Seq a partir de un destino (API) del resultado
+  const handleFilterByDestino = (destino: string) => {
+    if (!destino || destino === 'Desconocido') {
+      showToast('No se puede filtrar por destino Desconocido', 'warning');
+      return;
+    }
+    
+    const cleanDest = destino.replace(/^https?:\/\//, '');
+    const baseFilter = "@Level = 'Error' or @Level = 'Fatal'";
+    const newFilter = `${baseFilter} and (@Exception like '%${cleanDest}%' or @Message like '%${cleanDest}%')`;
+    
+    setCurrentFilter(newFilter);
+    stateRef.current.currentFilter = newFilter;
+    setShowLiveAnalysisPanel(false);
+    showToast(`Filtrando por destino: ${destino}`, 'success');
+    
+    setTimeout(() => {
+      fetchLogs(false);
+    }, 100);
   };
 
   // Agregar consulta al historial de ejecuciones (máximo 100, sin duplicados)
@@ -2640,6 +2708,8 @@ return [
 
       alertasMesaDeAyuda.push({
         origen: `${g.cliente} / ${g.hostname}`,
+        cliente: g.cliente,
+        hostname: g.hostname,
         totalEventos: g.eventos,
         superaUmbral: superaUmbral,
         umbralDefinido: umbral,
@@ -3476,15 +3546,20 @@ return [
                       <div className="flex flex-col gap-3 font-sans text-xs">
                         <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
                           <h4 className="text-sm font-bold text-[#71BF44] flex items-center gap-1.5">
-                            <Activity className="w-4 h-4 animate-pulse" />
-                            <span>Análisis de Errores y Alertas en Tiempo Real (Consola Activa)</span>
-                          </h4>
-                          <div className="flex items-center gap-4">
+                            <Activity className="w-4 h-4 animate-pulse" />                          <div className="flex items-center gap-4">
+                            <button
+                              onClick={handleDownloadAnalysisJson}
+                              className="flex items-center gap-1 bg-[#71BF44]/10 hover:bg-[#71BF44]/25 text-[#71BF44] border border-[#71BF44]/30 px-2 py-0.5 rounded text-[10px] font-bold transition-all"
+                              title="Descargar resumen del análisis en formato JSON"
+                            >
+                              <FileText className="w-3 h-3" />
+                              <span>Descargar Resumen JSON</span>
+                            </button>
                             <div className="flex items-center gap-1 text-[10px] text-neutral-400">
                               <span>¿Alerta Disparada?:</span>
                               <span className={`px-2 py-0.5 rounded-full font-bold uppercase ${
                                 simulatedResult.alertaGenerada
-                                  ? 'bg-red-500/10 text-red-500 border border-red-500/20'
+                                  ? 'bg-red-500/10 text-red-500 border border-red-500/25'
                                   : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
                               }`}>
                                 {simulatedResult.alertaGenerada ? 'SÍ (CRÍTICA)' : 'NO (SANO)'}
@@ -3556,7 +3631,16 @@ return [
                                 simulatedResult.alertasMesaDeAyuda.map((a, idx) => (
                                   <div key={idx} className="pt-2 first:pt-0 flex flex-col gap-1 text-[11px]">
                                     <div className="flex items-center justify-between">
-                                      <span className="font-semibold text-neutral-200">{a.origen}</span>
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-semibold text-neutral-200">{a.origen}</span>
+                                        <button
+                                          onClick={() => handleFilterByOrigin(a.cliente, a.hostname)}
+                                          className="text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-neutral-850 transition-colors"
+                                          title={`Buscar / filtrar eventos para este origen: ${a.origen}`}
+                                        >
+                                          <Search className="w-3 h-3" />
+                                        </button>
+                                      </div>
                                       <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
                                         a.superaUmbral
                                           ? 'bg-red-500/10 text-red-400 border border-red-500/25 animate-pulse'
@@ -3607,7 +3691,16 @@ return [
                                 simulatedResult.alertasInfraestructura.map((a, idx) => (
                                   <div key={idx} className="pt-2 first:pt-0 flex flex-col gap-1 text-[11px]">
                                     <div className="flex items-center justify-between">
-                                      <span className="font-semibold text-neutral-200 truncate pr-2" title={a.destino}>{a.destino}</span>
+                                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                                        <span className="font-semibold text-neutral-200 truncate pr-2" title={a.destino}>{a.destino}</span>
+                                        <button
+                                          onClick={() => handleFilterByDestino(a.destino)}
+                                          className="text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-neutral-850 transition-colors shrink-0"
+                                          title={`Buscar / filtrar eventos para este destino: ${a.destino}`}
+                                        >
+                                          <Search className="w-3 h-3" />
+                                        </button>
+                                      </div>
                                       <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold whitespace-nowrap ${
                                         a.superaUmbral
                                           ? 'bg-red-500/10 text-red-400 border border-red-500/25 animate-pulse'
