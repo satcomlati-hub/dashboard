@@ -2653,11 +2653,12 @@ return [
     const infraestructuraMap: { [key: string]: { destino: string, clientes: Set<string>, totalEventos: number, ejemplos: any[] } } = {};
     flattenedLogs.forEach(log => {
       let apiDestino = log.apiClientUrl || null;
-      if (!apiDestino && log.Exception) {
-        const urlMatch = log.Exception.match(/https?:\/\/[^\s/]+/i);
+      const exceptionStr = stringifyValue(log.Exception);
+      if (!apiDestino && exceptionStr) {
+        const urlMatch = exceptionStr.match(/https?:\/\/[^\s/]+/i);
         if (urlMatch) apiDestino = urlMatch[0];
       }
-      if (!apiDestino && log.Exception && log.Exception.includes('api-colombia.mysatcomla.com')) {
+      if (!apiDestino && exceptionStr && exceptionStr.includes('api-colombia.mysatcomla.com')) {
         apiDestino = 'https://api-colombia.mysatcomla.com';
       }
       if (apiDestino) {
