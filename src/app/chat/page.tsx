@@ -16,12 +16,15 @@ type ImageAttachment = {
 
 type Source = { url: string; title?: string };
 
+type ReportRef = { token: string; titulo?: string; periodo?: string; tipo?: string };
+
 type Message = {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   images?: ImageAttachment[];
   sources?: Source[];
+  report?: ReportRef | null;
   userImage?: string | null;
   timestamp?: number;
 };
@@ -39,6 +42,25 @@ type StoredSession = {
 // La función renderMarkdown ya no es necesaria con ReactMarkdown
 
 function newId() { return `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`; }
+
+// Limpia del texto visible los rastros de tool-calls y el marcador de reporte.
+function stripMarkers(text: string): string {
+  return text
+    .replace(/Calling\s+[\w-]+\s+with\s+input:\s*\{[\s\S]*?\}\n*/g, '')
+    .replace(/\[\[REPORT\]\]:\s*\{[\s\S]*$/m, '')
+    .trimStart();
+}
+
+// Extrae la referencia de reporte que el agente emite como [[REPORT]]:{...}
+function parseReport(text: string): ReportRef | null {
+  const m = text.match(/\[\[REPORT\]\]:\s*(\{[\s\S]*?\})/);
+  if (!m) return null;
+  try {
+    const o = JSON.parse(m[1]);
+    if (o && typeof o.token === 'string') return o as ReportRef;
+  } catch { /* marcador mal formado, ignorar */ }
+  return null;
+}
 
 function formatTime(ts: number) {
   const d = Date.now() - ts;
@@ -399,11 +421,11 @@ export default function SaraChatPage() {
             streamMsgId = newId();
             accumulated = chunk;
             setIsLoading(false);
-            const displayContent = accumulated.replace(/Calling\s+[\w-]+\s+with\s+input:\s*\{[\s\S]*?\}\n*/g, '').trimStart();
+            const displayContent = stripMarkers(accumulated);
             setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: displayContent, timestamp: Date.now() }]);
           } else {
             accumulated += chunk;
-            const displayContent = accumulated.replace(/Calling\s+[\w-]+\s+with\s+input:\s*\{[\s\S]*?\}\n*/g, '').trimStart();
+            const displayContent = stripMarkers(accumulated);
             setMessages(prev => prev.map(m => m.id === streamMsgId ? { ...m, content: displayContent } : m));
           }
         };
@@ -457,8 +479,8 @@ export default function SaraChatPage() {
           );
         }
 
-        const displayContent = accumulated.replace(/Calling\s+[\w-]+\s+with\s+input:\s*\{[\s\S]*?\}\n*/g, '').trimStart();
-        const finalMsg: Message = { id: streamMsgId, role: 'assistant', content: displayContent || 'Sin respuesta.', images: streamImages, timestamp: Date.now() };
+        const displayContent = stripMarkers(accumulated);
+        const finalMsg: Message = { id: streamMsgId, role: 'assistant', content: displayContent || 'Sin respuesta.', images: streamImages, report: parseReport(accumulated), timestamp: Date.now() };
         persist([...withUser, finalMsg], sid);
 
       } else {
@@ -681,6 +703,23 @@ export default function SaraChatPage() {
                         </div>
                       )}
                     </div>
+
+                    {/* Tarjeta de reporte (zona dinámica) */}
+                    {m.report && (
+                      <a
+                        href={`/chat/r/${m.report.token}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group flex items-center gap-3 mt-1 px-4 py-3 rounded-2xl bg-white dark:bg-[#1f1f1f] border border-[#71BF44]/30 hover:border-[#71BF44] shadow-sm hover:shadow-md transition-all w-full max-w-sm"
+                      >
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#71BF44] to-[#5a9c33] flex items-center justify-center text-white text-lg shrink-0">📊</div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-neutral-900 dark:text-neutral-100 truncate">{m.report.titulo || 'Reporte'}</p>
+                          <p className="text-[11px] text-neutral-500 dark:text-neutral-400 truncate">{m.report.periodo ? `${m.report.periodo} · ` : ''}Abrir / Descargar PDF</p>
+                        </div>
+                        <span className="shrink-0 text-[#71BF44] opacity-60 group-hover:opacity-100 transition-opacity">→</span>
+                      </a>
+                    )}
 
                     {/* RAG images */}
                     {m.images && m.images.length > 0 && (

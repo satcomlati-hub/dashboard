@@ -15,6 +15,13 @@ export default async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Endpoint server-to-server que llama el agente SARA para generar reportes.
+  // No usa sesión de NextAuth; se protege con el header secreto X-Sara-Report-Key
+  // dentro de la propia ruta. Por eso se omite aquí la validación de NextAuth.
+  if (pathname.startsWith("/api/reportes/generar")) {
+    return NextResponse.next()
+  }
+
   // Dejamos que Next Auth maneje el resto de rutas (login, protecciones generales)
   return authMiddleware(request as any)
 }
