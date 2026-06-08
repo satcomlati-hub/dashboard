@@ -2520,130 +2520,6 @@ return [
     );
   };
 
-  // Orígenes y Destinos en alerta para el filtro rápido de alertas
-  const alertOrigins = useMemo(() => {
-    const origins = new Set<string>();
-    simulatedResult.alertasMesaDeAyuda.forEach(a => {
-      if (a.superaUmbral) {
-        origins.add(`${a.cliente.toLowerCase()}|${a.hostname.toLowerCase()}`);
-      }
-    });
-    return origins;
-  }, [simulatedResult.alertasMesaDeAyuda]);
-
-  const alertDestinations = useMemo(() => {
-    const destinations = new Set<string>();
-    simulatedResult.alertasInfraestructura.forEach(a => {
-      if (a.superaUmbral) {
-        destinations.add(a.destino.toLowerCase());
-      }
-    });
-    return destinations;
-  }, [simulatedResult.alertasInfraestructura]);
-
-  // Filtrado local y por texto (Memoizado)
-  const filteredLogs = useMemo(() => {
-    return logs.filter(log => {
-      // Filtrar por conexión seleccionada
-      if (log.connectionId && !activeConnectionFilters.has(log.connectionId)) {
-        return false;
-      }
-      const isSqlAggregation = !log.Timestamp || isNaN(Date.parse(log.Timestamp));
-      if (!isSqlAggregation) {
-        const level = log.Level || 'Information';
-        if (!activeLevels.has(level)) return false;
-      }
-
-      // Filtrar por logs involucrados en alertas que superan umbrales
-      if (filterOnlyAlerts) {
-        const logCliente = (log.Cliente || log._cliente || log.cliente || 'Desconocido').toString().toLowerCase();
-        const logHostname = (log.Hostname || log._hostname || log.hostname || 'Desconocido').toString().toLowerCase();
-        const key = `${logCliente}|${logHostname}`;
-        
-        const message = (log.RenderedMessage || log.MessageTemplate || '').toString().toLowerCase();
-        const exception = (log.Exception || '').toString().toLowerCase();
-        
-        let statusCode = null;
-        const statusCodeMatch = exception.match(/"StatusCode"\s*:\s*(\d+)/) || 
-                              exception.match(/StatusCode=(\d+)/) || 
-                              message.match(/(\d{3})/);
-        if (statusCodeMatch) {
-          statusCode = parseInt(statusCodeMatch[1]);
-        }
-
-        let destino = 'desconocido';
-        const requestUriMatch = exception.match(/RequestUri[\\":=\s]+(https?:\/\/[^\s'",\ ]+)/) ||
-                              exception.match(/"RequestUri"\s*:\s*"([^"]+)"/) || 
-                              exception.match(/RequestUri=([^,\s]+)/) ||
-                              message.match(/(https?:\/\/[^\s'"]+)/);
-        if (requestUriMatch) {
-          try {
-            let destOrigin = requestUriMatch[1];
-            if (destOrigin.startsWith('http://') || destOrigin.startsWith('https://')) {
-              destOrigin = new URL(destOrigin).origin;
-            }
-            destino = destOrigin.toLowerCase();
-          } catch(e) {}
-        }
-
-        let isClient = false;
-        let isServer = false;
-        if (statusCode) {
-          if (statusCode >= 400 && statusCode < 500) isClient = true;
-          else if (statusCode >= 500) isServer = true;
-        }
-
-        if (!isClient && !isServer) {
-          if (exception.includes('timeout') || message.includes('timeout') || message.includes('tiempo de espera')) {
-            isServer = true;
-          } else if (exception.includes('conexión') || exception.includes('conexion') || 
-                     exception.includes('connectfailure') || exception.includes('httprequestexception') || 
-                     message.includes('conexión') || message.includes('conexion') || message.includes('failed to connect')) {
-            isServer = true;
-          } else if (exception.includes('bad request') || message.includes('bad request')) {
-            isClient = true;
-          } else if (exception.includes('not found') || message.includes('not found')) {
-            isClient = true;
-          }
-        }
-
-        if (isServer) {
-          const DOMINIOS_INFRAESTRUCTURA = [
-            'api-colombia.mysatcomla.com',
-            'webapi.mysatcomla.com',
-            'api-app-prod.mysatcomla.com'
-          ];
-          const esDestinoCloud = DOMINIOS_INFRAESTRUCTURA.some(dom => destino.includes(dom));
-          if (!esDestinoCloud) {
-            isClient = true;
-            isServer = false;
-          }
-        }
-
-        const matchClientAlert = isClient && alertOrigins.has(key);
-        const matchServerAlert = isServer && alertDestinations.has(destino);
-
-        if (!matchClientAlert && !matchServerAlert) {
-          return false;
-        }
-      }
-
-      if (!localSearchQuery.trim()) return true;
-
-      const query = localSearchQuery.toLowerCase();
-      const message = isSqlAggregation
-        ? (log.Properties ? log.Properties.map(p => `${p.Name} ${JSON.stringify(p.Value)}`).join(' ') : '').toLowerCase()
-        : (log.RenderedMessage || log.MessageTemplate || '').toLowerCase();
-      
-      const propertiesStr = log.Properties 
-        ? log.Properties.map(p => `${p.Name} ${JSON.stringify(p.Value)}`).join(' ').toLowerCase() 
-        : '';
-      const exceptionStr = (log.Exception || '').toLowerCase();
-
-      return message.includes(query) || propertiesStr.includes(query) || exceptionStr.includes(query);
-    });
-  }, [logs, activeLevels, localSearchQuery, activeConnectionFilters, filterOnlyAlerts, alertOrigins, alertDestinations]);
-
   const simulatedResult = useMemo(() => {
     if (logs.length === 0) {
       return {
@@ -2965,6 +2841,7 @@ return [
       alertasInfraestructura.push({
         destino: data.destino,
         superaUmbral: superaUmbral,
+        box: data.destino,
         cantidadClientesAfectados: data.clientes.size,
         clientesAfectados: Array.from(data.clientes),
         totalEventosError: data.totalEventos,
@@ -3051,6 +2928,130 @@ return [
     infraSortBy, 
     infraSortOrder
   ]);
+
+  // Orígenes y Destinos en alerta para el filtro rápido de alertas
+  const alertOrigins = useMemo(() => {
+    const origins = new Set<string>();
+    simulatedResult.alertasMesaDeAyuda.forEach(a => {
+      if (a.superaUmbral) {
+        origins.add(`${a.cliente.toLowerCase()}|${a.hostname.toLowerCase()}`);
+      }
+    });
+    return origins;
+  }, [simulatedResult.alertasMesaDeAyuda]);
+
+  const alertDestinations = useMemo(() => {
+    const destinations = new Set<string>();
+    simulatedResult.alertasInfraestructura.forEach(a => {
+      if (a.superaUmbral) {
+        destinations.add(a.destino.toLowerCase());
+      }
+    });
+    return destinations;
+  }, [simulatedResult.alertasInfraestructura]);
+
+  // Filtrado local y por texto (Memoizado)
+  const filteredLogs = useMemo(() => {
+    return logs.filter(log => {
+      // Filtrar por conexión seleccionada
+      if (log.connectionId && !activeConnectionFilters.has(log.connectionId)) {
+        return false;
+      }
+      const isSqlAggregation = !log.Timestamp || isNaN(Date.parse(log.Timestamp));
+      if (!isSqlAggregation) {
+        const level = log.Level || 'Information';
+        if (!activeLevels.has(level)) return false;
+      }
+
+      // Filtrar por logs involucrados en alertas que superan umbrales
+      if (filterOnlyAlerts) {
+        const logCliente = (log.Cliente || log._cliente || log.cliente || 'Desconocido').toString().toLowerCase();
+        const logHostname = (log.Hostname || log._hostname || log.hostname || 'Desconocido').toString().toLowerCase();
+        const key = `${logCliente}|${logHostname}`;
+        
+        const message = (log.RenderedMessage || log.MessageTemplate || '').toString().toLowerCase();
+        const exception = (log.Exception || '').toString().toLowerCase();
+        
+        let statusCode = null;
+        const statusCodeMatch = exception.match(/"StatusCode"\s*:\s*(\d+)/) || 
+                              exception.match(/StatusCode=(\d+)/) || 
+                              message.match(/(\d{3})/);
+        if (statusCodeMatch) {
+          statusCode = parseInt(statusCodeMatch[1]);
+        }
+
+        let destino = 'desconocido';
+        const requestUriMatch = exception.match(/RequestUri[\\":=\s]+(https?:\/\/[^\s'",\ ]+)/) ||
+                              exception.match(/"RequestUri"\s*:\s*"([^"]+)"/) || 
+                              exception.match(/RequestUri=([^,\s]+)/) ||
+                              message.match(/(https?:\/\/[^\s'"]+)/);
+        if (requestUriMatch) {
+          try {
+            let destOrigin = requestUriMatch[1];
+            if (destOrigin.startsWith('http://') || destOrigin.startsWith('https://')) {
+              destOrigin = new URL(destOrigin).origin;
+            }
+            destino = destOrigin.toLowerCase();
+          } catch(e) {}
+        }
+
+        let isClient = false;
+        let isServer = false;
+        if (statusCode) {
+          if (statusCode >= 400 && statusCode < 500) isClient = true;
+          else if (statusCode >= 500) isServer = true;
+        }
+
+        if (!isClient && !isServer) {
+          if (exception.includes('timeout') || message.includes('timeout') || message.includes('tiempo de espera')) {
+            isServer = true;
+          } else if (exception.includes('conexión') || exception.includes('conexion') || 
+                     exception.includes('connectfailure') || exception.includes('httprequestexception') || 
+                     message.includes('conexión') || message.includes('conexion') || message.includes('failed to connect')) {
+            isServer = true;
+          } else if (exception.includes('bad request') || message.includes('bad request')) {
+            isClient = true;
+          } else if (exception.includes('not found') || message.includes('not found')) {
+            isClient = true;
+          }
+        }
+
+        if (isServer) {
+          const DOMINIOS_INFRAESTRUCTURA = [
+            'api-colombia.mysatcomla.com',
+            'webapi.mysatcomla.com',
+            'api-app-prod.mysatcomla.com'
+          ];
+          const esDestinoCloud = DOMINIOS_INFRAESTRUCTURA.some(dom => destino.includes(dom));
+          if (!esDestinoCloud) {
+            isClient = true;
+            isServer = false;
+          }
+        }
+
+        const matchClientAlert = isClient && alertOrigins.has(key);
+        const matchServerAlert = isServer && alertDestinations.has(destino);
+
+        if (!matchClientAlert && !matchServerAlert) {
+          return false;
+        }
+      }
+
+      if (!localSearchQuery.trim()) return true;
+
+      const query = localSearchQuery.toLowerCase();
+      const message = isSqlAggregation
+        ? (log.Properties ? log.Properties.map(p => `${p.Name} ${JSON.stringify(p.Value)}`).join(' ') : '').toLowerCase()
+        : (log.RenderedMessage || log.MessageTemplate || '').toLowerCase();
+      
+      const propertiesStr = log.Properties 
+        ? log.Properties.map(p => `${p.Name} ${JSON.stringify(p.Value)}`).join(' ').toLowerCase() 
+        : '';
+      const exceptionStr = (log.Exception || '').toLowerCase();
+
+      return message.includes(query) || propertiesStr.includes(query) || exceptionStr.includes(query);
+    });
+  }, [logs, activeLevels, localSearchQuery, activeConnectionFilters, filterOnlyAlerts, alertOrigins, alertDestinations]);
 
   // Toggle de nivel en los chips de filtro local
   const toggleLocalLevel = (lvl: string) => {
