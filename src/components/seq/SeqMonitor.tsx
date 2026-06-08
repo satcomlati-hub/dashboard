@@ -3656,21 +3656,38 @@ return [
                           }`}
                         >
                           <Activity className="w-3.5 h-3.5" />
-                          <span>{showLiveAnalysisPanel ? 'Cerrar Análisis' : 'Analizar Errores 🔍'}</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {showLiveAnalysisPanel && !rawSqlResult && (
-                    <div className="absolute top-[37px] left-0 right-0 bg-[#151515] border-b border-neutral-800 p-4 z-20 shadow-2xl animate-slide-down max-h-[70vh] overflow-y-auto">
+                          <span>{showLiveAnalysisPanel ? 'Cerrar Análisis' : 'Ana                  {showLiveAnalysisPanel && !rawSqlResult && (
+                    <div className="absolute top-[37px] left-0 right-0 bg-[#121c19]/95 backdrop-blur-md border-b border-emerald-900/40 p-4 z-20 shadow-2xl animate-slide-down max-h-[70vh] overflow-y-auto">
                       <div className="flex flex-col gap-3 font-sans text-xs">
-                        <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
+                        <div className="flex items-center justify-between border-b border-emerald-900/25 pb-2">
                           <h4 className="text-sm font-bold text-[#71BF44] flex items-center gap-1.5">
                             <Activity className="w-4 h-4 animate-pulse" />
                             <span>Análisis de Errores y Alertas en Tiempo Real (Consola Activa)</span>
                           </h4>
                           <div className="flex items-center gap-4">
+                            <button
+                              onClick={() => {
+                                if (!selectedQueryForAlert) {
+                                  setSelectedQueryForAlert({
+                                    id: 'temp-console-alert',
+                                    name: 'Consulta de Consola Activa',
+                                    filter: currentFilter || "@Level = 'Error' or @Level = 'Fatal'",
+                                    alertConfig: alertConfig
+                                  });
+                                  setAlertQueryFilter(currentFilter || "@Level = 'Error' or @Level = 'Fatal'");
+                                } else {
+                                  setAlertQueryFilter(selectedQueryForAlert.filter);
+                                }
+                                setIsCustomAlertEdited(false);
+                                setCustomJsAlert('');
+                                setIsAlertModalOpen(true);
+                              }}
+                              className="flex items-center gap-1.5 bg-[#71BF44]/10 hover:bg-[#71BF44]/25 text-[#71BF44] border border-[#71BF44]/30 px-2.5 py-1 rounded text-[10px] font-bold transition-all"
+                              title="Ver y editar el script de la alerta asociada para N8N"
+                            >
+                              <Bell className="w-3.5 h-3.5 text-[#71BF44]" />
+                              <span>Ver/Editar Script</span>
+                            </button>
                             <button
                               onClick={handleDownloadAnalysisJson}
                               className="flex items-center gap-1 bg-[#71BF44]/10 hover:bg-[#71BF44]/25 text-[#71BF44] border border-[#71BF44]/30 px-2 py-0.5 rounded text-[10px] font-bold transition-all"
@@ -3679,11 +3696,11 @@ return [
                               <FileText className="w-3 h-3" />
                               <span>Descargar Resumen JSON</span>
                             </button>
-                            <div className="flex items-center gap-1 text-[10px] text-neutral-400">
+                            <div className="flex items-center gap-1 text-[10px] text-neutral-350">
                               <span>¿Alerta Disparada?:</span>
                               <span className={`px-2 py-0.5 rounded-full font-bold uppercase ${
                                 simulatedResult.alertaGenerada
-                                  ? 'bg-red-500/10 text-red-500 border border-red-500/25'
+                                  ? 'bg-red-500/10 text-red-500 border border-red-500/25 animate-pulse'
                                   : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
                               }`}>
                                 {simulatedResult.alertaGenerada ? 'SÍ (CRÍTICA)' : 'NO (SANO)'}
@@ -3691,49 +3708,52 @@ return [
                             </div>
                             <button
                               onClick={() => setShowLiveAnalysisPanel(false)}
-                              className="text-neutral-450 hover:text-white p-1 hover:bg-neutral-850 rounded"
+                              className="text-neutral-450 hover:text-white p-1 hover:bg-[#152420] rounded transition-colors"
                             >
                               <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>                     <X className="w-4 h-4" />
                             </button>
                           </div>
                         </div>
 
                         {/* Controles de Umbrales Dinámicos */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#111] border border-neutral-850 p-3 rounded-lg">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#152420] border border-emerald-950/30 p-3 rounded-lg">
                           <div className="flex flex-col gap-1">
-                            <label className="text-[10px] text-neutral-450 font-bold uppercase">Ventana Evaluada (Min)</label>
+                            <label className="text-[10px] text-emerald-400/80 font-bold uppercase">Ventana Evaluada (Min)</label>
                             <input
                               type="number"
                               value={alertConfig.timeWindowMinutes}
                               onChange={(e) => setAlertConfig(prev => ({ ...prev, timeWindowMinutes: Math.max(1, parseInt(e.target.value) || 10) }))}
-                              className="bg-[#181818] border border-neutral-800 rounded-md p-1.5 text-xs text-neutral-200 focus:outline-none focus:border-[#71BF44] text-center"
+                              className="bg-[#111c19] border border-emerald-950/40 rounded-md p-1.5 text-xs text-emerald-250 focus:outline-none focus:border-[#71BF44] text-center"
                             />
                           </div>
                           <div className="flex flex-col gap-1">
-                            <label className="text-[10px] text-neutral-450 font-bold uppercase">Umbral Cliente (Eventos)</label>
+                            <label className="text-[10px] text-emerald-400/80 font-bold uppercase">Umbral Cliente (Eventos)</label>
                             <input
                               type="number"
                               value={alertConfig.clientEventsThreshold}
                               onChange={(e) => setAlertConfig(prev => ({ ...prev, clientEventsThreshold: Math.max(1, parseInt(e.target.value) || 20) }))}
-                              className="bg-[#181818] border border-neutral-800 rounded-md p-1.5 text-xs text-neutral-200 focus:outline-none focus:border-[#71BF44] text-center"
+                              className="bg-[#111c19] border border-emerald-950/40 rounded-md p-1.5 text-xs text-emerald-250 focus:outline-none focus:border-[#71BF44] text-center"
                             />
                           </div>
                           <div className="flex flex-col gap-1">
-                            <label className="text-[10px] text-neutral-450 font-bold uppercase">Umbral Infraestructura (Eventos)</label>
+                            <label className="text-[10px] text-emerald-400/80 font-bold uppercase">Umbral Infraestructura (Eventos)</label>
                             <input
                               type="number"
                               value={alertConfig.serverEventsThreshold}
                               onChange={(e) => setAlertConfig(prev => ({ ...prev, serverEventsThreshold: Math.max(1, parseInt(e.target.value) || 10) }))}
-                              className="bg-[#181818] border border-neutral-800 rounded-md p-1.5 text-xs text-neutral-200 focus:outline-none focus:border-[#71BF44] text-center"
+                              className="bg-[#111c19] border border-emerald-950/40 rounded-md p-1.5 text-xs text-emerald-250 focus:outline-none focus:border-[#71BF44] text-center"
                             />
                           </div>
                           <div className="flex flex-col gap-1">
-                            <label className="text-[10px] text-neutral-450 font-bold uppercase">Mín. Clientes Afectados (Infra)</label>
+                            <label className="text-[10px] text-emerald-400/80 font-bold uppercase">Mín. Clientes Afectados (Infra)</label>
                             <input
                               type="number"
                               value={alertConfig.serverClientsThreshold}
                               onChange={(e) => setAlertConfig(prev => ({ ...prev, serverClientsThreshold: Math.max(1, parseInt(e.target.value) || 3) }))}
-                              className="bg-[#181818] border border-neutral-800 rounded-md p-1.5 text-xs text-neutral-200 focus:outline-none focus:border-[#71BF44] text-center"
+                              className="bg-[#111c19] border border-emerald-950/40 rounded-md p-1.5 text-xs text-emerald-250 focus:outline-none focus:border-[#71BF44] text-center"
                             />
                           </div>
                         </div>
@@ -3741,8 +3761,8 @@ return [
                         {/* Desglose de Alertas y Conteo */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {/* Columna Mesa de Ayuda (Clientes) */}
-                          <div className="border border-amber-250/50 dark:border-amber-900/30 bg-[#fffdf0] dark:bg-[#18160e] text-[#332e12] dark:text-[#ede4c0] rounded-xl p-3 flex flex-col gap-2 shadow-inner shadow-[#d97706]/5">
-                            <h5 className="text-[11px] font-bold text-amber-950 dark:text-amber-200 uppercase tracking-wider border-b border-amber-250/20 dark:border-amber-900/40 pb-1.5 flex items-center justify-between">
+                          <div className="border border-emerald-900/35 bg-[#132219] text-[#aee2c9] rounded-xl p-3 flex flex-col gap-2 shadow-inner shadow-black/10">
+                            <h5 className="text-[11px] font-bold text-emerald-350 dark:text-emerald-300 uppercase tracking-wider border-b border-emerald-900/25 pb-1.5 flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <span>Errores por Origen (Clientes)</span>
                                 <div className="flex items-center gap-1 font-sans text-[9px] normal-case font-normal select-none">
@@ -3755,7 +3775,7 @@ return [
                                     className={`px-1.5 py-0.5 rounded border transition-colors ${
                                       mesaAyudaSortBy === 'origen' 
                                         ? 'bg-[#71BF44] text-[#131313] border-transparent font-bold' 
-                                        : 'bg-transparent text-neutral-450 dark:text-neutral-500 border-neutral-300 dark:border-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-300'
+                                        : 'bg-transparent text-emerald-500 border-emerald-900/30 hover:text-emerald-300'
                                     }`}
                                     title="Ordenar por nombre de origen"
                                   >
@@ -3770,7 +3790,7 @@ return [
                                     className={`px-1.5 py-0.5 rounded border transition-colors ${
                                       mesaAyudaSortBy === 'eventos' 
                                         ? 'bg-[#71BF44] text-[#131313] border-transparent font-bold' 
-                                        : 'bg-transparent text-neutral-450 dark:text-neutral-500 border-neutral-300 dark:border-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-300'
+                                        : 'bg-transparent text-emerald-500 border-emerald-900/30 hover:text-emerald-300'
                                     }`}
                                     title="Ordenar por número de eventos"
                                   >
@@ -3778,11 +3798,11 @@ return [
                                   </button>
                                 </div>
                               </div>
-                              <span className="bg-amber-100/50 dark:bg-amber-950/40 px-2 py-0.5 rounded text-[10px] text-amber-800 dark:text-amber-300 font-bold shrink-0">
+                              <span className="bg-emerald-950/40 px-2 py-0.5 rounded text-[10px] text-emerald-400 font-bold shrink-0">
                                 {simulatedResult.alertasMesaDeAyuda.length} detectados
                               </span>
                             </h5>
-                            <div className="flex flex-col gap-2.5 max-h-56 overflow-y-auto divide-y divide-amber-100/30 dark:divide-amber-900/30">
+                            <div className="flex flex-col gap-2.5 max-h-56 overflow-y-auto divide-y divide-emerald-900/20">
                               {simulatedResult.alertasMesaDeAyuda.length === 0 ? (
                                 <span className="text-[11px] text-amber-750/60 dark:text-amber-400/60 italic p-2">Sin orígenes de error reportados en esta ventana.</span>
                               ) : (
@@ -3853,8 +3873,8 @@ return [
                           </div>
 
                           {/* Columna Infraestructura */}
-                          <div className="border border-amber-250/50 dark:border-amber-900/30 bg-[#fffdf0] dark:bg-[#18160e] text-[#332e12] dark:text-[#ede4c0] rounded-xl p-3 flex flex-col gap-2 shadow-inner shadow-[#d97706]/5">
-                            <h5 className="text-[11px] font-bold text-amber-950 dark:text-amber-200 uppercase tracking-wider border-b border-amber-250/20 dark:border-amber-900/40 pb-1.5 flex items-center justify-between">
+                          <div className="border border-rose-950/45 bg-[#201012] text-[#f8b6be] rounded-xl p-3 flex flex-col gap-2 shadow-inner shadow-black/10">
+                            <h5 className="text-[11px] font-bold text-rose-350 dark:text-rose-300 uppercase tracking-wider border-b border-rose-950/20 pb-1.5 flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <span>Errores de Servidor (Infraestructura)</span>
                                 <div className="flex items-center gap-1 font-sans text-[9px] normal-case font-normal select-none">
@@ -3867,7 +3887,7 @@ return [
                                     className={`px-1.5 py-0.5 rounded border transition-colors ${
                                       infraSortBy === 'destino' 
                                         ? 'bg-[#71BF44] text-[#131313] border-transparent font-bold' 
-                                        : 'bg-transparent text-neutral-450 dark:text-neutral-500 border-neutral-300 dark:border-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-300'
+                                        : 'bg-transparent text-rose-500 border-rose-950/30 hover:text-rose-300'
                                     }`}
                                     title="Ordenar por nombre de destino"
                                   >
@@ -3882,7 +3902,7 @@ return [
                                     className={`px-1.5 py-0.5 rounded border transition-colors ${
                                       infraSortBy === 'eventos' 
                                         ? 'bg-[#71BF44] text-[#131313] border-transparent font-bold' 
-                                        : 'bg-transparent text-neutral-450 dark:text-neutral-500 border-neutral-300 dark:border-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-300'
+                                        : 'bg-transparent text-rose-500 border-rose-950/30 hover:text-rose-300'
                                     }`}
                                     title="Ordenar por número de eventos"
                                   >
@@ -3890,11 +3910,11 @@ return [
                                   </button>
                                 </div>
                               </div>
-                              <span className="bg-amber-100/50 dark:bg-amber-950/40 px-2 py-0.5 rounded text-[10px] text-amber-800 dark:text-amber-300 font-bold shrink-0">
+                              <span className="bg-rose-950/40 px-2 py-0.5 rounded text-[10px] text-rose-450 font-bold shrink-0">
                                 {simulatedResult.alertasInfraestructura.length} destinos
                               </span>
                             </h5>
-                            <div className="flex flex-col gap-2.5 max-h-56 overflow-y-auto divide-y divide-amber-100/30 dark:divide-amber-900/30">
+                            <div className="flex flex-col gap-2.5 max-h-56 overflow-y-auto divide-y divide-rose-950/25">
                               {simulatedResult.alertasInfraestructura.length === 0 ? (
                                 <span className="text-[11px] text-amber-750/60 dark:text-amber-400/60 italic p-2">Sin fallas de infraestructura en esta ventana.</span>
                               ) : (
