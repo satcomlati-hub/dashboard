@@ -209,8 +209,9 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
   const [customJsAlert, setCustomJsAlert] = useState<string>('');
   const [isCustomAlertEdited, setIsCustomAlertEdited] = useState<boolean>(false);
   const [alertModalTab, setAlertModalTab] = useState<'script' | 'simulation'>('script');
-  const [alertQueryFilter, setAlertQueryFilter] = useState<string>('');
+  const [alertQueryFilter, setAlertQueryFilter] = useState<string>('');   
   const [showLiveAnalysisPanel, setShowLiveAnalysisPanel] = useState<boolean>(false);
+  const [filterOnlyAlerts, setFilterOnlyAlerts] = useState<boolean>(false);
   const [mesaAyudaSortBy, setMesaAyudaSortBy] = useState<'origen' | 'eventos'>('eventos');
   const [mesaAyudaSortOrder, setMesaAyudaSortOrder] = useState<'asc' | 'desc'>('desc');
   const [infraSortBy, setInfraSortBy] = useState<'destino' | 'eventos'>('eventos');
@@ -1909,6 +1910,8 @@ return [
     const baseFilter = "@Level = 'Error' or @Level = 'Fatal'";
     const newFilter = `${baseFilter} and ${filterPart}`;
     
+    setQueryStartTime('');
+    setQueryEndTime('');
     setCurrentFilter(newFilter);
     stateRef.current.currentFilter = newFilter;
     setShowLiveAnalysisPanel(false);
@@ -1930,6 +1933,8 @@ return [
     const baseFilter = "@Level = 'Error' or @Level = 'Fatal'";
     const newFilter = `${baseFilter} and (@Exception like '%${cleanDest}%' or @Message like '%${cleanDest}%')`;
     
+    setQueryStartTime('');
+    setQueryEndTime('');
     setCurrentFilter(newFilter);
     stateRef.current.currentFilter = newFilter;
     setShowLiveAnalysisPanel(false);
@@ -1949,6 +1954,8 @@ return [
     const baseFilter = "@Level = 'Error' or @Level = 'Fatal'";
     const newFilter = `${baseFilter} and (@Message like '%${cleanMsg}%' or @Exception like '%${cleanMsg}%')`;
     
+    setQueryStartTime('');
+    setQueryEndTime('');
     setCurrentFilter(newFilter);
     stateRef.current.currentFilter = newFilter;
     setShowLiveAnalysisPanel(false);
@@ -1968,6 +1975,8 @@ return [
     // Auto-seleccionar todos los orígenes de Seq disponibles
     setSelectedConnectionIds(new Set(connections.map(c => c.id)));
     
+    setQueryStartTime('');
+    setQueryEndTime('');
     setCurrentFilter(newFilter);
     stateRef.current.currentFilter = newFilter;
     setShowLiveAnalysisPanel(false);
@@ -2500,7 +2509,7 @@ return [
           } else if (/true|false/.test(token)) {
             className = 'text-emerald-400 font-bold'; // Booleanos
           } else if (/null/.test(token)) {
-            className = 'text-red-400 italic'; // Nulls
+          className = 'text-red-400 italic'; // Nulls
           } else if (/^\d+/.test(token)) {
             className = 'text-amber-400'; // Números
           }
@@ -2510,6 +2519,27 @@ return [
       </code>
     );
   };
+
+  // Orígenes y Destinos en alerta para el filtro rápido de alertas
+  const alertOrigins = useMemo(() => {
+    const origins = new Set<string>();
+    simulatedResult.alertasMesaDeAyuda.forEach(a => {
+      if (a.superaUmbral) {
+        origins.add(`${a.cliente.toLowerCase()}|${a.hostname.toLowerCase()}`);
+      }
+    });
+    return origins;
+  }, [simulatedResult.alertasMesaDeAyuda]);
+
+  const alertDestinations = useMemo(() => {
+    const destinations = new Set<string>();
+    simulatedResult.alertasInfraestructura.forEach(a => {
+      if (a.superaUmbral) {
+        destinations.add(a.destino.toLowerCase());
+      }
+    });
+    return destinations;
+  }, [simulatedResult.alertasInfraestructura]);
 
   // Filtrado local y por texto (Memoizado)
   const filteredLogs = useMemo(() => {
@@ -2522,6 +2552,80 @@ return [
       if (!isSqlAggregation) {
         const level = log.Level || 'Information';
         if (!activeLevels.has(level)) return false;
+      }
+
+      // Filtrar por logs involucrados en alertas que superan umbrales
+      if (filterOnlyAlerts) {
+        const logCliente = (log.Cliente || log._cliente || log.cliente || 'Desconocido').toString().toLowerCase();
+        const logHostname = (log.Hostname || log._hostname || log.hostname || 'Desconocido').toString().toLowerCase();
+        const key = `${logCliente}|${logHostname}`;
+        
+        const message = (log.RenderedMessage || log.MessageTemplate || '').toString().toLowerCase();
+        const exception = (log.Exception || '').toString().toLowerCase();
+        
+        let statusCode = null;
+        const statusCodeMatch = exception.match(/"StatusCode"\s*:\s*(\d+)/) || 
+                              exception.match(/StatusCode=(\d+)/) || 
+                              message.match(/(\d{3})/);
+        if (statusCodeMatch) {
+          statusCode = parseInt(statusCodeMatch[1]);
+        }
+
+        let destino = 'desconocido';
+        const requestUriMatch = exception.match(/RequestUri[\\":=\s]+(https?:\/\/[^\s'",\ ]+)/) ||
+                              exception.match(/"RequestUri"\s*:\s*"([^"]+)"/) || 
+                              exception.match(/RequestUri=([^,\s]+)/) ||
+                              message.match(/(https?:\/\/[^\s'"]+)/);
+        if (requestUriMatch) {
+          try {
+            let destOrigin = requestUriMatch[1];
+            if (destOrigin.startsWith('http://') || destOrigin.startsWith('https://')) {
+              destOrigin = new URL(destOrigin).origin;
+            }
+            destino = destOrigin.toLowerCase();
+          } catch(e) {}
+        }
+
+        let isClient = false;
+        let isServer = false;
+        if (statusCode) {
+          if (statusCode >= 400 && statusCode < 500) isClient = true;
+          else if (statusCode >= 500) isServer = true;
+        }
+
+        if (!isClient && !isServer) {
+          if (exception.includes('timeout') || message.includes('timeout') || message.includes('tiempo de espera')) {
+            isServer = true;
+          } else if (exception.includes('conexión') || exception.includes('conexion') || 
+                     exception.includes('connectfailure') || exception.includes('httprequestexception') || 
+                     message.includes('conexión') || message.includes('conexion') || message.includes('failed to connect')) {
+            isServer = true;
+          } else if (exception.includes('bad request') || message.includes('bad request')) {
+            isClient = true;
+          } else if (exception.includes('not found') || message.includes('not found')) {
+            isClient = true;
+          }
+        }
+
+        if (isServer) {
+          const DOMINIOS_INFRAESTRUCTURA = [
+            'api-colombia.mysatcomla.com',
+            'webapi.mysatcomla.com',
+            'api-app-prod.mysatcomla.com'
+          ];
+          const esDestinoCloud = DOMINIOS_INFRAESTRUCTURA.some(dom => destino.includes(dom));
+          if (!esDestinoCloud) {
+            isClient = true;
+            isServer = false;
+          }
+        }
+
+        const matchClientAlert = isClient && alertOrigins.has(key);
+        const matchServerAlert = isServer && alertDestinations.has(destino);
+
+        if (!matchClientAlert && !matchServerAlert) {
+          return false;
+        }
       }
 
       if (!localSearchQuery.trim()) return true;
@@ -2538,7 +2642,7 @@ return [
 
       return message.includes(query) || propertiesStr.includes(query) || exceptionStr.includes(query);
     });
-  }, [logs, activeLevels, localSearchQuery, activeConnectionFilters]);
+  }, [logs, activeLevels, localSearchQuery, activeConnectionFilters, filterOnlyAlerts, alertOrigins, alertDestinations]);
 
   const simulatedResult = useMemo(() => {
     if (logs.length === 0) {
@@ -3612,7 +3716,18 @@ return [
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 select-none w-full lg:w-auto justify-end">
+                <div className="flex items-center gap-3 select-none w-full lg:w-auto justify-end">
+                  {!rawSqlResult && logs.length > 0 && (
+                    <label className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 px-2.5 py-1.5 rounded-lg cursor-pointer hover:bg-amber-500/20 transition-all whitespace-nowrap text-xs font-bold">
+                      <input
+                        type="checkbox"
+                        checked={filterOnlyAlerts}
+                        onChange={(e) => setFilterOnlyAlerts(e.target.checked)}
+                        className="rounded border-amber-500/30 bg-white dark:bg-neutral-800 text-amber-500 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                      />
+                      <span>Solo Alertas ⚠️</span>
+                    </label>
+                  )}
                   <div className="relative max-w-xs w-full">
                     <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-neutral-400 dark:text-neutral-500" />
                     <input
