@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
+import { query as dbQuery } from '@/lib/db';
 
+export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 // ── Config ───────────────────────────────────────────────────────────
@@ -133,6 +135,9 @@ export async function POST(request: Request) {
       body.image_urls = [imageUrl];
     }
 
+    // Marca de tiempo previa a la llamada del agente: cualquier reporte creado
+    // a partir de aquí pertenece a ESTE turno (correlación para inyectar la tarjeta).
+    const beforeAgent = Date.now();
     const upstream = await fetch(AGENT_URL, {
       method: 'POST',
       headers: {
@@ -214,6 +219,27 @@ export async function POST(request: Request) {
             if (imgs.length > 0) {
               controller.enqueue(ndjsonItem(`[[IMGS]]:${imgs.join('|')}`));
             }
+          }
+
+          // Marker de reporte — si el agente generó uno en ESTE turno, inyectamos
+          // la tarjeta server-side (no dependemos de que el modelo copie el marker).
+          try {
+            const rep = await dbQuery(
+              `select token, titulo, periodo, tipo
+                 from public.ag_reports
+                where created_at >= $1
+                order by created_at desc
+                limit 1`,
+              [new Date(beforeAgent - 5000)],
+            );
+            const row = rep.rows[0];
+            if (row?.token) {
+              controller.enqueue(ndjsonItem(
+                `[[REPORT]]:${JSON.stringify({ token: row.token, titulo: row.titulo, periodo: row.periodo, tipo: row.tipo })}`,
+              ));
+            }
+          } catch (err) {
+            console.error('report marker lookup failed:', err);
           }
         } catch (err) {
           controller.enqueue(
