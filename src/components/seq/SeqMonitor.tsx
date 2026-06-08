@@ -209,9 +209,13 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
   const [customJsAlert, setCustomJsAlert] = useState<string>('');
   const [isCustomAlertEdited, setIsCustomAlertEdited] = useState<boolean>(false);
   const [alertModalTab, setAlertModalTab] = useState<'script' | 'simulation'>('script');
-  const [alertQueryFilter, setAlertQueryFilter] = useState<string>('');   
+  const [alertQueryFilter, setAlertQueryFilter] = useState<string>('');
   const [showLiveAnalysisPanel, setShowLiveAnalysisPanel] = useState<boolean>(false);
   const [filterOnlyAlerts, setFilterOnlyAlerts] = useState<boolean>(false);
+  const [localFilterOrigin, setLocalFilterOrigin] = useState<{ cliente: string; hostname: string } | null>(null);
+  const [localFilterDestino, setLocalFilterDestino] = useState<string | null>(null);
+  const [localFilterMessage, setLocalFilterMessage] = useState<string | null>(null);
+  const [localFilterId, setLocalFilterId] = useState<string | null>(null);
   const [mesaAyudaSortBy, setMesaAyudaSortBy] = useState<'origen' | 'eventos'>('eventos');
   const [mesaAyudaSortOrder, setMesaAyudaSortOrder] = useState<'asc' | 'desc'>('desc');
   const [infraSortBy, setInfraSortBy] = useState<'destino' | 'eventos'>('eventos');
@@ -1893,33 +1897,17 @@ return [
 
   // Filtrar y crear consulta de Seq a partir de un cliente y hostname del resultado
   const handleFilterByOrigin = (cliente: string, hostname: string) => {
-    let conds = [];
-    if (cliente && cliente !== 'Desconocido') {
-      conds.push(`(Cliente = '${cliente}' or _cliente = '${cliente}')`);
-    }
-    if (hostname && hostname !== 'Desconocido') {
-      conds.push(`(Hostname = '${hostname}' or _hostname = '${hostname}')`);
-    }
-    
-    let filterPart = conds.join(' and ');
-    if (!filterPart) {
+    if ((!cliente || cliente === 'Desconocido') && (!hostname || hostname === 'Desconocido')) {
       showToast('No se puede filtrar por origen Desconocido', 'warning');
       return;
     }
     
-    const baseFilter = "@Level = 'Error' or @Level = 'Fatal'";
-    const newFilter = `${baseFilter} and ${filterPart}`;
-    
-    setQueryStartTime('');
-    setQueryEndTime('');
-    setCurrentFilter(newFilter);
-    stateRef.current.currentFilter = newFilter;
+    setLocalFilterOrigin({ cliente, hostname });
+    setLocalFilterDestino(null);
+    setLocalFilterMessage(null);
+    setLocalFilterId(null);
     setShowLiveAnalysisPanel(false);
-    showToast(`Filtrando por origen: ${cliente} / ${hostname}`, 'success');
-    
-    setTimeout(() => {
-      fetchLogs(false);
-    }, 100);
+    showToast(`Filtrando localmente por origen: ${cliente} / ${hostname}`, 'success');
   };
 
   // Filtrar y crear consulta de Seq a partir de un destino (API) del resultado
@@ -1929,62 +1917,36 @@ return [
       return;
     }
     
-    const cleanDest = destino.replace(/^https?:\/\//, '');
-    const baseFilter = "@Level = 'Error' or @Level = 'Fatal'";
-    const newFilter = `${baseFilter} and (@Exception like '%${cleanDest}%' or @Message like '%${cleanDest}%')`;
-    
-    setQueryStartTime('');
-    setQueryEndTime('');
-    setCurrentFilter(newFilter);
-    stateRef.current.currentFilter = newFilter;
+    setLocalFilterDestino(destino);
+    setLocalFilterOrigin(null);
+    setLocalFilterMessage(null);
+    setLocalFilterId(null);
     setShowLiveAnalysisPanel(false);
-    showToast(`Filtrando por destino: ${destino}`, 'success');
-    
-    setTimeout(() => {
-      fetchLogs(false);
-    }, 100);
+    showToast(`Filtrando localmente por destino: ${destino}`, 'success');
   };
 
   // Filtrar y crear consulta de Seq a partir de un fragmento de mensaje de error
   const handleFilterByMessage = (message: string) => {
     if (!message) return;
     
-    // Escapar comillas y limpiar espacios
-    const cleanMsg = message.replace(/'/g, "\\'").replace(/\r?\n|\r/g, " ").trim().substring(0, 80);
-    const baseFilter = "@Level = 'Error' or @Level = 'Fatal'";
-    const newFilter = `${baseFilter} and (@Message like '%${cleanMsg}%' or @Exception like '%${cleanMsg}%')`;
-    
-    setQueryStartTime('');
-    setQueryEndTime('');
-    setCurrentFilter(newFilter);
-    stateRef.current.currentFilter = newFilter;
+    setLocalFilterMessage(message);
+    setLocalFilterOrigin(null);
+    setLocalFilterDestino(null);
+    setLocalFilterId(null);
     setShowLiveAnalysisPanel(false);
-    showToast(`Filtrando por mensaje de error`, 'success');
-    
-    setTimeout(() => {
-      fetchLogs(false);
-    }, 100);
+    showToast(`Filtrando localmente por mensaje de error`, 'success');
   };
 
   // Filtrar y buscar un ID de evento específico en todas las conexiones seleccionadas
   const handleFilterById = (eventId: string) => {
     if (!eventId) return;
     
-    const newFilter = `@Id = '${eventId}'`;
-    
-    // Auto-seleccionar todos los orígenes de Seq disponibles
-    setSelectedConnectionIds(new Set(connections.map(c => c.id)));
-    
-    setQueryStartTime('');
-    setQueryEndTime('');
-    setCurrentFilter(newFilter);
-    stateRef.current.currentFilter = newFilter;
+    setLocalFilterId(eventId);
+    setLocalFilterOrigin(null);
+    setLocalFilterDestino(null);
+    setLocalFilterMessage(null);
     setShowLiveAnalysisPanel(false);
-    showToast(`Buscando Evento ID: ${eventId} en todas las conexiones`, 'success');
-    
-    setTimeout(() => {
-      fetchLogs(false);
-    }, 100);
+    showToast(`Filtrando localmente por Event ID: ${eventId}`, 'success');
   };
 
   // Agregar consulta al historial de ejecuciones (máximo 100, sin duplicados)
@@ -3055,6 +3017,59 @@ return [
         }
       }
 
+      // Filtrado local por Origen (lupa)
+      if (localFilterOrigin) {
+        let logCliente = 'desconocido';
+        let logHostname = 'desconocido';
+        
+        if (log.Properties) {
+          log.Properties.forEach(p => {
+            const nameLower = p.Name.toLowerCase();
+            if (nameLower === 'cliente' || nameLower === '_cliente') logCliente = String(p.Value).toLowerCase();
+            if (nameLower === 'hostname' || nameLower === '_hostname') logHostname = String(p.Value).toLowerCase();
+          });
+        }
+        const anyLog = log as any;
+        if (anyLog.Cliente) logCliente = anyLog.Cliente.toString().toLowerCase();
+        else if (anyLog._cliente) logCliente = anyLog._cliente.toString().toLowerCase();
+        else if (anyLog.cliente) logCliente = anyLog.cliente.toString().toLowerCase();
+
+        if (anyLog.Hostname) logHostname = anyLog.Hostname.toString().toLowerCase();
+        else if (anyLog._hostname) logHostname = anyLog._hostname.toString().toLowerCase();
+        else if (anyLog.hostname) logHostname = anyLog.hostname.toString().toLowerCase();
+
+        const matchC = !localFilterOrigin.cliente || localFilterOrigin.cliente === 'Desconocido' || logCliente === localFilterOrigin.cliente.toLowerCase();
+        const matchH = !localFilterOrigin.hostname || localFilterOrigin.hostname === 'Desconocido' || logHostname === localFilterOrigin.hostname.toLowerCase();
+        if (!matchC || !matchH) return false;
+      }
+
+      // Filtrado local por Destino (lupa)
+      if (localFilterDestino) {
+        const exception = (log.Exception || '').toString().toLowerCase();
+        const message = (log.RenderedMessage || log.MessageTemplate || '').toString().toLowerCase();
+        const cleanDest = localFilterDestino.replace(/^https?:\/\//, '').toLowerCase();
+        if (!exception.includes(cleanDest) && !message.includes(cleanDest)) {
+          return false;
+        }
+      }
+
+      // Filtrado local por Mensaje (lupa)
+      if (localFilterMessage) {
+        const exception = (log.Exception || '').toString().toLowerCase();
+        const message = (log.RenderedMessage || log.MessageTemplate || '').toString().toLowerCase();
+        const cleanMsg = localFilterMessage.toLowerCase();
+        if (!exception.includes(cleanMsg) && !message.includes(cleanMsg)) {
+          return false;
+        }
+      }
+
+      // Filtrado local por Event ID (lupa)
+      if (localFilterId) {
+        if (log.Id !== localFilterId && (log as any)['@Id'] !== localFilterId) {
+          return false;
+        }
+      }
+
       if (!localSearchQuery.trim()) return true;
 
       const query = localSearchQuery.toLowerCase();
@@ -3069,7 +3084,19 @@ return [
 
       return message.includes(query) || propertiesStr.includes(query) || exceptionStr.includes(query);
     });
-  }, [logs, activeLevels, localSearchQuery, activeConnectionFilters, filterOnlyAlerts, alertOrigins, alertDestinations]);
+  }, [
+    logs, 
+    activeLevels, 
+    localSearchQuery, 
+    activeConnectionFilters, 
+    filterOnlyAlerts, 
+    alertOrigins, 
+    alertDestinations, 
+    localFilterOrigin, 
+    localFilterDestino, 
+    localFilterMessage, 
+    localFilterId
+  ]);
 
   // Toggle de nivel en los chips de filtro local
   const toggleLocalLevel = (lvl: string) => {
@@ -3759,6 +3786,37 @@ return [
                   </div>
                 </div>
               </div>
+ 
+              {/* Indicador de Filtros Locales Activos */}
+              {(localFilterOrigin || localFilterDestino || localFilterMessage || localFilterId) && (
+                <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 p-2.5 rounded-xl flex items-center justify-between text-xs font-medium animate-fade-in shadow-sm select-none">
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                      <Search className="w-3.5 h-3.5" />
+                    </span>
+                    <span>
+                      <strong>Filtro local activo:</strong>{' '}
+                      {localFilterOrigin && `Origen (${localFilterOrigin.cliente} / ${localFilterOrigin.hostname})`}
+                      {localFilterDestino && `Destino (${localFilterDestino})`}
+                      {localFilterMessage && `Mensaje ("${localFilterMessage.length > 40 ? localFilterMessage.substring(0, 40) + '...' : localFilterMessage}")`}
+                      {localFilterId && `ID de Evento (${localFilterId})`}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setLocalFilterOrigin(null);
+                      setLocalFilterDestino(null);
+                      setLocalFilterMessage(null);
+                      setLocalFilterId(null);
+                      showToast('Filtro local limpiado', 'info');
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-700 dark:text-emerald-300 rounded-lg text-[10px] font-bold transition-all uppercase tracking-wider"
+                  >
+                    <X className="w-3 h-3" />
+                    Limpiar
+                  </button>
+                </div>
+              )}
 
               {/* Visor de Eventos (Consola / Grid / Gráficas) */}
               <div className="flex-1 flex flex-col border border-teal-200/35 dark:border-teal-900 bg-[#f0faf7] dark:bg-[#071714] text-[#0f2d26] dark:text-[#d3ebe6] rounded-xl overflow-hidden min-h-0 relative shadow-inner">
@@ -4411,6 +4469,19 @@ return [
                               
                               <span className="text-[10px] text-teal-650 dark:text-teal-400 shrink-0 select-none mt-0.5 font-bold">{timeStr}</span>
 
+                              {(log.Id || (log as any)['@Id']) && (
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleFilterById(log.Id || (log as any)['@Id']);
+                                  }}
+                                  className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border tracking-wider shrink-0 select-none bg-teal-100/50 dark:bg-teal-950/30 border-teal-250/25 dark:border-teal-900/25 text-teal-800 dark:text-teal-450 hover:bg-teal-200/60 dark:hover:bg-teal-900/50 cursor-pointer transition-colors"
+                                  title={`Filtrar localmente por ID: ${log.Id || (log as any)['@Id']}`}
+                                >
+                                  @{(log.Id || (log as any)['@Id']).substring(0, 8)}
+                                </span>
+                              )}
+
                               {log.connectionName && (
                                 <span 
                                   className="text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider shrink-0 select-none bg-teal-100/60 dark:bg-teal-950/40 border-teal-200/30 dark:border-teal-900/30 text-teal-800 dark:text-teal-300"
@@ -4495,6 +4566,33 @@ return [
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-neutral-900 font-mono text-[11px]">
+                                        {(log.Id || (log as any)['@Id']) && (
+                                          <tr className="hover:bg-[#181818]/45 transition-colors">
+                                            <td className="p-2 font-semibold text-[#71BF44] break-all">@Id</td>
+                                            <td className="p-2 text-neutral-100 break-all">{log.Id || (log as any)['@Id']}</td>
+                                            <td className="p-2 text-right whitespace-nowrap space-x-1.5 select-none">
+                                              <button
+                                                onClick={() => handleFilterById(log.Id || (log as any)['@Id'])}
+                                                className="text-[9px] font-bold bg-[#71BF44]/10 hover:bg-[#71BF44]/20 text-[#71BF44] px-1.5 py-0.5 rounded transition-colors"
+                                                title={`Filtrar localmente por ID: ${log.Id || (log as any)['@Id']}`}
+                                              >
+                                                Filtro Local
+                                              </button>
+                                              <button
+                                                onClick={() => {
+                                                  const val = log.Id || (log as any)['@Id'];
+                                                  navigator.clipboard.writeText(val)
+                                                    .then(() => showToast('ID de evento copiado', 'success'))
+                                                    .catch(err => showToast(`Error al copiar: ${err.message}`, 'error'));
+                                                }}
+                                                className="text-[9px] font-bold bg-neutral-800 hover:bg-neutral-700 text-neutral-350 px-1.5 py-0.5 rounded transition-colors"
+                                                title="Copiar ID"
+                                              >
+                                                Copiar
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        )}
                                         {log.Properties && log.Properties.map(p => (
                                           <tr key={p.Name} className="hover:bg-[#181818]/45 transition-colors">
                                             <td className="p-2 font-semibold text-[#71BF44] break-all">{p.Name}</td>
