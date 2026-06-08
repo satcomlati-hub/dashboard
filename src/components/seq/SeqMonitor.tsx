@@ -3656,7 +3656,13 @@ return [
                           }`}
                         >
                           <Activity className="w-3.5 h-3.5" />
-                          <span>{showLiveAnalysisPanel ? 'Cerrar Análisis' : 'Ana                  {showLiveAnalysisPanel && !rawSqlResult && (
+                          <span>{showLiveAnalysisPanel ? 'Cerrar Análisis' : 'Analizar Errores 🔍'}</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {showLiveAnalysisPanel && !rawSqlResult && (
                     <div className="absolute top-[37px] left-0 right-0 bg-[#121c19]/95 backdrop-blur-md border-b border-emerald-900/40 p-4 z-20 shadow-2xl animate-slide-down max-h-[70vh] overflow-y-auto">
                       <div className="flex flex-col gap-3 font-sans text-xs">
                         <div className="flex items-center justify-between border-b border-emerald-900/25 pb-2">
