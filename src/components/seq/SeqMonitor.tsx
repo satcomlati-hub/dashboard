@@ -206,6 +206,8 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     isActive: true
   });
   const [generatedJsAlert, setGeneratedJsAlert] = useState<string>('');
+  const [customJsAlert, setCustomJsAlert] = useState<string>('');
+  const [isCustomAlertEdited, setIsCustomAlertEdited] = useState<boolean>(false);
   const [alertModalTab, setAlertModalTab] = useState<'script' | 'simulation'>('script');
   const [alertQueryFilter, setAlertQueryFilter] = useState<string>('');
   const [showLiveAnalysisPanel, setShowLiveAnalysisPanel] = useState<boolean>(false);
@@ -418,6 +420,37 @@ logs.forEach(log => {
   const version = log.Version || log._version || log.version || 'Desconocido';
   const origenConexion = log.Origen || log.origen || 'Desconocido';
 
+  // Extracción robusta de propiedades adicionales tanto si viene como objeto o array
+  let propertiesObj = {};
+  if (log.Properties) {
+    if (Array.isArray(log.Properties)) {
+      log.Properties.forEach(p => {
+        if (p && p.Name) propertiesObj[p.Name] = p.Value;
+      });
+    } else if (typeof log.Properties === 'object') {
+      propertiesObj = log.Properties;
+    }
+  }
+
+  const metodo = log.Metodo || propertiesObj.Metodo || '';
+  const paramExtra6 = log.param_extra6 || propertiesObj.param_extra6 || '';
+  const tiempoProcSeg = log.tiempo_proc_seg !== undefined ? log.tiempo_proc_seg : (propertiesObj.tiempo_proc_seg !== undefined ? propertiesObj.tiempo_proc_seg : null);
+
+  // Clasificación heurística por rendimiento (Proceso Lento)
+  let esProcesoLento = false;
+  if (typeof paramExtra6 === 'string' && paramExtra6.toLowerCase().includes('lento')) {
+    esProcesoLento = true;
+  }
+  if (tiempoProcSeg !== null && parseFloat(tiempoProcSeg) >= 5) {
+    esProcesoLento = true;
+  }
+
+  // Clasificación heurística de Redis
+  let esRedisInfo = false;
+  if (typeof metodo === 'string' && metodo.toLowerCase().includes('getredis')) {
+    esRedisInfo = true;
+  }
+
   const ts = log.Timestamp || log['@Timestamp'];
   if (ts) {
     const timeMs = Date.parse(ts);
@@ -464,16 +497,16 @@ logs.forEach(log => {
     }
   }
 
-  // Clasificación heurística por texto de excepción si no hay código HTTP explícito
+  // Clasificación heurística por texto de excepción / lentitud si no hay código HTTP explícito
   if (!isClient && !isServer) {
     const msgLower = message.toLowerCase();
     const excLower = exception.toLowerCase();
     
-    if (excLower.includes('timeout') || msgLower.includes('timeout') || msgLower.includes('tiempo de espera')) {
+    if (excLower.includes('timeout') || msgLower.includes('timeout') || msgLower.includes('tiempo de espera') || esProcesoLento) {
       isServer = true;
     } else if (excLower.includes('conexión') || excLower.includes('conexion') || 
                excLower.includes('connectfailure') || excLower.includes('httprequestexception') || 
-               msgLower.includes('conexión') || msgLower.includes('conexion') || msgLower.includes('failed to connect')) {
+               msgLower.includes('conexión') || msgLower.includes('conexion') || msgLower.includes('failed to connect') || esRedisInfo) {
       isServer = true;
     } else if (excLower.includes('bad request') || msgLower.includes('bad request')) {
       isClient = true;
@@ -519,6 +552,9 @@ logs.forEach(log => {
     mensajeError: message,
     excepcion: exception,
     destino: destino,
+    metodo: metodo || undefined,
+    param_extra6: paramExtra6 || undefined,
+    tiempo_proc_seg: tiempoProcSeg !== null ? tiempoProcSeg : undefined,
     // Campos dinámicos seleccionados en el generador:
     ${alertConfig.includeVersion ? 'version: version,' : ''}
     ${alertConfig.includeApp ? 'app: app,' : ''}
@@ -775,7 +811,10 @@ return [
 ];
 `;
     setGeneratedJsAlert(jsCode);
-  }, [selectedQueryForAlert, alertQueryFilter, alertConfig, connections]);
+    if (!isCustomAlertEdited) {
+      setCustomJsAlert(jsCode);
+    }
+  }, [selectedQueryForAlert, alertQueryFilter, alertConfig, connections, isCustomAlertEdited]);
 
   // Cerrar popups al hacer clic afuera
   useEffect(() => {
@@ -2016,7 +2055,7 @@ return [
       if (hasTimeFilter) {
         return query;
       }
-      timeFilterExpr = "@Timestamp >= DateTimeNow() - Interval('3h')";
+      timeFilterExpr = "@Timestamp >= now() - 3h";
     }
 
     // Buscar si tiene la palabra clave WHERE
@@ -2060,11 +2099,11 @@ return [
     fetchLogs(false);
   };
 
-  // Inyecta la condición "and @Timestamp >= Now() - 3h" respetando las cláusulas WHERE y GROUP BY
+  // Inyecta la condición "and @Timestamp >= now() - 3h" respetando las cláusulas WHERE y GROUP BY
   const handleInjectTimeFilter = () => {
     const trimmed = currentFilter.trim();
     if (!trimmed) {
-      const newFilter = "@Timestamp >= Now() - 3h";
+      const newFilter = "@Timestamp >= now() - 3h";
       setCurrentFilter(newFilter);
       stateRef.current.currentFilter = newFilter;
       showToast("Filtro de tiempo de 3 horas inyectado", "success");
@@ -2077,7 +2116,7 @@ return [
         showToast("El filtro ya contiene un límite de @Timestamp", "info");
         return;
       }
-      const newFilter = `${trimmed} and @Timestamp >= Now() - 3h`;
+      const newFilter = `${trimmed} and @Timestamp >= now() - 3h`;
       setCurrentFilter(newFilter);
       stateRef.current.currentFilter = newFilter;
       showToast("Filtro de tiempo de 3 horas inyectado", "success");
@@ -2105,7 +2144,7 @@ return [
 
     if (whereMatchInBefore) {
       // Si ya tiene cláusula WHERE, concatenamos con AND al final de esa sección
-      modifiedQueryBefore = `${queryPartBeforeGroupBy} and @Timestamp >= Now() - 3h`;
+      modifiedQueryBefore = `${queryPartBeforeGroupBy} and @Timestamp >= now() - 3h`;
     } else {
       // Si no tiene cláusula WHERE, debemos insertarla después del FROM
       const fromMatch = queryPartBeforeGroupBy.match(/\bfrom\s+([a-zA-Z0-9_"`'@.-]+)/i);
@@ -2113,9 +2152,9 @@ return [
         const index = fromMatch.index! + fromMatch[0].length;
         const beforeFrom = queryPartBeforeGroupBy.substring(0, index);
         const afterFrom = queryPartBeforeGroupBy.substring(index);
-        modifiedQueryBefore = `${beforeFrom} where @Timestamp >= Now() - 3h${afterFrom}`;
+        modifiedQueryBefore = `${beforeFrom} where @Timestamp >= now() - 3h${afterFrom}`;
       } else {
-        modifiedQueryBefore = `${queryPartBeforeGroupBy} where @Timestamp >= Now() - 3h`;
+        modifiedQueryBefore = `${queryPartBeforeGroupBy} where @Timestamp >= now() - 3h`;
       }
     }
 
@@ -3196,6 +3235,8 @@ return [
                                            }
                                            setAlertQueryFilter(q.filter);
                                            setGeneratedJsAlert('');
+                                           setCustomJsAlert('');
+                                           setIsCustomAlertEdited(false);
                                            setIsAlertModalOpen(true);
                                            setIsSavedQueriesOpen(false);
                                          }}
@@ -4966,7 +5007,7 @@ return [
                   type="button"
                   onClick={() => {
                     handleSaveAlertConfig();
-                    navigator.clipboard.writeText(generatedJsAlert);
+                    navigator.clipboard.writeText(customJsAlert);
                     setIsAlertModalOpen(false);
                   }}
                   className="bg-[#71BF44] hover:bg-[#71BF44]/90 text-white dark:text-[#131313] text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1.5 transition-colors"
@@ -5136,17 +5177,34 @@ return [
                   </div>
 
                   {alertModalTab === 'script' ? (
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(generatedJsAlert);
-                        showToast('Script de alerta copiado al portapapeles', 'success');
-                      }}
-                      type="button"
-                      className="flex items-center gap-1 px-2.5 py-1.5 bg-[#71BF44]/10 border border-[#71BF44]/30 hover:bg-[#71BF44] hover:text-white dark:hover:text-[#131313] text-[#71BF44] rounded-lg transition-all text-[10px] font-bold"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                      Copiar Script
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {isCustomAlertEdited && (
+                        <button
+                          onClick={() => {
+                            setCustomJsAlert(generatedJsAlert);
+                            setIsCustomAlertEdited(false);
+                            showToast('Restablecido al script por defecto', 'info');
+                          }}
+                          type="button"
+                          className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500 hover:text-[#131313] text-amber-500 rounded-lg transition-all text-[10px] font-bold"
+                          title="Descartar cambios manuales y restablecer a la plantilla autogenerada"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin-reverse" />
+                          Restablecer
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(customJsAlert);
+                          showToast('Script de alerta copiado al portapapeles', 'success');
+                        }}
+                        type="button"
+                        className="flex items-center gap-1 px-2.5 py-1.5 bg-[#71BF44]/10 border border-[#71BF44]/30 hover:bg-[#71BF44] hover:text-white dark:hover:text-[#131313] text-[#71BF44] rounded-lg transition-all text-[10px] font-bold"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        Copiar Script
+                      </button>
+                    </div>
                   ) : (
                     <div className="flex items-center gap-2">
                       <button
@@ -5175,11 +5233,16 @@ return [
 
                 {alertModalTab === 'script' ? (
                   <>
-                    <div className="bg-[#0b0b0b] border border-neutral-250 dark:border-neutral-850 rounded-xl p-4 font-mono text-[10.5px] leading-relaxed text-emerald-400 overflow-auto h-96 max-h-[50vh]">
-                      <pre className="whitespace-pre-wrap select-all">{generatedJsAlert}</pre>
-                    </div>
+                    <textarea
+                      value={customJsAlert}
+                      onChange={(e) => {
+                        setCustomJsAlert(e.target.value);
+                        setIsCustomAlertEdited(true);
+                      }}
+                      className="bg-[#0b0b0b] border border-neutral-250 dark:border-neutral-850 rounded-xl p-4 font-mono text-[10.5px] leading-relaxed text-emerald-400 overflow-auto h-96 max-h-[50vh] w-full resize-y focus:outline-none focus:border-[#71BF44]"
+                    />
                     <p className="text-[10px] text-neutral-450 italic mt-1">
-                      Este código procesa dinámicamente el log, parsea el destino (ej. `RequestUri`) y envía payloads agrupados listos para los destinatarios (Mesa de Ayuda / Infraestructura).
+                      Este código procesa dinámicamente el log, parsea el destino (ej. `RequestUri`) y envía payloads agrupados listos para los destinatarios (Mesa de Ayuda / Infraestructura). Puedes editarlo libremente en esta caja de texto.
                     </p>
                   </>
                 ) : (
