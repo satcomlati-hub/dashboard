@@ -611,10 +611,42 @@ export default function SaraChatPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
                 {[
-                  { title: 'Análisis de manuales', desc: 'Explora la documentación técnica de SATCOM.', icon: '📚' },
-                  { title: 'Visión por IA', desc: 'Sube una imagen para que la analice en detalle.', icon: '👁️' },
-                  { title: 'Soporte Técnico', desc: 'Pregúntame sobre procedimientos o fallas.', icon: '🔧' },
-                  { title: 'Consultas RAG', desc: 'Busco información precisa en nuestra base de conocimientos.', icon: '🔍' },
+                  {
+                    title: 'Análisis de manuales',
+                    desc: 'Explora la documentación técnica de SATCOM.',
+                    icon: (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                      </svg>
+                    ),
+                  },
+                  {
+                    title: 'Visión por IA',
+                    desc: 'Sube una imagen para que la analice en detalle.',
+                    icon: (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" />
+                      </svg>
+                    ),
+                  },
+                  {
+                    title: 'Soporte Técnico',
+                    desc: 'Pregúntame sobre procedimientos o fallas.',
+                    icon: (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+                      </svg>
+                    ),
+                  },
+                  {
+                    title: 'Consultas RAG',
+                    desc: 'Busco información precisa en nuestra base de conocimientos.',
+                    icon: (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                      </svg>
+                    ),
+                  },
                 ].map((item, idx) => (
                   <button
                     key={idx}
@@ -624,7 +656,7 @@ export default function SaraChatPage() {
                     }}
                     className="flex flex-col items-start p-5 rounded-2xl bg-white/40 dark:bg-[#1f1f1f]/40 backdrop-blur-sm border border-black/5 dark:border-white/5 hover:bg-white dark:hover:bg-[#2a2a2a] hover:border-[#71BF44]/30 hover:shadow-xl hover:shadow-[#71BF44]/5 transition-all text-left group"
                   >
-                    <span className="text-2xl mb-3">{item.icon}</span>
+                    <span className="mb-3 text-neutral-400 dark:text-neutral-500 group-hover:text-[#71BF44] transition-colors">{item.icon}</span>
                     <span className="text-sm font-bold text-neutral-900 dark:text-neutral-100 group-hover:text-[#71BF44] transition-colors">{item.title}</span>
                     <span className="text-xs text-neutral-500 dark:text-neutral-400 mt-1.5 leading-relaxed">{item.desc}</span>
                   </button>
