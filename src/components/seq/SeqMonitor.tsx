@@ -3663,11 +3663,11 @@ return [
                   </div>
 
                   {showLiveAnalysisPanel && !rawSqlResult && (
-                    <div className="absolute top-[37px] left-0 right-0 bg-[#121c19]/95 backdrop-blur-md border-b border-emerald-900/40 p-4 z-20 shadow-2xl animate-slide-down max-h-[70vh] overflow-y-auto">
+                    <div className="absolute top-[37px] left-0 right-0 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 p-4 z-20 shadow-2xl animate-slide-down max-h-[70vh] overflow-y-auto text-neutral-950 dark:text-neutral-50">
                       <div className="flex flex-col gap-3 font-sans text-xs">
-                        <div className="flex items-center justify-between border-b border-emerald-900/25 pb-2">
-                          <h4 className="text-sm font-bold text-[#71BF44] flex items-center gap-1.5">
-                            <Activity className="w-4 h-4 animate-pulse" />
+                        <div className="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800 pb-2">
+                          <h4 className="text-sm font-bold text-neutral-900 dark:text-white flex items-center gap-1.5">
+                            <Activity className="w-4 h-4 text-[#71BF44] animate-pulse" />
                             <span>Análisis de Errores y Alertas en Tiempo Real (Consola Activa)</span>
                           </h4>
                           <div className="flex items-center gap-4">
@@ -3688,33 +3688,33 @@ return [
                                 setCustomJsAlert('');
                                 setIsAlertModalOpen(true);
                               }}
-                              className="flex items-center gap-1.5 bg-[#71BF44]/10 hover:bg-[#71BF44]/25 text-[#71BF44] border border-[#71BF44]/30 px-2.5 py-1 rounded text-[10px] font-bold transition-all"
+                              className="flex items-center gap-1.5 bg-[#71BF44]/10 hover:bg-[#71BF44]/25 text-[#5ba135] dark:text-[#71BF44] border border-[#71BF44]/30 px-2.5 py-1 rounded text-[10px] font-bold transition-all"
                               title="Ver y editar el script de la alerta asociada para N8N"
                             >
-                              <Bell className="w-3.5 h-3.5 text-[#71BF44]" />
+                              <Bell className="w-3.5 h-3.5 text-[#5ba135] dark:text-[#71BF44]" />
                               <span>Ver/Editar Script</span>
                             </button>
                             <button
                               onClick={handleDownloadAnalysisJson}
-                              className="flex items-center gap-1 bg-[#71BF44]/10 hover:bg-[#71BF44]/25 text-[#71BF44] border border-[#71BF44]/30 px-2 py-0.5 rounded text-[10px] font-bold transition-all"
+                              className="flex items-center gap-1 bg-[#71BF44]/10 hover:bg-[#71BF44]/25 text-[#5ba135] dark:text-[#71BF44] border border-[#71BF44]/30 px-2 py-0.5 rounded text-[10px] font-bold transition-all"
                               title="Descargar resumen del análisis en formato JSON"
                             >
                               <FileText className="w-3 h-3" />
                               <span>Descargar Resumen JSON</span>
                             </button>
-                            <div className="flex items-center gap-1 text-[10px] text-neutral-350">
+                            <div className="flex items-center gap-1 text-[10px] text-neutral-600 dark:text-neutral-350">
                               <span>¿Alerta Disparada?:</span>
                               <span className={`px-2 py-0.5 rounded-full font-bold uppercase ${
                                 simulatedResult.alertaGenerada
-                                  ? 'bg-red-500/10 text-red-500 border border-red-500/25 animate-pulse'
-                                  : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                                  ? 'bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400 border border-red-300 dark:border-red-900/30 animate-pulse'
+                                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-900/20'
                               }`}>
                                 {simulatedResult.alertaGenerada ? 'SÍ (CRÍTICA)' : 'NO (SANO)'}
                               </span>
                             </div>
                             <button
                               onClick={() => setShowLiveAnalysisPanel(false)}
-                              className="text-neutral-450 hover:text-white p-1 hover:bg-[#152420] rounded transition-colors"
+                              className="text-neutral-500 hover:text-neutral-900 dark:text-neutral-450 dark:hover:text-white p-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors"
                             >
                               <X className="w-4 h-4" />
                             </button>
@@ -3722,41 +3722,41 @@ return [
                         </div>
 
                         {/* Controles de Umbrales Dinámicos */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#152420] border border-emerald-950/30 p-3 rounded-lg">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-neutral-50 dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-800 p-3 rounded-lg">
                           <div className="flex flex-col gap-1">
-                            <label className="text-[10px] text-emerald-400/80 font-bold uppercase">Ventana Evaluada (Min)</label>
+                            <label className="text-[10px] text-neutral-600 dark:text-neutral-400 font-bold uppercase">Ventana Evaluada (Min)</label>
                             <input
                               type="number"
                               value={alertConfig.timeWindowMinutes}
                               onChange={(e) => setAlertConfig(prev => ({ ...prev, timeWindowMinutes: Math.max(1, parseInt(e.target.value) || 10) }))}
-                              className="bg-[#111c19] border border-emerald-950/40 rounded-md p-1.5 text-xs text-emerald-250 focus:outline-none focus:border-[#71BF44] text-center"
+                              className="bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-md p-1.5 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] text-center"
                             />
                           </div>
                           <div className="flex flex-col gap-1">
-                            <label className="text-[10px] text-emerald-400/80 font-bold uppercase">Umbral Cliente (Eventos)</label>
+                            <label className="text-[10px] text-neutral-600 dark:text-neutral-400 font-bold uppercase">Umbral Cliente (Eventos)</label>
                             <input
                               type="number"
                               value={alertConfig.clientEventsThreshold}
                               onChange={(e) => setAlertConfig(prev => ({ ...prev, clientEventsThreshold: Math.max(1, parseInt(e.target.value) || 20) }))}
-                              className="bg-[#111c19] border border-emerald-950/40 rounded-md p-1.5 text-xs text-emerald-250 focus:outline-none focus:border-[#71BF44] text-center"
+                              className="bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-md p-1.5 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] text-center"
                             />
                           </div>
                           <div className="flex flex-col gap-1">
-                            <label className="text-[10px] text-emerald-400/80 font-bold uppercase">Umbral Infraestructura (Eventos)</label>
+                            <label className="text-[10px] text-neutral-600 dark:text-neutral-400 font-bold uppercase">Umbral Infraestructura (Eventos)</label>
                             <input
                               type="number"
                               value={alertConfig.serverEventsThreshold}
                               onChange={(e) => setAlertConfig(prev => ({ ...prev, serverEventsThreshold: Math.max(1, parseInt(e.target.value) || 10) }))}
-                              className="bg-[#111c19] border border-emerald-950/40 rounded-md p-1.5 text-xs text-emerald-250 focus:outline-none focus:border-[#71BF44] text-center"
+                              className="bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-md p-1.5 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] text-center"
                             />
                           </div>
                           <div className="flex flex-col gap-1">
-                            <label className="text-[10px] text-emerald-400/80 font-bold uppercase">Mín. Clientes Afectados (Infra)</label>
+                            <label className="text-[10px] text-neutral-600 dark:text-neutral-400 font-bold uppercase">Mín. Clientes Afectados (Infra)</label>
                             <input
                               type="number"
                               value={alertConfig.serverClientsThreshold}
                               onChange={(e) => setAlertConfig(prev => ({ ...prev, serverClientsThreshold: Math.max(1, parseInt(e.target.value) || 3) }))}
-                              className="bg-[#111c19] border border-emerald-950/40 rounded-md p-1.5 text-xs text-emerald-250 focus:outline-none focus:border-[#71BF44] text-center"
+                              className="bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-md p-1.5 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] text-center"
                             />
                           </div>
                         </div>
@@ -3764,8 +3764,8 @@ return [
                         {/* Desglose de Alertas y Conteo */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {/* Columna Mesa de Ayuda (Clientes) */}
-                          <div className="border border-emerald-900/35 bg-[#132219] text-[#aee2c9] rounded-xl p-3 flex flex-col gap-2 shadow-inner shadow-black/10">
-                            <h5 className="text-[11px] font-bold text-emerald-350 dark:text-emerald-300 uppercase tracking-wider border-b border-emerald-900/25 pb-1.5 flex items-center justify-between">
+                          <div className="border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 rounded-xl p-3 flex flex-col gap-2 shadow-sm">
+                            <h5 className="text-[11px] font-bold text-neutral-850 dark:text-neutral-200 uppercase tracking-wider border-b border-neutral-100 dark:border-neutral-800 pb-1.5 flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <span>Errores por Origen (Clientes)</span>
                                 <div className="flex items-center gap-1 font-sans text-[9px] normal-case font-normal select-none">
@@ -3777,8 +3777,8 @@ return [
                                     }}
                                     className={`px-1.5 py-0.5 rounded border transition-colors ${
                                       mesaAyudaSortBy === 'origen' 
-                                        ? 'bg-[#71BF44] text-[#131313] border-transparent font-bold' 
-                                        : 'bg-transparent text-emerald-500 border-emerald-900/30 hover:text-emerald-300'
+                                        ? 'bg-[#71BF44] text-white dark:text-[#131313] border-transparent font-bold' 
+                                        : 'bg-transparent text-neutral-500 dark:text-neutral-400 border-neutral-200 dark:border-neutral-850 hover:text-neutral-700 dark:hover:text-neutral-200'
                                     }`}
                                     title="Ordenar por nombre de origen"
                                   >
@@ -3792,8 +3792,8 @@ return [
                                     }}
                                     className={`px-1.5 py-0.5 rounded border transition-colors ${
                                       mesaAyudaSortBy === 'eventos' 
-                                        ? 'bg-[#71BF44] text-[#131313] border-transparent font-bold' 
-                                        : 'bg-transparent text-emerald-500 border-emerald-900/30 hover:text-emerald-300'
+                                        ? 'bg-[#71BF44] text-white dark:text-[#131313] border-transparent font-bold' 
+                                        : 'bg-transparent text-neutral-500 dark:text-neutral-400 border-neutral-200 dark:border-neutral-850 hover:text-neutral-700 dark:hover:text-neutral-200'
                                     }`}
                                     title="Ordenar por número de eventos"
                                   >
@@ -3801,22 +3801,22 @@ return [
                                   </button>
                                 </div>
                               </div>
-                              <span className="bg-emerald-950/40 px-2 py-0.5 rounded text-[10px] text-emerald-400 font-bold shrink-0">
+                              <span className="bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded text-[10px] text-neutral-600 dark:text-neutral-400 font-bold shrink-0">
                                 {simulatedResult.alertasMesaDeAyuda.length} detectados
                               </span>
                             </h5>
-                            <div className="flex flex-col gap-2.5 max-h-56 overflow-y-auto divide-y divide-emerald-900/20">
+                            <div className="flex flex-col gap-2.5 max-h-56 overflow-y-auto divide-y divide-neutral-100 dark:divide-neutral-800">
                               {simulatedResult.alertasMesaDeAyuda.length === 0 ? (
-                                <span className="text-[11px] text-amber-750/60 dark:text-amber-400/60 italic p-2">Sin orígenes de error reportados en esta ventana.</span>
+                                <span className="text-[11px] text-neutral-500 italic p-2">Sin orígenes de error reportados en esta ventana.</span>
                               ) : (
                                 simulatedResult.alertasMesaDeAyuda.map((a, idx) => (
                                   <div key={idx} className="pt-2.5 first:pt-0 flex flex-col gap-1 text-[11px]">
                                     <div className="flex items-center justify-between">
                                       <div className="flex items-center gap-2">
-                                        <span className="font-semibold text-neutral-900 dark:text-white">{a.origen}</span>
+                                        <span className="font-bold text-neutral-900 dark:text-white">{a.origen}</span>
                                         <button
                                           onClick={() => handleFilterByOrigin(a.cliente, a.hostname)}
-                                          className="text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-amber-100/50 dark:hover:bg-neutral-850 transition-colors"
+                                          className="text-[#5ba135] dark:text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
                                           title={`Buscar / filtrar eventos para este origen: ${a.origen}`}
                                         >
                                           <Search className="w-3 h-3" />
@@ -3824,33 +3824,33 @@ return [
                                       </div>
                                       <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
                                         a.superaUmbral
-                                          ? 'bg-red-100 text-red-700 border border-red-200/50 dark:bg-red-950/35 dark:text-red-300 dark:border-red-900/30 animate-pulse'
-                                          : 'bg-amber-100/70 text-amber-900 dark:bg-amber-950/20 dark:text-amber-400'
+                                          ? 'bg-red-100 text-red-750 border border-red-200 dark:bg-red-950/35 dark:text-red-300 dark:border-red-900/30 animate-pulse'
+                                          : 'bg-amber-100 text-amber-800 dark:bg-amber-950/20 dark:text-amber-400'
                                       }`}>
                                         {a.totalEventos} errores / Umbral {a.umbralDefinido}
                                       </span>
                                     </div>
                                     {a.ejemplo && (
-                                      <div className="bg-white dark:bg-[#201d12] border border-amber-200/40 dark:border-amber-900/20 p-2 rounded text-[10px] text-[#332e12]/90 dark:text-[#ede4c0]/80 font-mono flex flex-col gap-1.5 shadow-sm">
-                                        <div className="text-neutral-900 dark:text-amber-105 truncate flex items-center justify-between gap-1.5">
+                                      <div className="bg-neutral-50 dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-800 p-2 rounded text-[10px] text-neutral-800 dark:text-neutral-300 font-mono flex flex-col gap-1.5 shadow-sm">
+                                        <div className="text-neutral-900 dark:text-white font-semibold truncate flex items-center justify-between gap-1.5">
                                           <span className="truncate flex-1">
                                             <strong>Error:</strong> {a.ejemplo.error}
                                           </span>
                                           <button
                                             onClick={() => handleFilterByMessage(a.ejemplo.error)}
-                                            className="text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-amber-50 dark:hover:bg-amber-955 transition-colors shrink-0"
+                                            className="text-[#5ba135] dark:text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors shrink-0"
                                             title="Buscar / filtrar eventos por este mensaje de error"
                                           >
                                             <Search className="w-2.5 h-2.5" />
                                           </button>
                                         </div>
-                                        <div className="flex items-center gap-3 text-[9px] text-amber-750/80 dark:text-amber-400/60 border-t border-amber-100/20 dark:border-amber-900/20 pt-1">
+                                        <div className="flex items-center gap-3 text-[9px] text-neutral-500 dark:text-neutral-400 border-t border-neutral-200 dark:border-neutral-800 pt-1">
                                           <span><strong>App:</strong> {a.ejemplo.app || 'Desconocido'}</span>
                                           <span><strong>Host:</strong> {a.ejemplo.hostname || 'Desconocido'}</span>
                                           {a.ejemplo.id && (
                                             <button
                                               onClick={() => handleFilterById(a.ejemplo.id)}
-                                              className="text-[#71BF44] hover:underline flex items-center gap-0.5 font-sans whitespace-nowrap shrink-0"
+                                              className="text-[#5ba135] dark:text-[#71BF44] hover:underline flex items-center gap-0.5 font-sans whitespace-nowrap shrink-0"
                                               title={`Buscar este evento ID (@Id = '${a.ejemplo.id}') en todos los orígenes de Seq`}
                                             >
                                               Buscar ID <Search className="w-2.5 h-2.5" />
@@ -3861,7 +3861,7 @@ return [
                                               href={a.ejemplo.seqPermalink} 
                                               target="_blank" 
                                               rel="noopener noreferrer"
-                                              className="text-[#71BF44] hover:underline flex items-center gap-0.5 font-sans"
+                                              className="text-[#5ba135] dark:text-[#71BF44] hover:underline flex items-center gap-0.5 font-sans"
                                             >
                                               Ver en Seq <ExternalLink className="w-2.5 h-2.5" />
                                             </a>
@@ -3876,8 +3876,8 @@ return [
                           </div>
 
                           {/* Columna Infraestructura */}
-                          <div className="border border-rose-950/45 bg-[#201012] text-[#f8b6be] rounded-xl p-3 flex flex-col gap-2 shadow-inner shadow-black/10">
-                            <h5 className="text-[11px] font-bold text-rose-350 dark:text-rose-300 uppercase tracking-wider border-b border-rose-950/20 pb-1.5 flex items-center justify-between">
+                          <div className="border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 rounded-xl p-3 flex flex-col gap-2 shadow-sm">
+                            <h5 className="text-[11px] font-bold text-neutral-850 dark:text-neutral-200 uppercase tracking-wider border-b border-neutral-100 dark:border-neutral-800 pb-1.5 flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <span>Errores de Servidor (Infraestructura)</span>
                                 <div className="flex items-center gap-1 font-sans text-[9px] normal-case font-normal select-none">
@@ -3889,8 +3889,8 @@ return [
                                     }}
                                     className={`px-1.5 py-0.5 rounded border transition-colors ${
                                       infraSortBy === 'destino' 
-                                        ? 'bg-[#71BF44] text-[#131313] border-transparent font-bold' 
-                                        : 'bg-transparent text-rose-500 border-rose-950/30 hover:text-rose-300'
+                                        ? 'bg-[#71BF44] text-white dark:text-[#131313] border-transparent font-bold' 
+                                        : 'bg-transparent text-neutral-500 dark:text-neutral-400 border-neutral-200 dark:border-neutral-850 hover:text-neutral-700 dark:hover:text-neutral-200'
                                     }`}
                                     title="Ordenar por nombre de destino"
                                   >
@@ -3904,8 +3904,8 @@ return [
                                     }}
                                     className={`px-1.5 py-0.5 rounded border transition-colors ${
                                       infraSortBy === 'eventos' 
-                                        ? 'bg-[#71BF44] text-[#131313] border-transparent font-bold' 
-                                        : 'bg-transparent text-rose-500 border-rose-950/30 hover:text-rose-300'
+                                        ? 'bg-[#71BF44] text-white dark:text-[#131313] border-transparent font-bold' 
+                                        : 'bg-transparent text-neutral-500 dark:text-neutral-400 border-neutral-200 dark:border-neutral-850 hover:text-neutral-700 dark:hover:text-neutral-200'
                                     }`}
                                     title="Ordenar por número de eventos"
                                   >
@@ -3913,22 +3913,22 @@ return [
                                   </button>
                                 </div>
                               </div>
-                              <span className="bg-rose-950/40 px-2 py-0.5 rounded text-[10px] text-rose-450 font-bold shrink-0">
+                              <span className="bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded text-[10px] text-neutral-600 dark:text-neutral-400 font-bold shrink-0">
                                 {simulatedResult.alertasInfraestructura.length} destinos
                               </span>
                             </h5>
-                            <div className="flex flex-col gap-2.5 max-h-56 overflow-y-auto divide-y divide-rose-950/25">
+                            <div className="flex flex-col gap-2.5 max-h-56 overflow-y-auto divide-y divide-neutral-100 dark:divide-neutral-800">
                               {simulatedResult.alertasInfraestructura.length === 0 ? (
-                                <span className="text-[11px] text-amber-750/60 dark:text-amber-400/60 italic p-2">Sin fallas de infraestructura en esta ventana.</span>
+                                <span className="text-[11px] text-neutral-500 italic p-2">Sin fallas de infraestructura en esta ventana.</span>
                               ) : (
                                 simulatedResult.alertasInfraestructura.map((a, idx) => (
                                   <div key={idx} className="pt-2.5 first:pt-0 flex flex-col gap-1 text-[11px]">
                                     <div className="flex items-center justify-between">
                                       <div className="flex items-center gap-2 min-w-0 flex-1">
-                                        <span className="font-semibold text-neutral-900 dark:text-white truncate pr-2" title={a.destino}>{a.destino}</span>
+                                        <span className="font-bold text-neutral-900 dark:text-white truncate pr-2" title={a.destino}>{a.destino}</span>
                                         <button
                                           onClick={() => handleFilterByDestino(a.destino)}
-                                          className="text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-amber-100/50 dark:hover:bg-neutral-850 transition-colors shrink-0"
+                                          className="text-[#5ba135] dark:text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors shrink-0"
                                           title={`Buscar / filtrar eventos para este destino: ${a.destino}`}
                                         >
                                           <Search className="w-3 h-3" />
@@ -3936,35 +3936,35 @@ return [
                                       </div>
                                       <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold whitespace-nowrap ${
                                         a.superaUmbral
-                                          ? 'bg-red-100 text-red-700 border border-red-200/50 dark:bg-red-950/35 dark:text-red-300 dark:border-red-900/30 animate-pulse'
-                                          : 'bg-amber-100/70 text-amber-900 dark:bg-amber-950/20 dark:text-amber-400'
+                                          ? 'bg-red-100 text-red-700 border border-red-200 dark:bg-red-950/35 dark:text-red-300 dark:border-red-900/30 animate-pulse'
+                                          : 'bg-amber-100 text-amber-800 dark:bg-amber-955/20 dark:text-amber-400'
                                       }`}>
                                         {a.totalEventosError} err / {a.cantidadClientesAfectados} clientes (Umbral: &gt;10 err y &gt;3 clientes)
                                       </span>
                                     </div>
-                                    <div className="text-[10px] text-amber-800 dark:text-amber-305 pl-1 font-semibold">
+                                    <div className="text-[10px] text-neutral-600 dark:text-neutral-400 pl-1 font-semibold">
                                       <strong>Clientes Afectados:</strong> {a.clientesAfectados.join(', ')}
                                     </div>
                                     {a.ejemplo && (
-                                      <div className="bg-white dark:bg-[#201d12] border border-amber-200/40 dark:border-amber-900/20 p-2 rounded text-[10px] text-[#332e12]/90 dark:text-[#ede4c0]/80 font-mono flex flex-col gap-1.5 shadow-sm">
-                                        <div className="text-neutral-900 dark:text-amber-105 truncate flex items-center justify-between gap-1.5">
+                                      <div className="bg-neutral-50 dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-800 p-2 rounded text-[10px] text-neutral-800 dark:text-neutral-300 font-mono flex flex-col gap-1.5 shadow-sm">
+                                        <div className="text-neutral-900 dark:text-white font-semibold truncate flex items-center justify-between gap-1.5">
                                           <span className="truncate flex-1">
                                             <strong>Error:</strong> {a.ejemplo.mensajeError}
                                           </span>
                                           <button
                                             onClick={() => handleFilterByMessage(a.ejemplo.mensajeError)}
-                                            className="text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-amber-50 dark:hover:bg-amber-955 transition-colors shrink-0"
+                                            className="text-[#5ba135] dark:text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-neutral-250 dark:hover:bg-neutral-800 transition-colors shrink-0"
                                             title="Buscar / filtrar eventos por este mensaje de error"
                                           >
                                             <Search className="w-2.5 h-2.5" />
                                           </button>
                                         </div>
-                                        <div className="flex items-center gap-3 text-[9px] text-amber-750/80 dark:text-amber-400/60 border-t border-amber-100/20 dark:border-amber-900/20 pt-1">
+                                        <div className="flex items-center gap-3 text-[9px] text-neutral-500 dark:text-neutral-400 border-t border-neutral-200 dark:border-neutral-800 pt-1">
                                           <span><strong>Host:</strong> {a.ejemplo.hostname || 'Desconocido'}</span>
                                           {a.ejemplo.id && (
                                             <button
                                               onClick={() => handleFilterById(a.ejemplo.id)}
-                                              className="text-[#71BF44] hover:underline flex items-center gap-0.5 font-sans whitespace-nowrap shrink-0"
+                                              className="text-[#5ba135] dark:text-[#71BF44] hover:underline flex items-center gap-0.5 font-sans whitespace-nowrap shrink-0"
                                               title={`Buscar este evento ID (@Id = '${a.ejemplo.id}') en todos los orígenes de Seq`}
                                             >
                                               Buscar ID <Search className="w-2.5 h-2.5" />
@@ -3975,7 +3975,7 @@ return [
                                               href={a.ejemplo.seqPermalink} 
                                               target="_blank" 
                                               rel="noopener noreferrer"
-                                              className="text-[#71BF44] hover:underline flex items-center gap-0.5 font-sans"
+                                              className="text-[#5ba135] dark:text-[#71BF44] hover:underline flex items-center gap-0.5 font-sans"
                                             >
                                               Ver en Seq <ExternalLink className="w-2.5 h-2.5" />
                                             </a>
@@ -3987,6 +3987,11 @@ return [
                                 ))
                               )}
                             </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}                      </div>
                           </div>
                         </div>
                       </div>
