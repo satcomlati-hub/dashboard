@@ -3719,9 +3719,6 @@ return [
                               <X className="w-4 h-4" />
                             </button>
                           </div>
-                        </div>                     <X className="w-4 h-4" />
-                            </button>
-                          </div>
                         </div>
 
                         {/* Controles de Umbrales Dinámicos */}
