@@ -79,7 +79,15 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse
 
           <nav className="flex flex-col gap-2">
             {navItems.map((item) => {
-              const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+              // El item activo es el de href MÁS específico que coincide, así
+              // /projects/agentes/... no marca también "Proyectos" (/projects).
+              const matches = navItems.filter(n =>
+                pathname === n.href || (n.href !== '/' && pathname.startsWith(n.href + '/')),
+              );
+              const best = matches.length
+                ? matches.reduce((a, b) => (b.href.length > a.href.length ? b : a))
+                : null;
+              const isActive = best?.href === item.href;
               return (
                 <Link 
                   key={item.href}
