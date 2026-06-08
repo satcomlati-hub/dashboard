@@ -2965,8 +2965,26 @@ return [
 
       // Filtrar por logs involucrados en alertas que superan umbrales
       if (filterOnlyAlerts) {
-        const logCliente = (log.Cliente || log._cliente || log.cliente || 'Desconocido').toString().toLowerCase();
-        const logHostname = (log.Hostname || log._hostname || log.hostname || 'Desconocido').toString().toLowerCase();
+        let logCliente = 'desconocido';
+        let logHostname = 'desconocido';
+        
+        if (log.Properties) {
+          log.Properties.forEach(p => {
+            const nameLower = p.Name.toLowerCase();
+            if (nameLower === 'cliente' || nameLower === '_cliente') logCliente = String(p.Value).toLowerCase();
+            if (nameLower === 'hostname' || nameLower === '_hostname') logHostname = String(p.Value).toLowerCase();
+          });
+        }
+        
+        const anyLog = log as any;
+        if (anyLog.Cliente) logCliente = anyLog.Cliente.toString().toLowerCase();
+        else if (anyLog._cliente) logCliente = anyLog._cliente.toString().toLowerCase();
+        else if (anyLog.cliente) logCliente = anyLog.cliente.toString().toLowerCase();
+
+        if (anyLog.Hostname) logHostname = anyLog.Hostname.toString().toLowerCase();
+        else if (anyLog._hostname) logHostname = anyLog._hostname.toString().toLowerCase();
+        else if (anyLog.hostname) logHostname = anyLog.hostname.toString().toLowerCase();
+
         const key = `${logCliente}|${logHostname}`;
         
         const message = (log.RenderedMessage || log.MessageTemplate || '').toString().toLowerCase();
