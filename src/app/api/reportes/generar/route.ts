@@ -44,11 +44,25 @@ export async function POST(req: NextRequest) {
 
   const titulo = body.titulo ? String(body.titulo) : undefined;
   const periodo = body.periodo ? String(body.periodo) : undefined;
-  const generadoPor = body.generadoPor ? String(body.generadoPor) : undefined;
-  const ttlHoras = Number.isFinite(Number(body.ttlHoras)) && Number(body.ttlHoras) > 0
-    ? Math.min(Number(body.ttlHoras), 720)   // tope 30 días
+  const generadoPorRaw = body.generadoPor ?? body.generado_por;
+  const generadoPor = generadoPorRaw ? String(generadoPorRaw) : undefined;
+  const ttlRaw = body.ttlHoras ?? body.ttl_horas;
+  const ttlHoras = Number.isFinite(Number(ttlRaw)) && Number(ttlRaw) > 0
+    ? Math.min(Number(ttlRaw), 720)   // tope 30 días
     : 72;
-  const datos = (body.datos ?? {}) as ReportData;
+
+  // Datos: objeto directo (`datos`) o JSON en string (`datos_json`, lo que
+  // entrega el agente — el SDK maneja strings con más fiabilidad que objetos anidados).
+  let datos: ReportData = {};
+  if (body.datos && typeof body.datos === 'object') {
+    datos = body.datos as ReportData;
+  } else if (typeof body.datos_json === 'string' && body.datos_json.trim()) {
+    try {
+      datos = JSON.parse(body.datos_json) as ReportData;
+    } catch {
+      return NextResponse.json({ error: 'datos_json no es un JSON válido' }, { status: 400 });
+    }
+  }
 
   // 3. Render determinista del HTML.
   let html: string;
