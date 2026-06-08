@@ -4014,11 +4014,15 @@ return [
                                           <Search className="w-3 h-3" />
                                         </button>
                                       </div>
-                                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                                        a.superaUmbral
-                                          ? 'bg-red-100 text-red-750 border border-red-200 dark:bg-red-950/35 dark:text-red-300 dark:border-red-900/30 animate-pulse'
-                                          : 'bg-amber-100 text-amber-800 dark:bg-amber-950/20 dark:text-amber-400'
-                                      }`}>
+                                      <span
+                                        onClick={() => handleFilterByOrigin(a.cliente, a.hostname)}
+                                        className={`px-2 py-0.5 rounded-full text-[9px] font-bold cursor-pointer hover:opacity-85 transition-all ${
+                                          a.superaUmbral
+                                            ? 'bg-red-100 text-red-750 border border-red-200 dark:bg-red-950/35 dark:text-red-300 dark:border-red-900/30 animate-pulse'
+                                            : 'bg-amber-100 text-amber-800 dark:bg-amber-950/20 dark:text-amber-400'
+                                        }`}
+                                        title={`Filtrar localmente por origen: ${a.origen}`}
+                                      >
                                         {a.totalEventos} errores / Umbral {a.umbralDefinido}
                                       </span>
                                     </div>
@@ -4126,11 +4130,15 @@ return [
                                           <Search className="w-3 h-3" />
                                         </button>
                                       </div>
-                                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold whitespace-nowrap ${
-                                        a.superaUmbral
-                                          ? 'bg-red-100 text-red-700 border border-red-200 dark:bg-red-950/35 dark:text-red-300 dark:border-red-900/30 animate-pulse'
-                                          : 'bg-amber-100 text-amber-800 dark:bg-amber-955/20 dark:text-amber-400'
-                                      }`}>
+                                      <span
+                                        onClick={() => handleFilterByDestino(a.destino)}
+                                        className={`px-2 py-0.5 rounded-full text-[9px] font-bold whitespace-nowrap cursor-pointer hover:opacity-85 transition-all ${
+                                          a.superaUmbral
+                                            ? 'bg-red-100 text-red-700 border border-red-200 dark:bg-red-950/35 dark:text-red-300 dark:border-red-900/30 animate-pulse'
+                                            : 'bg-amber-100 text-amber-800 dark:bg-amber-955/20 dark:text-amber-400'
+                                        }`}
+                                        title={`Filtrar localmente por destino: ${a.destino}`}
+                                      >
                                         {a.totalEventosError} err / {a.cantidadClientesAfectados} clientes (Umbral: &gt;10 err y &gt;3 clientes)
                                       </span>
                                     </div>
@@ -4469,19 +4477,6 @@ return [
                               
                               <span className="text-[10px] text-teal-650 dark:text-teal-400 shrink-0 select-none mt-0.5 font-bold">{timeStr}</span>
 
-                              {(log.Id || (log as any)['@Id']) && (
-                                <span
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleFilterById(log.Id || (log as any)['@Id']);
-                                  }}
-                                  className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border tracking-wider shrink-0 select-none bg-teal-100/50 dark:bg-teal-950/30 border-teal-250/25 dark:border-teal-900/25 text-teal-800 dark:text-teal-450 hover:bg-teal-200/60 dark:hover:bg-teal-900/50 cursor-pointer transition-colors"
-                                  title={`Filtrar localmente por ID: ${log.Id || (log as any)['@Id']}`}
-                                >
-                                  @{(log.Id || (log as any)['@Id']).substring(0, 8)}
-                                </span>
-                              )}
-
                               {log.connectionName && (
                                 <span 
                                   className="text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider shrink-0 select-none bg-teal-100/60 dark:bg-teal-950/40 border-teal-200/30 dark:border-teal-900/30 text-teal-800 dark:text-teal-300"
@@ -4556,7 +4551,7 @@ return [
                                       </button>
                                     </div>
                                   </div>
-                                  <div className="bg-[#181818] border border-neutral-850 rounded-lg overflow-hidden max-w-full">
+                                <div className="bg-[#181818] border border-neutral-850 rounded-lg overflow-hidden max-w-full">
                                     <table className="w-full text-left border-collapse">
                                       <thead>
                                         <tr className="bg-[#1e1e1e] border-b border-neutral-850 text-[10px] text-neutral-400 font-bold uppercase select-none">
@@ -4566,33 +4561,6 @@ return [
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-neutral-900 font-mono text-[11px]">
-                                        {(log.Id || (log as any)['@Id']) && (
-                                          <tr className="hover:bg-[#181818]/45 transition-colors">
-                                            <td className="p-2 font-semibold text-[#71BF44] break-all">@Id</td>
-                                            <td className="p-2 text-neutral-100 break-all">{log.Id || (log as any)['@Id']}</td>
-                                            <td className="p-2 text-right whitespace-nowrap space-x-1.5 select-none">
-                                              <button
-                                                onClick={() => handleFilterById(log.Id || (log as any)['@Id'])}
-                                                className="text-[9px] font-bold bg-[#71BF44]/10 hover:bg-[#71BF44]/20 text-[#71BF44] px-1.5 py-0.5 rounded transition-colors"
-                                                title={`Filtrar localmente por ID: ${log.Id || (log as any)['@Id']}`}
-                                              >
-                                                Filtro Local
-                                              </button>
-                                              <button
-                                                onClick={() => {
-                                                  const val = log.Id || (log as any)['@Id'];
-                                                  navigator.clipboard.writeText(val)
-                                                    .then(() => showToast('ID de evento copiado', 'success'))
-                                                    .catch(err => showToast(`Error al copiar: ${err.message}`, 'error'));
-                                                }}
-                                                className="text-[9px] font-bold bg-neutral-800 hover:bg-neutral-700 text-neutral-350 px-1.5 py-0.5 rounded transition-colors"
-                                                title="Copiar ID"
-                                              >
-                                                Copiar
-                                              </button>
-                                            </td>
-                                          </tr>
-                                        )}
                                         {log.Properties && log.Properties.map(p => (
                                           <tr key={p.Name} className="hover:bg-[#181818]/45 transition-colors">
                                             <td className="p-2 font-semibold text-[#71BF44] break-all">{p.Name}</td>
