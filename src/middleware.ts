@@ -22,6 +22,12 @@ export default async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Endpoints de la API de Seq (proxy de eventos y evaluación de tareas)
+  // No usan sesión de NextAuth ya que son llamados por n8n/monitoreo
+  if (pathname.startsWith("/api/seq")) {
+    return NextResponse.next()
+  }
+
   // Dejamos que Next Auth maneje el resto de rutas (login, protecciones generales)
   return authMiddleware(request as any)
 }
