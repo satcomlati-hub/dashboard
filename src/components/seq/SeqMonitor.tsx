@@ -337,7 +337,6 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     const cleanFilter = cleanFilterPrefix(queryFilter);
     const formattedFilter = formatFilterForSeq(cleanFilter);
 
-    const urlsDictStr = JSON.stringify(urlsDict, null, 2);
     const jsCode = `/**
  * Script de Alerta Automatizado para N8N
  * Consulta Seq: "${queryName.replace(/"/g, '\\"')}"
