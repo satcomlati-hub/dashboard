@@ -28,14 +28,15 @@ export async function GET(request: Request) {
 
     if (filterToSend) {
       filterToSend = translateLikeToContains(filterToSend);
+      if (!isSqlQuery) {
+        filterToSend = replaceNowWithAbsolute(filterToSend);
+      }
       if (isColombia) {
         if (!isSqlQuery) {
           clientSideLevels = extractAllowedLevels(filterToSend);
           const stripped = stripLevelFilter(filterToSend);
           filterToSend = stripped === '' ? null : stripped;
         }
-      } else if (!isSqlQuery) {
-        filterToSend = replaceNowWithAbsolute(filterToSend);
       }
     }
 
