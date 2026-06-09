@@ -508,8 +508,7 @@ logs.forEach(log => {
   const eventId = log.Id || log['@Id'] || '';
   let seqPermalink = '';
   if (eventId) {
-    const baseUrl = URLS_CONEXIONES_SEQ[origenConexion] || 'http://logs-sender.mysatcomla.com:5341';
-    seqPermalink = \`\${baseUrl}/#/events/?filter=@Id%20%3D%20%27\${eventId}%27&showExpanded\`;
+    seqPermalink = \`https://dashboard-one-ivory-58.vercel.app/seq-monitor?Id=\${eventId}&Origen=\${origenConexion}\`;
   }
 
   const payloadComun = {
@@ -799,6 +798,32 @@ return [
       if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
     };
   }, []);
+
+  // Cargar parámetros de la URL para consultas directas por ID/Origen (ej: ?Id=xxx&Origen=yyy)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlId = params.get('id') || params.get('Id');
+      const urlOrigen = params.get('origen') || params.get('Origen') || params.get('connection') || params.get('Connection');
+      
+      if (urlId && connections.length > 0) {
+        // Establecer el filtro de consulta para buscar por ID del evento
+        setCurrentFilter(`@Id = '${urlId}'`);
+        
+        // Seleccionar solo el origen correspondiente si se especifica
+        if (urlOrigen) {
+          const matchingConn = connections.find(
+            c => c.name.toLowerCase() === urlOrigen.toLowerCase() || c.id === urlOrigen
+          );
+          if (matchingConn) {
+            const newSelected = new Set([matchingConn.id]);
+            setSelectedConnectionIds(newSelected);
+            setActiveConnectionFilters(newSelected);
+          }
+        }
+      }
+    }
+  }, [connections]);
 
   // CRUD Conexiones
   const fetchConnections = async () => {
