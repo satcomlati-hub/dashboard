@@ -36,11 +36,11 @@ export default function AgentEditorPage() {
   useEffect(() => {
     if (!isNew) {
       fetch(`/api/agentes/v1/agents/${id}`).then(r => r.json()).then(setAgent);
-      fetch(`/api/agentes/v1/agents/${id}/skills`).then(r => r.json()).then(setSkills);
+      fetch(`/api/skills?agentId=${id}`).then(r => r.json()).then(setSkills);
       fetch(`/api/agentes/v1/agents/${id}/mcp-servers`).then(r => r.json()).then(setMcpServers);
       fetch(`/api/agentes/v1/agents/${id}/http-tools`).then(r => r.json()).then(setHttpTools);
     }
-    fetch('/api/agentes/v1/skills').then(r => r.json()).then(setAllSkills);
+    fetch('/api/skills').then(r => r.json()).then(setAllSkills);
     fetch('/api/agentes/v1/mcp-servers').then(r => r.json()).then(setAllMcp);
     fetch('/api/agentes/v1/http-tools').then(r => r.json()).then(setAllHttpTools);
   }, [id, isNew]);
@@ -66,11 +66,14 @@ export default function AgentEditorPage() {
   };
 
   const toggleSkill = async (skillId: string, assigned: boolean) => {
+    await fetch('/api/skills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId: id, skillId, action: assigned ? 'unassign' : 'assign' }),
+    });
     if (assigned) {
-      await fetch(`/api/agentes/v1/agents/${id}/skills/${skillId}`, { method: 'DELETE' });
       setSkills(s => s.filter((x: any) => x.id !== skillId));
     } else {
-      await fetch(`/api/agentes/v1/agents/${id}/skills/${skillId}`, { method: 'POST' });
       const sk = allSkills.find((x: any) => x.id === skillId);
       if (sk) setSkills(s => [...s, sk]);
     }
