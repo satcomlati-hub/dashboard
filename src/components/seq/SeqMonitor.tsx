@@ -337,43 +337,50 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     const cleanFilter = cleanFilterPrefix(queryFilter);
     const formattedFilter = formatFilterForSeq(cleanFilter);
 
-    const urlsDict = connections.reduce((acc, c) => ({ ...acc, [c.name]: c.url }), {} as Record<string, string>);
     const urlsDictStr = JSON.stringify(urlsDict, null, 2);
-
     const jsCode = `/**
  * Script de Alerta Automatizado para N8N
  * Consulta Seq: "${queryName.replace(/"/g, '\\"')}"
  * Generado automáticamente desde Satcom Analytics
  */
 
-// Diccionario de URLs de Seq asociadas a sus nombres de conexión
-const URLS_CONEXIONES_SEQ = ${urlsDictStr};
+// 1. Obtener las reglas/conexiones desde el nodo 'Reglas' y mapearlas a un diccionario
+const reglasInput = $('Reglas').all();
+const URLS_CONEXIONES_SEQ = {};
 
-// 1. Obtener los logs de entrada desde el nodo HTTP Request anterior de n8n
+reglasInput.forEach(item => {
+  const r = item.json;
+  if (r.conexion_nombre && r.conexion_url) {
+    URLS_CONEXIONES_SEQ[r.conexion_nombre] = r.conexion_url;
+  }
+});
+
+// Extraer configuración de umbrales dinámica desde el nodo Reglas (usando la primera regla como base)
+const primeraReglaUmbrales = reglasInput[0]?.json?.umbrales || {};
+
+const VENTANA_TIEMPO_MINUTOS = primeraReglaUmbrales.timeWindowMinutes || ${alertConfig.timeWindowMinutes};
+const UMBRAL_CLIENTE_EVENTOS = primeraReglaUmbrales.clientEventsThreshold || ${alertConfig.clientEventsThreshold};
+const UMBRAL_SERVIDOR_EVENTOS = primeraReglaUmbrales.serverEventsThreshold || ${alertConfig.serverEventsThreshold};
+const UMBRAL_SERVIDOR_CLIENTES = primeraReglaUmbrales.serverClientsThreshold || ${alertConfig.serverClientsThreshold};
+
+// Consulta evaluada dinámica (opcional, para el reporte final)
+const CONSULTA_EVALUADA = reglasInput[0]?.json?.query_filter || "${queryFilter.replace(/"/g, '\\"').replace(/\n/g, ' ')}";
+
+// 2. Obtener los logs de entrada desde el nodo anterior de la secuencia actual
 const items = $input.all();
-
-// Configuración de umbrales dinámica
-const VENTANA_TIEMPO_MINUTOS = ${alertConfig.timeWindowMinutes};
-const UMBRAL_CLIENTE_EVENTOS = ${alertConfig.clientEventsThreshold};
-const UMBRAL_SERVIDOR_EVENTOS = ${alertConfig.serverEventsThreshold};
-const UMBRAL_SERVIDOR_CLIENTES = ${alertConfig.serverClientsThreshold};
 
 let logs = [];
 if (items.length > 0) {
   const firstItem = items[0].json;
-  // Soporte para formato nativo de Seq API /api/data (Columns/Rows)
   if (firstItem.Columns && firstItem.Rows) {
     const cols = firstItem.Columns;
     logs = firstItem.Rows.map(row => {
       const obj = {};
-      cols.forEach((col, idx) => {
-        obj[col] = row[idx];
-      });
+      cols.forEach((col, idx) => { obj[col] = row[idx]; });
       return obj;
     });
   } else {
-    // Soporte para array de objetos JSON directos
-    logs = items.map(item => item.json);
+    logs = items.map(item => item.json).filter(log => log.Properties || log.Exception);
   }
 }
 
@@ -381,112 +388,75 @@ if (items.length > 0) {
 function stringifyValue(val) {
   if (val === null || val === undefined) return '';
   if (typeof val === 'string') return val;
-  try {
-    return JSON.stringify(val);
-  } catch (e) {
-    return String(val);
-  }
+  try { return JSON.stringify(val); } catch (e) { return String(val); }
 }
-
-// Agrupamientos
-const clientGroups = {}; // Combinación: cliente | hostname
-const serverGroups = {}; // Agrupación por: cliente
-
-let totalErrores = 0;
-let erroresClienteCount = 0;
-let erroresServidorCount = 0;
 
 // Helper para limpiar/generalizar mensajes
 function getGenericMessage(msg, exc) {
   let clean = msg || '';
   if (exc) {
-    const firstLine = exc.split('\\\\n')[0].trim();
-    if (firstLine) {
-      clean = firstLine;
-    }
+    const firstLine = exc.split('\\n')[0].trim();
+    if (firstLine) clean = firstLine;
   }
-  clean = clean.replace(/FLIP-[A-Za-z0-9\\\\-+[\\]]+/g, 'FLIP-[ARCHIVO]');
-  clean = clean.replace(/\\\\b\\\\d{6,}\\\\b/g, '[ID]');
+  clean = clean.replace(/FLIP-[A-Za-z0-9\\-+[\\\]]+/g, 'FLIP-[ARCHIVO]');
+  clean = clean.replace(/\\b\\d{6,}\\b/g, '[ID]');
   clean = clean.replace(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g, '[GUID]');
-  clean = clean.replace(/https?:\\\\/\\\\/[^\\\\s'"]+/g, '[URL]');
+  clean = clean.replace(/https?:\\/\\/[^\\s'"]+/g, '[URL]');
   return clean.substring(0, 150).trim();
 }
+
+// Agrupamientos
+const clientGroups = {};
+const serverGroups = {};
+
+let totalErrores = 0;
+let erroresClienteCount = 0;
+let erroresServidorCount = 0;
 
 let minTimeMs = Infinity;
 let maxTimeMs = -Infinity;
 let minTimestamp = null;
 let maxTimestamp = null;
 
+// Iteración de logs
 logs.forEach(log => {
-  const message = stringifyValue(log.Message || log.RenderedMessage || '');
-  const exception = stringifyValue(log.Exception || log.exception || log['@Exception'] || '');
-  const hostname = log.Hostname || log._hostname || log.hostname || 'Desconocido';
-  const cliente = log.Cliente || log._cliente || log.cliente || 'Desconocido';
-  const app = log.App || log._app || log.app || 'Desconocido';
-  const version = log.Version || log._version || log.version || 'Desconocido';
-  const origenConexion = log.Origen || log.origen || 'Desconocido';
-
-  // Extracción robusta de propiedades adicionales tanto si viene como objeto o array
-  let propertiesObj = {};
-  if (log.Properties) {
-    if (Array.isArray(log.Properties)) {
-      log.Properties.forEach(p => {
-        if (p && p.Name) propertiesObj[p.Name] = p.Value;
-      });
-    } else if (typeof log.Properties === 'object') {
-      propertiesObj = log.Properties;
-    }
+  const propMap = {};
+  if (Array.isArray(log.Properties)) {
+    log.Properties.forEach(p => {
+      propMap[p.Name] = p.Value;
+    });
   }
 
-  const metodo = log.Metodo || propertiesObj.Metodo || '';
-  const paramExtra6 = log.param_extra6 || propertiesObj.param_extra6 || '';
-  const tiempoProcSeg = log.tiempo_proc_seg !== undefined ? log.tiempo_proc_seg : (propertiesObj.tiempo_proc_seg !== undefined ? propertiesObj.tiempo_proc_seg : null);
-
-  // Clasificación heurística por rendimiento (Proceso Lento)
-  let esProcesoLento = false;
-  if (typeof paramExtra6 === 'string' && paramExtra6.toLowerCase().includes('lento')) {
-    esProcesoLento = true;
-  }
-  if (tiempoProcSeg !== null && parseFloat(tiempoProcSeg) >= 5) {
-    esProcesoLento = true;
-  }
-
-  // Clasificación heurística de Redis
-  let esRedisInfo = false;
-  if (typeof metodo === 'string' && metodo.toLowerCase().includes('getredis')) {
-    esRedisInfo = true;
-  }
+  const message = stringifyValue(propMap['Mensaje'] || log.Message || log.RenderedMessage || '');
+  const exception = stringifyValue(propMap['Exception'] || log.Exception || log.exception || '');
+  const hostname = propMap['_hostname'] || propMap['hostname'] || log.Hostname || 'Desconocido';
+  const cliente = propMap['cliente'] || propMap['_cliente'] || 'Desconocido';
+  const app = propMap['_app'] || propMap['app'] || 'Desconocido';
+  const version = propMap['_version'] || propMap['version'] || 'Desconocido';
+  const origenConexion = log.SeqOrigen || 'Sender'; 
 
   const ts = log.Timestamp || log['@Timestamp'];
   if (ts) {
     const timeMs = Date.parse(ts);
     if (!isNaN(timeMs)) {
-      if (timeMs < minTimeMs) {
-        minTimeMs = timeMs;
-        minTimestamp = ts;
-      }
-      if (timeMs > maxTimeMs) {
-        maxTimeMs = timeMs;
-        maxTimestamp = ts;
-      }
+      if (timeMs < minTimeMs) { minTimeMs = timeMs; minTimestamp = ts; }
+      if (timeMs > maxTimeMs) { maxTimeMs = timeMs; maxTimestamp = ts; }
     }
   }
 
-  // Buscar StatusCode en Exception o Message
   let statusCode = null;
-  const statusCodeMatch = exception.match(/"StatusCode"\\\\s*:\\\\s*(\\\\d+)/) || 
-                        exception.match(/StatusCode=(\\\\d+)/) || 
-                        message.match(/(\\\\d{3})/);
+  const statusCodeMatch = exception.match(/"StatusCode"\\s*:\\s*(\\d+)/) || 
+                        exception.match(/StatusCode=(\\d+)/) || 
+                        message.match(/(\\d{3})/);
   if (statusCodeMatch) {
     statusCode = parseInt(statusCodeMatch[1]);
   }
 
-  // Buscar Destino (RequestUri) en Exception o Message
   let destino = 'Desconocido';
-  const requestUriMatch = exception.match(/RequestUri[\\\\":=\\\\s]+(https?:\\\\/\\\\/[^\\\\s'",\\\\ ]+)/) ||
-                        exception.match(/"RequestUri"\\\\s*:\\\\s*"([^"]+)"/) || 
-                        exception.match(/RequestUri=([^,\\\\s]+)/) ||
-                        message.match(/(https?:\\\\/\\\\/[^\\\\s'"]+)/);
+  const parametrosStr = stringifyValue(propMap['Parámetros'] || '');
+  const requestUriMatch = parametrosStr.match(/"apiClientUrl"\\s*:\\s*"([^"]+)"/) ||
+                        exception.match(/RequestUri[\\":=\\s]+(https?:\\/\\/[^\\s'",\\ ]+)/) ||
+                        message.match(/(https?:\\/\\/[^\\s'"]+)/);
   if (requestUriMatch) {
     destino = requestUriMatch[1];
   }
@@ -494,62 +464,24 @@ logs.forEach(log => {
   let isClient = false;
   let isServer = false;
 
-  // Clasificación por código HTTP
   if (statusCode) {
-    if (statusCode >= 400 && statusCode < 500) {
-      isClient = true;
-    } else if (statusCode >= 500) {
-      isServer = true;
-    }
+    if (statusCode >= 400 && statusCode < 500) isClient = true;
+    else if (statusCode >= 500) isServer = true;
   }
 
-  // Clasificación heurística por texto de excepción / lentitud si no hay código HTTP explícito
   if (!isClient && !isServer) {
     const msgLower = message.toLowerCase();
     const excLower = exception.toLowerCase();
     
-    if (excLower.includes('timeout') || msgLower.includes('timeout') || msgLower.includes('tiempo de espera') || esProcesoLento) {
+    if (excLower.includes('threadpool') || excLower.includes('timeout') || msgLower.includes('timeout')) {
       isServer = true;
-    } else if (excLower.includes('conexión') || excLower.includes('conexion') || 
-               excLower.includes('connectfailure') || excLower.includes('httprequestexception') || 
-               msgLower.includes('conexión') || msgLower.includes('conexion') || msgLower.includes('failed to connect') || esRedisInfo) {
+    } else if (excLower.includes('conexión') || excLower.includes('conexion') || excLower.includes('connectfailure')) {
       isServer = true;
-    } else if (excLower.includes('bad request') || msgLower.includes('bad request')) {
-      isClient = true;
-    } else if (excLower.includes('not found') || msgLower.includes('not found')) {
+    } else if (excLower.includes('bad request') || excLower.includes('not found')) {
       isClient = true;
     }
   }
 
-  // Clasificación de eventos RabbitMQ
-  const esRabbit = message.toLowerCase().includes('rabbit') || 
-                    exception.toLowerCase().includes('rabbit') || 
-                    propertiesObj.Cola || 
-                    propertiesObj.Consumer || 
-                    propertiesObj.NombreCola ||
-                    log.Cola ||
-                    log.Consumer;
-                    
-  if (esRabbit) {
-    isServer = true;
-  }
-
-  // Clasificación de Warnings/Errors con excepción en propiedades o estructura
-  let tieneExcepcion = exception.trim() !== '';
-  if (!tieneExcepcion) {
-    for (const key in propertiesObj) {
-      if (key.toLowerCase().includes('exception') && propertiesObj[key]) {
-        tieneExcepcion = true;
-        break;
-      }
-    }
-  }
-
-  if (!isClient && !isServer && tieneExcepcion) {
-    isServer = true;
-  }
-
-  // Desviar alertas de infraestructura si el dominio no es administrado por infraestructura cloud
   if (isServer) {
     const DOMINIOS_INFRAESTRUCTURA = [
       'api-colombia.mysatcomla.com',
@@ -557,7 +489,7 @@ logs.forEach(log => {
       'api-app-prod.mysatcomla.com'
     ];
     const esDestinoCloud = DOMINIOS_INFRAESTRUCTURA.some(dom => destino.toLowerCase().includes(dom));
-    if (!esDestinoCloud) {
+    if (!esDestinoCloud && destino !== 'Desconocido') {
       isClient = true;
       isServer = false;
     }
@@ -568,8 +500,8 @@ logs.forEach(log => {
   function buildSeqQuery(originalFilter, cl, hn) {
     const cleanFilter = originalFilter ? originalFilter.trim() : '';
     const filterPart = cleanFilter ? '(' + cleanFilter + ')' : '';
-    const clientPart = cl && cl !== 'Desconocido' ? "(Cliente = '" + cl + "' or _cliente = '" + cl + "')" : '';
-    const hostPart = hn && hn !== 'Desconocido' ? "(Hostname = '" + hn + "' or _hostname = '" + hn + "')" : '';
+    const clientPart = cl && cl !== 'Desconocido' ? "(_cliente = '" + cl + "' or cliente = '" + cl + "')" : '';
+    const hostPart = hn && hn !== 'Desconocido' ? "(_hostname = '" + hn + "' or hostname = '" + hn + "')" : '';
     const parts = [filterPart, clientPart, hostPart].filter(Boolean);
     return parts.join(' and ');
   }
@@ -582,20 +514,17 @@ logs.forEach(log => {
   }
 
   const payloadComun = {
-    timestamp: log.Timestamp || log['@Timestamp'] || new Date().toISOString(),
+    timestamp: ts || new Date().toISOString(),
     mensajeError: message,
     excepcion: exception,
     destino: destino,
-    metodo: metodo || undefined,
-    param_extra6: paramExtra6 || undefined,
-    tiempo_proc_seg: tiempoProcSeg !== null ? tiempoProcSeg : undefined,
     // Campos dinámicos seleccionados en el generador:
     ${alertConfig.includeVersion ? 'version: version,' : ''}
     ${alertConfig.includeApp ? 'app: app,' : ''}
     ${alertConfig.includeHostname ? 'hostname: hostname,' : ''}
     ${alertConfig.includeCliente ? 'cliente: cliente,' : ''}
-    origenConsulta: 'Seq (Origen: ' + origenConexion + ', Consulta: ${queryName.replace(/'/g, "\\'")})',
-    seqQuery: buildSeqQuery("${queryFilter.replace(/"/g, '\\"')}", cliente, hostname),
+    origenConsulta: 'Seq (Origen: ' + origenConexion + ')',
+    seqQuery: buildSeqQuery(CONSULTA_EVALUADA, cliente, hostname),
     seqPermalink: seqPermalink
   };
 
@@ -626,220 +555,110 @@ logs.forEach(log => {
 });
 
 // Estructuración de las Alertas definitivas
-const alertasMesaDeAyuda = []; // Para errores del cliente
+const alertasMesaDeAyuda = [];
 const alertasInfraestructura = {
   triggered: false,
   clientesAfectados: [],
   erroresAgrupados: [],
   mensaje: ""
-}; // Para e// Lista de clientes que se consideran "Cloud mySatcom"
-const SCRIPT_CLOUD_CLIENTS = new Set([
-  'HostingSAT',
-  'PAC',
-  'Panama2',
-  'BOLIVIA',
-  'HostingV5'
-]);
+};
 
-// Helper para extraer el destino (host/servidor) de una URL o cadena
-function extraerDestinoUrl(url: string) {
-  if (!url) return null;
-  try {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      const parsed = new URL(url);
-      return parsed.origin;
+// Regla Cliente
+for (const key in clientGroups) {
+  const g = clientGroups[key];
+  if (g.eventos >= UMBRAL_CLIENTE_EVENTOS) {
+    const erroresAgrupados = [];
+    for (const msgKey in g.errores) {
+      const errGroup = g.errores[msgKey];
+      erroresAgrupados.push({
+        errorGenerico: msgKey,
+        cantidad: errGroup.cantidad,
+        ejemplo: {
+          destino: errGroup.ejemplo.destino,
+          error: errGroup.ejemplo.mensajeError,
+          // Campos dinámicos seleccionados:
+          ${alertConfig.includeVersion ? 'version: errGroup.ejemplo.version,' : ''}
+          ${alertConfig.includeApp ? 'app: errGroup.ejemplo.app,' : ''}
+          origenConsulta: errGroup.ejemplo.origenConsulta,
+          seqQuery: errGroup.ejemplo.seqQuery,
+          seqPermalink: errGroup.ejemplo.seqPermalink
+        }
+      });
     }
-    const match = url.match(/https?:\/\/[^\s/]+/i);
-    return match ? match[0] : url;
-  } catch (e) {
-    return url;
+
+    alertasMesaDeAyuda.push({
+      origen: \`\${g.cliente} / \${g.hostname}\`,
+      totalEventos: g.eventos,
+      erroresAgrupados,
+      mensaje: \`Alerta Mesa de Ayuda: El cliente \${g.cliente} en \${g.hostname} registra \${g.eventos} errores en los últimos \${VENTANA_TIEMPO_MINUTOS} minutos.\`
+    });
   }
 }
 
-// Estructuras para acumular datos
-const infraestructuraMap: { [key: string]: { destino: string, clientes: Set<string>, totalEventos: number, ejemplos: any[] } } = {};
-const origenMap: { [key: string]: { cliente: string, app: string, hostname: string, esCloud: boolean, count: number, ejemplos: any[] } } = {};
-
-logs.forEach(log => {
-  const message = stringifyValue(log.Message || log.RenderedMessage || '');
-  const exception = stringifyValue(log.Exception || log.exception || log['@Exception'] || '');
-  const hostname = log.Hostname || log._hostname || log.hostname || 'Desconocido';
-  const cliente = log.Cliente || log._cliente || log.cliente || 'Desconocido';
-  const app = log.App || log._app || log.app || 'Desconocido';
-  const version = log.Version || log._version || log.version || 'Desconocido';
-  const origenConexion = log.Origen || log.origen || 'Desconocido';
-
-  const ts = log.Timestamp || log['@Timestamp'];
-  if (ts) {
-    const timeMs = Date.parse(ts);
-    if (!isNaN(timeMs)) {
-      if (timeMs < minTimeMs) {
-        minTimeMs = timeMs;
-        minTimestamp = ts;
-      }
-      if (timeMs > maxTimeMs) {
-        maxTimeMs = timeMs;
-        maxTimestamp = ts;
-      }
-    }
+// Regla Servidor
+const clientesServidorCriticos = [];
+for (const cliente in serverGroups) {
+  const g = serverGroups[cliente];
+  if (g.eventos >= UMBRAL_SERVIDOR_EVENTOS) {
+    clientesServidorCriticos.push(g);
   }
+}
 
-  // Identificar el Destino
-  let apiDestino = log.apiClientUrl || (log.Properties && (log.Properties.find((p: any) => p.Name === 'apiClientUrl')?.Value)) || null;
-  if (!apiDestino && exception) {
-    const urlMatch = exception.match(/https?:\/\/[^\s/]+/i);
-    if (urlMatch) apiDestino = urlMatch[0];
-  }
-  if (!apiDestino && exception.includes('api-colombia.mysatcomla.com')) {
-    apiDestino = 'https://api-colombia.mysatcomla.com';
-  }
-
-  const payloadComun = {
-    timestamp: log.Timestamp || log['@Timestamp'] || new Date().toISOString(),
-    mensajeError: message,
-    excepcion: exception,
-    destino: apiDestino || 'Desconocido',
-    version: version,
-    app: app,
-    hostname: hostname,
-    cliente: cliente,
-    origenConsulta: 'Seq (Origen: ' + origenConexion + ', Consulta: ' + selectedQueryForAlert.name + ')',
-    seqPermalink: log.Id ? ((connections.find(c => c.name === origenConexion)?.url || 'http://logs-sender.mysatcomla.com:5341') + '/#/events/?filter=@Id%20%3D%20%27' + log.Id + '%27&showExpanded') : ''
-  };
-
-  // Acumular infraestructura si hay destino
-  if (apiDestino) {
-    const destinoNormalizado = extraerDestinoUrl(apiDestino);
-    if (destinoNormalizado) {
-      if (!infraestructuraMap[destinoNormalizado]) {
-        infraestructuraMap[destinoNormalizado] = {
-          destino: destinoNormalizado,
-          clientes: new Set(),
-          totalEventos: 0,
-          ejemplos: []
-        };
-      }
-      infraestructuraMap[destinoNormalizado].clientes.add(cliente);
-      infraestructuraMap[destinoNormalizado].totalEventos += 1;
-      if (infraestructuraMap[destinoNormalizado].ejemplos.length < 3) {
-        infraestructuraMap[destinoNormalizado].ejemplos.push(payloadComun);
-      }
-    }
-  }
-
-  // Acumular por origen
-  const origenKey = cliente + '|' + app + '|' + hostname;
-  if (!origenMap[origenKey]) {
-    origenMap[origenKey] = {
-      cliente,
-      app,
-      hostname,
-      esCloud: CLOUD_CLIENTS.has(cliente),
-      count: 0,
-      ejemplos: []
-    };
-  }
-  origenMap[origenKey].count += 1;
-  if (origenMap[origenKey].ejemplos.length < 3) {
-    origenMap[origenKey].ejemplos.push(payloadComun);
-  }
-
-  totalErrores++;
-});
-
-// Estructuración de las Alertas definitivas
-const alertasMesaDeAyuda = []; // Todos los orígenes
-const alertasInfraestructura = []; // Todos los destinos
-
-let algunaAlertaMesaAyudaSuperada = false;
-let algunaAlertaInfraestructuraSuperada = false;
-
-// Evaluar infraestructura: umbral = > 3 orígenes (clientes) distintos y > 10 eventos
-for (const dest in infraestructuraMap) {
-  const data = infraestructuraMap[dest];
-  const superaUmbral = data.clientes.size > 3 && data.totalEventos > 10;
-  if (superaUmbral) {
-    algunaAlertaInfraestructuraSuperada = true;
-  }
+if (clientesServidorCriticos.length >= UMBRAL_SERVIDOR_CLIENTES) {
+  alertasInfraestructura.triggered = true;
+  alertasInfraestructura.clientesAfectados = clientesServidorCriticos.map(c => c.cliente);
+  alertasInfraestructura.erroresAgrupados = [];
   
-  // Limpiar/Simplificar ejemplos para guardar únicamente el mensaje representativo del error
-  const ejemplosSimplificados = data.ejemplos.slice(0, 1).map(function(ej) {
-    return {
-      timestamp: ej.timestamp,
-      mensajeError: ej.mensajeError,
-      destino: ej.destino,
-      cliente: ej.cliente,
-      version: ej.version,
-      app: ej.app,
-      hostname: ej.hostname,
-      seqPermalink: ej.seqPermalink
-    };
+  clientesServidorCriticos.forEach(g => {
+    const agrupadosPorOrigen = [];
+    for (const msgKey in g.errores) {
+      const errGroup = g.errores[msgKey];
+      agrupadosPorOrigen.push({
+        origen: \`\${g.cliente} / \${g.hostname}\`,
+        errorGenerico: msgKey,
+        cantidad: errGroup.cantidad,
+        ejemplo: {
+          destino: errGroup.ejemplo.destino,
+          error: errGroup.ejemplo.mensajeError,
+          // Campos dinámicos seleccionados:
+          ${alertConfig.includeVersion ? 'version: errGroup.ejemplo.version,' : ''}
+          ${alertConfig.includeApp ? 'app: errGroup.ejemplo.app,' : ''}
+          origenConsulta: errGroup.ejemplo.origenConsulta,
+          seqQuery: errGroup.ejemplo.seqQuery,
+          seqPermalink: errGroup.ejemplo.seqPermalink
+        }
+      });
+    }
+    alertasInfraestructura.erroresAgrupados.push(...agrupadosPorOrigen);
   });
 
-  alertasInfraestructura.push({
-    destino: data.destino,
-    superaUmbral: superaUmbral,
-    cantidadClientesAfectados: data.clientes.size,
-    clientesAfectados: Array.from(data.clientes),
-    totalEventosError: data.totalEventos,
-    ejemplo: ejemplosSimplificados[0] || null,
-    mensaje: 'Alerta Infraestructura: Se detectaron ' + data.totalEventos + ' errores afectando a ' + data.clientes.size + ' clientes al invocar el destino ' + data.destino + ' (Supera Umbral: ' + superaUmbral + ').'
-  });
-}
-
-// Evaluar origen (Cliente): >100 si es Cloud o >20 si es normal
-for (const key in origenMap) {
-  const data = origenMap[key];
-  const umbral = data.esCloud ? 100 : 20;
-  const superaUmbral = data.count > umbral;
-  if (superaUmbral) {
-    algunaAlertaMesaAyudaSuperada = true;
-  }
-
-  const ejemplosSimplificados = data.ejemplos.slice(0, 1).map(function(ej) {
-    return {
-      timestamp: ej.timestamp,
-      mensajeError: ej.mensajeError,
-      destino: ej.destino,
-      cliente: ej.cliente,
-      version: ej.version,
-      app: ej.app,
-      hostname: ej.hostname,
-      seqPermalink: ej.seqPermalink
-    };
-  });
-
-  alertasMesaDeAyuda.push({
-    cliente: data.cliente,
-    app: data.app,
-    hostname: data.hostname,
-    superaUmbral: superaUmbral,
-    tipoOrigen: data.esCloud ? 'Cloud mySatcom' : 'Cliente Dedicado/Normal',
-    eventosDetectados: data.count,
-    umbralDefinido: umbral,
-    ejemplo: ejemplosSimplificados[0] || null,
-    mensaje: 'Alerta Origen: El origen ' + data.cliente + ' | ' + data.app + ' | ' + data.hostname + ' (' + (data.esCloud ? 'Cloud' : 'Normal') + ') reporta ' + data.count + ' errores (Umbral: ' + umbral + ', Supera Umbral: ' + superaUmbral + ').'
-  });
+  alertasInfraestructura.mensaje = \`Alerta de Infraestructura: Se detectó un colapso de hilos (ThreadPool Exhaustion) o red en las APIs. Afecta a \${clientesServidorCriticos.length} entornos con errores críticos de conexión.\`;
 }
 
 const rangoHorario = minTimestamp && maxTimestamp 
-  ? minTimestamp + ' a ' + maxTimestamp
+  ? \`\${minTimestamp} a \${maxTimestamp}\`
   : 'No disponible';
 
 return [
   {
     json: {
-      consultaEvaluada: queryFilter,
-      alertaGenerada: algunaAlertaMesaAyudaSuperada || algunaAlertaInfraestructuraSuperada,
+      consultaEvaluada: CONSULTA_EVALUADA,
+      alertaGenerada: alertasMesaDeAyuda.length > 0 || alertasInfraestructura.triggered,
       resumen: {
         totalErroresEvaluados: totalErrores,
+        totalErroresCliente: erroresClienteCount,
+        totalErroresServidor: erroresServidorCount,
         ventanaEvaluacionMinutos: VENTANA_TIEMPO_MINUTOS,
-        alertaClienteCritico: algunaAlertaMesaAyudaSuperada,
-        alertaServidorGlobal: algunaAlertaInfraestructuraSuperada,
+        alertaClienteCritico: alertasMesaDeAyuda.length > 0,
+        alertaServidorGlobal: alertasInfraestructura.triggered,
         rangoHorario: rangoHorario
       },
-      alertasMesaDeAyuda: alertasMesaDeAyuda,
-      alertasInfraestructura: alertasInfraestructura
+      alertasMesaDeAyuda,
+      alertasInfraestructura
+    }
+  }
+];
+`;Infraestructura
     }
   }
 ];
