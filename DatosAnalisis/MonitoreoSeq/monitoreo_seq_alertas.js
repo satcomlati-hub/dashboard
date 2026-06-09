@@ -41,10 +41,10 @@ let erroresServidorCount = 0;
 
 // 1. Procesar y clasificar cada log
 logs.forEach(log => {
-  const message = log.Message || '';
-  const exception = log.Exception || '';
-  const hostname = log.Hostname || log.hostname || 'Desconocido';
-  const cliente = log.Cliente || log.cliente || 'Desconocido';
+  const message = log.Message || log.RenderedMessage || log.MessageTemplate || '';
+  const exception = log.Exception || log.exception || log['@Exception'] || '';
+  const hostname = log.Hostname || log._hostname || log.hostname || 'Desconocido';
+  const cliente = log.Cliente || log._cliente || log.cliente || 'Desconocido';
   
   // Extraer código de estado HTTP si existe en la excepción o mensaje
   let statusCode = null;
@@ -55,9 +55,24 @@ logs.forEach(log => {
     statusCode = parseInt(statusCodeMatch[1]);
   }
 
+  // Robustez en extracción de propiedades
+  let propertiesObj = {};
+  if (log.Properties) {
+    if (Array.isArray(log.Properties)) {
+      log.Properties.forEach(p => {
+        if (p && p.Name) propertiesObj[p.Name] = p.Value;
+      });
+    } else if (typeof log.Properties === 'object') {
+      propertiesObj = log.Properties;
+    }
+  }
+
   let isClient = false;
   let isServer = false;
   let tipoError = 'Desconocido';
+
+  const msgLower = message.toLowerCase();
+  const excLower = exception.toLowerCase();
 
   // Clasificación por código HTTP
   if (statusCode) {
@@ -72,9 +87,6 @@ logs.forEach(log => {
 
   // Clasificación heurística por texto de excepción si no hay código HTTP explícito
   if (!isClient && !isServer) {
-    const msgLower = message.toLowerCase();
-    const excLower = exception.toLowerCase();
-    
     if (excLower.includes('timeout') || msgLower.includes('timeout') || msgLower.includes('tiempo de espera')) {
       isServer = true;
       tipoError = 'Timeout / Tiempo de espera';
@@ -90,6 +102,36 @@ logs.forEach(log => {
       isClient = true;
       tipoError = 'HTTP 404 - Not Found';
     }
+  }
+
+  // Clasificación de eventos RabbitMQ
+  const esRabbit = msgLower.includes('rabbit') || 
+                    excLower.includes('rabbit') || 
+                    propertiesObj.Cola || 
+                    propertiesObj.Consumer || 
+                    propertiesObj.NombreCola ||
+                    log.Cola ||
+                    log.Consumer;
+                    
+  if (esRabbit) {
+    isServer = true;
+    tipoError = 'RabbitMQ / Mensajería';
+  }
+
+  // Clasificación de Warnings/Errors con excepción en propiedades
+  let tieneExcepcion = exception.trim() !== '';
+  if (!tieneExcepcion) {
+    for (const key in propertiesObj) {
+      if (key.toLowerCase().includes('exception') && propertiesObj[key]) {
+        tieneExcepcion = true;
+        break;
+      }
+    }
+  }
+
+  if (!isClient && !isServer && tieneExcepcion) {
+    isServer = true;
+    tipoError = 'Excepción del Servidor (Warning/Error)';
   }
 
   totalErrores++;

@@ -257,6 +257,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
   const [queryFilterInput, setQueryFilterInput] = useState<string>('');
   const [showSavedQueries, setShowSavedQueries] = useState<boolean>(false);
   const [historyQueries, setHistoryQueries] = useState<HistoryQuery[]>([]);
+  const [downloadFileName, setDownloadFileName] = useState<string>('resultados_logs');
   
   // Selector temporal (inicio/fin)
   const [queryStartTime, setQueryStartTime] = useState<string>(''); // YYYY-MM-DDTHH:mm
@@ -518,6 +519,34 @@ logs.forEach(log => {
     } else if (excLower.includes('not found') || msgLower.includes('not found')) {
       isClient = true;
     }
+  }
+
+  // Clasificación de eventos RabbitMQ
+  const esRabbit = message.toLowerCase().includes('rabbit') || 
+                    exception.toLowerCase().includes('rabbit') || 
+                    propertiesObj.Cola || 
+                    propertiesObj.Consumer || 
+                    propertiesObj.NombreCola ||
+                    log.Cola ||
+                    log.Consumer;
+                    
+  if (esRabbit) {
+    isServer = true;
+  }
+
+  // Clasificación de Warnings/Errors con excepción en propiedades o estructura
+  let tieneExcepcion = exception.trim() !== '';
+  if (!tieneExcepcion) {
+    for (const key in propertiesObj) {
+      if (key.toLowerCase().includes('exception') && propertiesObj[key]) {
+        tieneExcepcion = true;
+        break;
+      }
+    }
+  }
+
+  if (!isClient && !isServer && tieneExcepcion) {
+    isServer = true;
   }
 
   // Desviar alertas de infraestructura si el dominio no es administrado por infraestructura cloud
@@ -2236,15 +2265,22 @@ return [
       return obj;
     });
 
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dataObjects, null, 2));
+    const jsonContent = JSON.stringify(dataObjects, null, 2);
+    const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute("href", dataStr);
-    const fileName = `resultado_consulta_${Date.now()}.json`;
-    downloadAnchor.setAttribute("download", fileName);
+    downloadAnchor.setAttribute("href", url);
+    let name = downloadFileName.trim() || 'resultado_consulta';
+    if (name.endsWith('.csv')) {
+      name = name.slice(0, -4);
+    }
+    if (!name.endsWith('.json')) name += '.json';
+    downloadAnchor.setAttribute("download", name);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
-    showToast(`Archivo ${fileName} descargado`, 'success');
+    URL.revokeObjectURL(url);
+    showToast(`Archivo ${name} descargado`, 'success');
   };
 
   // Descargar el resultado de la consulta actual en formato CSV
@@ -2262,15 +2298,21 @@ return [
     });
 
     const csvContent = [headers, ...rowsCsv].join('\n');
-    const dataStr = "data:text/csv;charset=utf-8," + encodeURIComponent(csvContent);
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute("href", dataStr);
-    const fileName = `resultado_consulta_${Date.now()}.csv`;
-    downloadAnchor.setAttribute("download", fileName);
+    downloadAnchor.setAttribute("href", url);
+    let name = downloadFileName.trim() || 'resultado_consulta';
+    if (name.endsWith('.json')) {
+      name = name.slice(0, -5);
+    }
+    if (!name.endsWith('.csv')) name += '.csv';
+    downloadAnchor.setAttribute("download", name);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
-    showToast(`Archivo ${fileName} descargado`, 'success');
+    URL.revokeObjectURL(url);
+    showToast(`Archivo ${name} descargado`, 'success');
   };
 
   // Descargar todos los logs tradicionales (no SQL agregados) que se muestran actualmente
@@ -2299,15 +2341,22 @@ return [
       };
     });
 
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(formatted, null, 2));
+    const jsonContent = JSON.stringify(formatted, null, 2);
+    const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute("href", dataStr);
-    const fileName = `resultados_logs_${Date.now()}.json`;
-    downloadAnchor.setAttribute("download", fileName);
+    downloadAnchor.setAttribute("href", url);
+    let name = downloadFileName.trim() || 'resultados_logs';
+    if (name.endsWith('.csv')) {
+      name = name.slice(0, -4);
+    }
+    if (!name.endsWith('.json')) name += '.json';
+    downloadAnchor.setAttribute("download", name);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
-    showToast(`Archivo ${fileName} con ${filteredLogs.length} logs descargado`, 'success');
+    URL.revokeObjectURL(url);
+    showToast(`Archivo ${name} con ${filteredLogs.length} logs descargado`, 'success');
   };
 
   // Expandir / colapsar log
@@ -2622,6 +2671,32 @@ return [
         } else if (excLower.includes('not found') || msgLower.includes('not found')) {
           isClient = true;
         }
+      }
+
+      // Clasificación de eventos RabbitMQ
+      const esRabbit = message.toLowerCase().includes('rabbit') || 
+                        exception.toLowerCase().includes('rabbit') || 
+                        log.Cola || 
+                        log.Consumer || 
+                        log.NombreCola;
+                        
+      if (esRabbit) {
+        isServer = true;
+      }
+
+      // Clasificación de Warnings/Errors con excepción en propiedades o estructura
+      let tieneExcepcion = exception.trim() !== '';
+      if (!tieneExcepcion) {
+        for (const key in log) {
+          if (key.toLowerCase().includes('exception') && log[key]) {
+            tieneExcepcion = true;
+            break;
+          }
+        }
+      }
+
+      if (!isClient && !isServer && tieneExcepcion) {
+        isServer = true;
       }
 
       // Desviar alertas de infraestructura si el dominio no es administrado por infraestructura cloud
@@ -4194,11 +4269,18 @@ return [
                   )}
 
                   {!rawSqlResult && filteredLogs.length > 0 && (
-                    <div className="flex items-center gap-1.5 font-sans">
-                      <span className="text-[10px] text-neutral-450">Descargar resultados:</span>
+                    <div className="flex items-center gap-2 font-sans">
+                      <span className="text-[10px] text-neutral-450 whitespace-nowrap">Nombre archivo:</span>
+                      <input
+                        type="text"
+                        value={downloadFileName}
+                        onChange={(e) => setDownloadFileName(e.target.value)}
+                        className="w-32 bg-white dark:bg-[#181818] border border-neutral-250 dark:border-neutral-850 rounded px-1.5 py-0.5 text-[10px] text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] font-mono"
+                        placeholder="resultados_logs"
+                      />
                       <button
                         onClick={handleDownloadAllLogsJson}
-                        className="flex items-center gap-1 text-[10px] font-bold bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-850 hover:bg-[#71BF44]/10 hover:border-[#71BF44]/30 hover:text-[#71BF44] text-neutral-700 dark:text-neutral-300 px-2 py-1 rounded transition-all"
+                        className="flex items-center gap-1 text-[10px] font-bold bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-850 hover:bg-[#71BF44]/10 hover:border-[#71BF44]/30 hover:text-[#71BF44] text-neutral-700 dark:text-neutral-300 px-2 py-1 rounded transition-all shrink-0"
                         title="Descargar todos los logs filtrados en formato JSON"
                       >
                         JSON ({filteredLogs.length})
@@ -4270,8 +4352,15 @@ return [
                       <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-800 hidden sm:block" />
 
                       {/* Botones de Descarga */}
-                      <div className="flex items-center gap-1.5 font-sans">
-                        <span className="text-[10px] text-neutral-450 hidden sm:inline">Descargar:</span>
+                      <div className="flex items-center gap-2 font-sans">
+                        <span className="text-[10px] text-neutral-450 hidden sm:inline whitespace-nowrap">Nombre archivo:</span>
+                        <input
+                          type="text"
+                          value={downloadFileName}
+                          onChange={(e) => setDownloadFileName(e.target.value)}
+                          className="w-32 bg-white dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 rounded px-1.5 py-0.5 text-[10px] text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] font-mono"
+                          placeholder="resultados_logs"
+                        />
                         <button
                           onClick={handleDownloadSqlJson}
                           className="flex items-center gap-1 text-[10px] font-bold bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-850 hover:bg-neutral-50 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white px-2 py-1 rounded transition-colors"
