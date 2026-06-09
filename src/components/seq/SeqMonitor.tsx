@@ -848,7 +848,7 @@ return [
     if (!isCustomAlertEdited) {
       setCustomJsAlert(jsCode);
     }
-  }, [selectedQueryForAlert, alertQueryFilter, alertConfig, connections, isCustomAlertEdited]);
+  }, [selectedQueryForAlert, alertQueryFilter, alertConfig, connections, isCustomAlertEdited, isAlertModalOpen]);
 
   // Cerrar popups al hacer clic afuera
   useEffect(() => {
