@@ -18,10 +18,21 @@ interface AISource {
 interface TrendPoint { day: string; tokens: number; costUsd: number; calls: number }
 interface Pricing { provider: string; model: string; inputPer1M: number; outputPer1M: number; cachedPer1M: number }
 interface N8NInst { connected: boolean; totalWorkflows: number; activeWorkflows: number; executions: number }
+interface AgentUsage {
+  agentId: string; slug: string; name: string; model: string;
+  runs: number; untrackedRuns: number; errorRuns: number;
+  inputTokens: number; outputTokens: number; totalTokens: number;
+  costUsd: number; avgTokensPerRun: number; lastRun: string | null; missingPrice: boolean;
+}
+interface Budget {
+  monthlyUsd: number; mtdCostUsd: number;
+  mtdAgentCostUsd: number; mtdAiCostUsd: number; mtdAgentTokens: number;
+}
 interface UsageData {
   range: string;
   ai: {
     models: AIModel[]; sources: AISource[]; trend: TrendPoint[]; pricing: Pricing[];
+    agents: AgentUsage[]; budget: Budget;
     summary: { totalCostUsd: number; totalTokens: number; totalInputTokens: number; totalOutputTokens: number; totalCalls: number };
   };
   infra: {
@@ -241,7 +252,7 @@ export default function UsagePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState<'7d' | '30d' | '90d'>('30d');
-  const [tab, setTab] = useState<'ia' | 'infra' | 'proyecciones' | 'origen'>('ia');
+  const [tab, setTab] = useState<'ia' | 'agentes' | 'infra' | 'proyecciones' | 'origen'>('ia');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const load = useCallback(async () => {
@@ -273,6 +284,9 @@ export default function UsagePage() {
   const n8nActiveWf = (infra?.n8n.primary.activeWorkflows ?? 0) + (infra?.n8n.sara.activeWorkflows ?? 0);
   const dbMb = infra?.supabase.dbMb ?? 0;
   const totalCost = ai?.summary.totalCostUsd ?? 0;
+  const agents = ai?.agents ?? [];
+  const budget = ai?.budget;
+  const budgetPct = budget && budget.monthlyUsd > 0 ? pct(budget.mtdCostUsd, budget.monthlyUsd) : 0;
 
   // Projection from trend
   const trendDays = ai?.trend.length ?? 0;
@@ -346,8 +360,10 @@ export default function UsagePage() {
           {
             label: `Gasto IA (${range})`,
             value: loading ? '—' : fmt$(totalCost),
-            sub: `${fmtK(ai?.summary.totalTokens ?? 0)} tokens · ${ai?.summary.totalCalls ?? 0} llamadas`,
-            accent: totalCost > 10 ? '#f59e0b' : '#71BF44',
+            sub: budget
+              ? `Mes: ${fmt$(budget.mtdCostUsd)} / $${budget.monthlyUsd} (${budgetPct.toFixed(0)}%)`
+              : `${fmtK(ai?.summary.totalTokens ?? 0)} tokens · ${ai?.summary.totalCalls ?? 0} llamadas`,
+            accent: budget ? pctColor(budgetPct) : (totalCost > 10 ? '#f59e0b' : '#71BF44'),
           },
           {
             label: 'n8n Cloud · ejecuciones',
@@ -379,6 +395,7 @@ export default function UsagePage() {
       {/* ── Tabs ── */}
       <div className="flex gap-1 bg-neutral-100 dark:bg-neutral-900 p-1 rounded-lg w-fit mb-7 overflow-x-auto">
         <TabBtn label="IA en Tiempo Real" active={tab === 'ia'} onClick={() => setTab('ia')} />
+        <TabBtn label="Por Agente" active={tab === 'agentes'} onClick={() => setTab('agentes')} />
         <TabBtn label="Infraestructura" active={tab === 'infra'} onClick={() => setTab('infra')} />
         <TabBtn label="Proyecciones" active={tab === 'proyecciones'} onClick={() => setTab('proyecciones')} />
         <TabBtn label="Por Origen" active={tab === 'origen'} onClick={() => setTab('origen')} />
@@ -539,6 +556,164 @@ export default function UsagePage() {
               Crédito de $300 aplica en Vertex AI / Google AI Studio con billing habilitado. El costo real (última lectura manual: $37.70 en 90 días) será reemplazado por datos automáticos cuando el workflow MON_Costos_Diarios esté activo.
             </InfoBox>
           </Card>
+        </div>
+      )}
+
+      {/* ══════════ POR AGENTE ══════════ */}
+      {tab === 'agentes' && (
+        <div className="space-y-6">
+
+          {/* Semáforo de presupuesto */}
+          {budget && (
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <h3 className="text-base font-semibold text-neutral-900 dark:text-white">Presupuesto IA del mes</h3>
+                  <p className="text-xs text-neutral-400 mt-0.5">Tope global ${budget.monthlyUsd}/mes · alerta 60% / 85%</p>
+                </div>
+                <span className="text-sm font-bold px-2.5 py-1 rounded-full" style={{ color: pctColor(budgetPct), background: `${pctColor(budgetPct)}1a` }}>
+                  {budgetPct > 85 ? 'Crítico' : budgetPct > 60 ? 'Vigilar' : 'En rango'}
+                </span>
+              </div>
+              <div className="flex justify-between items-end text-sm mb-1 mt-4">
+                <span className="text-neutral-500">Consumido este mes (estimado)</span>
+                <span className="font-mono font-bold text-lg" style={{ color: pctColor(budgetPct) }}>
+                  {fmt$(budget.mtdCostUsd)} <span className="text-xs text-neutral-400 font-normal">/ ${budget.monthlyUsd} · {budgetPct.toFixed(1)}%</span>
+                </span>
+              </div>
+              <ProgressBar value={budget.mtdCostUsd} max={budget.monthlyUsd} />
+              <div className="grid grid-cols-3 gap-3 mt-5 text-center">
+                <div className="bg-neutral-50 dark:bg-neutral-900/50 rounded-lg p-3">
+                  <p className="text-[10px] text-neutral-400 uppercase tracking-wide mb-1">Agentes</p>
+                  <p className="font-mono font-semibold text-sm text-neutral-800 dark:text-neutral-200">{fmt$(budget.mtdAgentCostUsd)}</p>
+                  <p className="text-[11px] text-neutral-400">{fmtK(budget.mtdAgentTokens)} tokens</p>
+                </div>
+                <div className="bg-neutral-50 dark:bg-neutral-900/50 rounded-lg p-3">
+                  <p className="text-[10px] text-neutral-400 uppercase tracking-wide mb-1">Workflows / ingestas</p>
+                  <p className="font-mono font-semibold text-sm text-neutral-800 dark:text-neutral-200">{fmt$(budget.mtdAiCostUsd)}</p>
+                  <p className="text-[11px] text-neutral-400">tabla ai_usage</p>
+                </div>
+                <div className="bg-neutral-50 dark:bg-neutral-900/50 rounded-lg p-3">
+                  <p className="text-[10px] text-neutral-400 uppercase tracking-wide mb-1">Restante</p>
+                  <p className="font-mono font-semibold text-sm" style={{ color: pctColor(budgetPct) }}>{fmt$(Math.max(0, budget.monthlyUsd - budget.mtdCostUsd))}</p>
+                  <p className="text-[11px] text-neutral-400">{(100 - budgetPct).toFixed(0)}% libre</p>
+                </div>
+              </div>
+              <InfoBox variant={budgetPct > 85 ? 'err' : budgetPct > 60 ? 'warn' : 'ok'}>
+                El costo es un <strong>límite superior</strong>: <code className="font-mono">ag_runs.usage</code> registra tokens de prompt y total, pero no los tokens en caché, así que la caché implícita de Gemini abarata el costo real (Google Cloud muestra menos). El conteo de tokens por agente sí es exacto.
+              </InfoBox>
+            </Card>
+          )}
+
+          {/* Tokens por agente (métrica exacta) */}
+          {agents.filter(a => a.totalTokens > 0).length > 0 && (
+            <Card className="p-6">
+              <h3 className="text-base font-semibold text-neutral-900 dark:text-white mb-4">Tokens por agente ({range})</h3>
+              <ResponsiveContainer width="100%" height={Math.max(120, agents.filter(a => a.totalTokens > 0).length * 48)}>
+                <BarChart
+                  data={agents.filter(a => a.totalTokens > 0).map(a => ({ name: a.name, tokens: a.totalTokens, cost: a.costUsd }))}
+                  layout="vertical"
+                  margin={{ top: 0, right: 56, left: 0, bottom: 0 }}
+                >
+                  <XAxis type="number" tickFormatter={v => fmtK(v)} tick={{ fontSize: 10, fill: '#71717a' }} />
+                  <YAxis type="category" dataKey="name" width={210} tick={{ fontSize: 11, fill: '#a3a3a3' }} />
+                  <Tooltip content={<ChartTooltip formatter={(v: number, n: string) => n === 'Costo USD' ? fmt$(v) : fmtK(v)} />} />
+                  <Bar dataKey="tokens" name="Tokens" radius={[0, 4, 4, 0]}>
+                    {agents.filter(a => a.totalTokens > 0).map((_, i) => <Cell key={i} fill={MODEL_COLORS[i % MODEL_COLORS.length]} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Card>
+          )}
+
+          {/* Tabla por agente */}
+          <Card className="overflow-hidden">
+            <div className="px-6 py-4 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-semibold text-neutral-900 dark:text-white">Consumo por agente</h3>
+                <p className="text-xs text-neutral-400 mt-0.5">Vista <code className="font-mono">v_agent_usage</code> · <code className="font-mono">ag_runs</code> + <code className="font-mono">ag_agents</code></p>
+              </div>
+            </div>
+            {agents.length === 0 ? (
+              <div className="px-6 py-10 text-center text-sm text-neutral-400">
+                <p>Sin corridas de agentes en este período.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-[11px] text-neutral-500 uppercase bg-neutral-50 dark:bg-neutral-900/50">
+                    <tr>
+                      <th className="px-5 py-3 text-left font-medium">Agente</th>
+                      <th className="px-5 py-3 text-right font-medium">Corridas</th>
+                      <th className="px-5 py-3 text-right font-medium">Tokens</th>
+                      <th className="px-5 py-3 text-right font-medium">Prom./corrida</th>
+                      <th className="px-5 py-3 text-right font-medium">Costo est.</th>
+                      <th className="px-5 py-3 text-right font-medium">% tokens</th>
+                      <th className="px-5 py-3 text-right font-medium">Última vez</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      const totalTok = agents.reduce((s, a) => s + a.totalTokens, 0);
+                      return agents.map((a, i) => {
+                        const p = totalTok > 0 ? (a.totalTokens / totalTok) * 100 : 0;
+                        return (
+                          <tr key={a.agentId} className="border-t border-neutral-100 dark:border-neutral-800/60 hover:bg-neutral-50 dark:hover:bg-neutral-800/20">
+                            <td className="px-5 py-3">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: MODEL_COLORS[i % MODEL_COLORS.length] }} />
+                                <div className="min-w-0">
+                                  <p className="font-medium text-neutral-900 dark:text-white text-[13px] truncate">{a.name}</p>
+                                  <p className="text-[11px] text-neutral-400">{modelLabel(a.model)}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-5 py-3 text-right font-mono text-xs text-neutral-600 dark:text-neutral-400">
+                              {a.runs}
+                              {a.untrackedRuns > 0 && (
+                                <span className="block text-[10px] text-amber-500" title="Corridas sin tokens registrados en usage">{a.untrackedRuns} sin medir</span>
+                              )}
+                            </td>
+                            <td className="px-5 py-3 text-right font-mono text-xs text-neutral-700 dark:text-neutral-300 font-semibold">{fmtK(a.totalTokens)}</td>
+                            <td className="px-5 py-3 text-right font-mono text-xs text-neutral-600 dark:text-neutral-400">{fmtK(a.avgTokensPerRun)}</td>
+                            <td className="px-5 py-3 text-right font-mono text-sm font-semibold text-amber-600 dark:text-amber-400">
+                              {a.missingPrice ? <span className="text-neutral-400" title="Sin precio en ai_pricing">—</span> : fmt$(a.costUsd)}
+                            </td>
+                            <td className="px-5 py-3 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <div className="w-16 h-1.5 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
+                                  <div className="h-full rounded-full" style={{ width: `${p}%`, background: MODEL_COLORS[i % MODEL_COLORS.length] }} />
+                                </div>
+                                <span className="font-mono text-xs text-neutral-500 w-8 text-right">{p.toFixed(0)}%</span>
+                              </div>
+                            </td>
+                            <td className="px-5 py-3 text-right text-xs text-neutral-400">{fmtRelTime(a.lastRun)}</td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                  <tfoot className="border-t border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900/40">
+                    <tr>
+                      <td className="px-5 py-3 font-semibold text-neutral-900 dark:text-white text-sm">Total agentes</td>
+                      <td className="px-5 py-3 text-right font-mono text-xs text-neutral-700 dark:text-neutral-300">{agents.reduce((s, a) => s + a.runs, 0)}</td>
+                      <td className="px-5 py-3 text-right font-mono text-xs text-neutral-700 dark:text-neutral-300">{fmtK(agents.reduce((s, a) => s + a.totalTokens, 0))}</td>
+                      <td />
+                      <td className="px-5 py-3 text-right font-mono font-bold text-base text-amber-500">{fmt$(agents.reduce((s, a) => s + a.costUsd, 0))}</td>
+                      <td /><td />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </Card>
+
+          {/* Corridas sin instrumentar */}
+          {agents.some(a => a.untrackedRuns > 0) && (
+            <InfoBox variant="warn">
+              Hay agentes con corridas que no registran <code className="font-mono">usage</code> (p. ej. Soporte SEQ y E2E): sus tokens no se cuentan y el total real es mayor. Instrumenta esos flujos para que escriban <code className="font-mono">prompt_tokens</code> y <code className="font-mono">total_tokens</code> en <code className="font-mono">ag_runs.usage</code>.
+            </InfoBox>
+          )}
         </div>
       )}
 

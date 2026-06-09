@@ -58,6 +58,10 @@ export async function GET(req: Request) {
       primaryExecRes,
       saraWfRes,
       saraExecRes,
+      agentRows,
+      agentLastRows,
+      agentTrendRows,
+      budgetRows,
     ] = await Promise.all([
       // AI usage by model
       query(
@@ -124,6 +128,43 @@ export async function GET(req: Request) {
       // n8n SARA
       n8nGet(N8N_SARA, N8N_SARA_KEY, '/api/v1/workflows?limit=200'),
       n8nGet(N8N_SARA, N8N_SARA_KEY, '/api/v1/executions?limit=250'),
+      // ── Sistema de agentes (ag_runs) — consumo real por agente ──
+      query(
+        `SELECT agent_id, agent_slug, agent_name, model,
+          SUM(runs)::int            AS runs,
+          SUM(untracked_runs)::int  AS untracked_runs,
+          SUM(error_runs)::int      AS error_runs,
+          SUM(input_tokens)::bigint  AS input_tokens,
+          SUM(output_tokens)::bigint AS output_tokens,
+          SUM(total_tokens)::bigint  AS total_tokens,
+          ROUND(SUM(cost_usd)::numeric, 6) AS cost_usd,
+          bool_or(missing_price) AS missing_price
+         FROM v_agent_usage
+         WHERE day > (NOW() - $1::interval)::date
+         GROUP BY agent_id, agent_slug, agent_name, model
+         ORDER BY total_tokens DESC NULLS LAST`,
+        [interval],
+      ),
+      // Última corrida por agente (timestamp exacto)
+      query('SELECT agent_id, MAX(created_at) AS last_run FROM ag_runs GROUP BY agent_id'),
+      // Tendencia diaria de agentes (siempre 30 días, para continuidad del chart)
+      query(`
+        SELECT day,
+          SUM(total_tokens)::bigint        AS tokens,
+          ROUND(SUM(cost_usd)::numeric, 6) AS cost_usd,
+          SUM(runs)::int                   AS calls
+        FROM v_agent_usage
+        WHERE day > (NOW() - INTERVAL '30 days')::date
+        GROUP BY day
+        ORDER BY day ASC
+      `),
+      // Gasto IA del mes en curso (agentes + ai_usage) para el semáforo de presupuesto
+      query(`
+        SELECT
+          (SELECT COALESCE(SUM(cost_usd), 0)     FROM v_agent_usage WHERE day >= date_trunc('month', now())::date)  AS agent_mtd_cost,
+          (SELECT COALESCE(SUM(total_tokens), 0) FROM v_agent_usage WHERE day >= date_trunc('month', now())::date)  AS agent_mtd_tokens,
+          (SELECT COALESCE(SUM(cost_usd), 0)     FROM ai_usage WHERE created_at >= date_trunc('month', now()) AND status <> 'error') AS ai_mtd_cost
+      `),
     ]);
 
     // ── AI models ──
@@ -161,12 +202,99 @@ export async function GET(req: Request) {
       cachedPer1M: Number(r.cached_per_1m),
     }));
 
+    // ── Sistema de agentes (ag_runs) ──
+    const lastRunByAgent = new Map<string, string | null>();
+    for (const r of agentLastRows.rows) {
+      lastRunByAgent.set(r.agent_id as string, r.last_run ? new Date(r.last_run).toISOString() : null);
+    }
+
+    const agents = agentRows.rows.map(r => {
+      const totalTokens = Number(r.total_tokens);
+      const runs = Number(r.runs);
+      return {
+        agentId: r.agent_id as string,
+        slug: (r.agent_slug as string) || '',
+        name: r.agent_name as string,
+        model: r.model as string,
+        runs,
+        untrackedRuns: Number(r.untracked_runs),
+        errorRuns: Number(r.error_runs),
+        inputTokens: Number(r.input_tokens),
+        outputTokens: Number(r.output_tokens),
+        totalTokens,
+        costUsd: Number(r.cost_usd),
+        avgTokensPerRun: runs > 0 ? Math.round(totalTokens / runs) : 0,
+        lastRun: lastRunByAgent.get(r.agent_id as string) ?? null,
+        missingPrice: r.missing_price === true,
+      };
+    });
+
+    // ── Fusión: los agentes son consumo de IA real → se integran a modelos/orígenes/tendencia ──
+    type ModelAgg = (typeof models)[number];
+    const modelMap = new Map<string, ModelAgg>();
+    for (const m of models) modelMap.set(`${m.provider}:${m.model}`, { ...m });
+    for (const a of agents) {
+      const key = `gemini:${a.model}`;
+      const ex = modelMap.get(key);
+      if (ex) {
+        ex.inputTokens += a.inputTokens;
+        ex.outputTokens += a.outputTokens;
+        ex.costUsd += a.costUsd;
+        ex.calls += a.runs;
+        if (a.lastRun && (!ex.lastCall || a.lastRun > ex.lastCall)) ex.lastCall = a.lastRun;
+      } else {
+        modelMap.set(key, {
+          provider: 'gemini', model: a.model,
+          inputTokens: a.inputTokens, outputTokens: a.outputTokens, cachedTokens: 0,
+          costUsd: a.costUsd, calls: a.runs, lastCall: a.lastRun,
+        });
+      }
+    }
+    const mergedModels = [...modelMap.values()].sort((x, y) => y.costUsd - x.costUsd);
+
+    const mergedSources = [
+      ...sources,
+      ...agents
+        .filter(a => a.runs > 0)
+        .map(a => ({
+          source: `agente:${a.name}`,
+          inputTokens: a.inputTokens,
+          outputTokens: a.outputTokens,
+          costUsd: a.costUsd,
+          calls: a.runs,
+        })),
+    ].sort((x, y) => y.costUsd - x.costUsd);
+
+    type TrendAgg = (typeof trend)[number];
+    const trendMap = new Map<string, TrendAgg>();
+    for (const t of trend) trendMap.set(t.day, { ...t });
+    for (const r of agentTrendRows.rows) {
+      const day = (r.day as Date).toISOString().split('T')[0];
+      const tk = Number(r.tokens), co = Number(r.cost_usd), ca = Number(r.calls);
+      const ex = trendMap.get(day);
+      if (ex) { ex.tokens += tk; ex.costUsd += co; ex.calls += ca; }
+      else trendMap.set(day, { day, tokens: tk, costUsd: co, calls: ca });
+    }
+    const mergedTrend = [...trendMap.values()].sort((a, b) => (a.day < b.day ? -1 : 1));
+
     const aiSummary = {
-      totalCostUsd: models.reduce((s, m) => s + m.costUsd, 0),
-      totalTokens: models.reduce((s, m) => s + m.inputTokens + m.outputTokens, 0),
-      totalInputTokens: models.reduce((s, m) => s + m.inputTokens, 0),
-      totalOutputTokens: models.reduce((s, m) => s + m.outputTokens, 0),
-      totalCalls: models.reduce((s, m) => s + m.calls, 0),
+      totalCostUsd: mergedModels.reduce((s, m) => s + m.costUsd, 0),
+      totalTokens: mergedModels.reduce((s, m) => s + m.inputTokens + m.outputTokens, 0),
+      totalInputTokens: mergedModels.reduce((s, m) => s + m.inputTokens, 0),
+      totalOutputTokens: mergedModels.reduce((s, m) => s + m.outputTokens, 0),
+      totalCalls: mergedModels.reduce((s, m) => s + m.calls, 0),
+    };
+
+    // ── Presupuesto IA (semáforo anti-fuga) ── tope mensual global = $50
+    const bRow = budgetRows.rows[0] || {};
+    const mtdAgentCost = Number(bRow.agent_mtd_cost || 0);
+    const mtdAiCost = Number(bRow.ai_mtd_cost || 0);
+    const budget = {
+      monthlyUsd: 50,
+      mtdCostUsd: mtdAgentCost + mtdAiCost,
+      mtdAgentCostUsd: mtdAgentCost,
+      mtdAiCostUsd: mtdAiCost,
+      mtdAgentTokens: Number(bRow.agent_mtd_tokens || 0),
     };
 
     // ── Infrastructure ──
@@ -197,11 +325,13 @@ export async function GET(req: Request) {
     return NextResponse.json({
       range: rangeKey,
       ai: {
-        models,
-        sources,
+        models: mergedModels,
+        sources: mergedSources,
         summary: aiSummary,
-        trend,
+        trend: mergedTrend,
         pricing,
+        agents,
+        budget,
       },
       infra: {
         supabase: {
