@@ -658,10 +658,6 @@ return [
     }
   }
 ];
-`;Infraestructura
-    }
-  }
-];
 `;
     setGeneratedJsAlert(jsCode);
     if (!isCustomAlertEdited) {
