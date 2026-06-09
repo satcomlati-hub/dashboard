@@ -26,15 +26,17 @@ export async function GET(request: Request) {
     let filterToSend = filter;
     let clientSideLevels: string[] | null = null;
 
-    if (filterToSend && !isSqlQuery) {
-      filterToSend = replaceNowWithAbsolute(filterToSend);
-    }
-
-    if (isColombia && filterToSend && !isSqlQuery) {
+    if (filterToSend) {
       filterToSend = translateLikeToContains(filterToSend);
-      clientSideLevels = extractAllowedLevels(filterToSend);
-      const stripped = stripLevelFilter(filterToSend);
-      filterToSend = stripped === '' ? null : stripped;
+      if (isColombia) {
+        if (!isSqlQuery) {
+          clientSideLevels = extractAllowedLevels(filterToSend);
+          const stripped = stripLevelFilter(filterToSend);
+          filterToSend = stripped === '' ? null : stripped;
+        }
+      } else if (!isSqlQuery) {
+        filterToSend = replaceNowWithAbsolute(filterToSend);
+      }
     }
 
     // Si es Colombia y filtramos por nivel, pedir más logs de Seq para compensar el filtrado en memoria
@@ -50,7 +52,9 @@ export async function GET(request: Request) {
     // Seq usa el endpoint /api/events para consultar eventos, y /api/data para consultas SQL (select ...)
     const targetUrl = new URL(isSqlQuery ? '/api/data' : '/api/events', seqUrl);
     
-    if (!isSqlQuery) {
+    if (isSqlQuery) {
+      if (filterToSend) targetUrl.searchParams.append('q', filterToSend);
+    } else {
       if (filterToSend) targetUrl.searchParams.append('filter', filterToSend);
       if (countToSend) targetUrl.searchParams.append('count', countToSend);
       if (render) targetUrl.searchParams.append('render', render);
@@ -67,14 +71,9 @@ export async function GET(request: Request) {
       headers['X-Seq-ApiKey'] = apiKey.trim();
     }
 
-    if (isSqlQuery) {
-      headers['Content-Type'] = 'application/json';
-    }
-
     const response = await fetch(targetUrl.toString(), {
-      method: isSqlQuery ? 'POST' : 'GET',
-      headers: headers,
-      body: isSqlQuery ? JSON.stringify({ query: filterToSend }) : undefined
+      method: 'GET',
+      headers: headers
     });
 
     if (!response.ok) {
