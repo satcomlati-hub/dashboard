@@ -481,6 +481,9 @@ export default function SaraChatPage() {
 
         const displayContent = stripMarkers(accumulated);
         const finalMsg: Message = { id: streamMsgId, role: 'assistant', content: displayContent || 'Sin respuesta.', images: streamImages, report: parseReport(accumulated), timestamp: Date.now() };
+        // Aplicar el mensaje final (incl. la tarjeta de reporte) al estado VISIBLE,
+        // no solo a persist(): sin esto la tarjeta solo aparecía tras recargar.
+        setMessages(prev => prev.map(m => m.id === streamMsgId ? finalMsg : m));
         persist([...withUser, finalMsg], sid);
 
       } else {
