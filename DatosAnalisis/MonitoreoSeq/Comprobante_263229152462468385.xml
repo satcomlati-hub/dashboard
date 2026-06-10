@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Requerimiento xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <InformacionAdicional>
+    <Campo id="1">
+      <Descripcion>DIRECCION:</Descripcion>
+      <Valor>Calle 127A53A-45Torre2Piso9Bogotá</Valor>
+    </Campo>
+    <Campo id="2">
+      <Descripcion>CORREO:</Descripcion>
+      <Valor>payables_co@oracle.com;facturasemitidas@satcomla.com</Valor>
+    </Campo>
+    <Campo id="3">
+      <Descripcion>Condiciones de Pago:</Descripcion>
+      <Valor>60 días</Valor>
+    </Campo>
+    <Campo id="4">
+      <Descripcion>FACTURAS VARIAS</Descripcion>
+      <Valor>B269151 B269153 B269627 B269626 B269626 B269635 B269796 B270021 B270021 B270021 B270021 B270074 B270073 B270347 B270261 B270348 B270392 B269920 B270262 B270169</Valor>
+    </Campo>
+    <Campo>
+      <Descripcion>Agente de Retencion</Descripcion>
+      <Valor>No. Resolución: 1</Valor>
+    </Campo>
+  </InformacionAdicional>
+  <Codigo>03</Codigo>
+  <Descripcion>LiquidacionCompra</Descripcion>
+  <NumeroDocumento>000000856</NumeroDocumento>
+  <FechaEmision>02/06/2026</FechaEmision>
+  <FechaEmisionPais>02/06/2026 00:00:00</FechaEmisionPais>
+  <FechaEmisionFormatoPais>02/06/2026</FechaEmisionFormatoPais>
+  <TasaCambioPrincipal>0</TasaCambioPrincipal>
+  <TasaCambioAlternativa>0</TasaCambioAlternativa>
+  <ValorMinimoPrincipal>0</ValorMinimoPrincipal>
+  <ValorMinimoAlternativo>0</ValorMinimoAlternativo>
+  <CondicionVenta />
+  <CodigoReferencia />
+  <TotalSinImpuestos>15350.0700</TotalSinImpuestos>
+  <TotalConImpuestos>17652.58</TotalConImpuestos>
+  <Retencion />
+  <DetallesProceso />
+  <PeriodoFiscal />
+  <CodigoPagoLocalizacionExtranjera xsi:nil="true" />
+  <CodigoTipoRegimenFiscalExterior xsi:nil="true" />
+  <CodigoPaisEfectuaPago xsi:nil="true" />
+  <AplicaConvenioDobleTributacion>false</AplicaConvenioDobleTributacion>
+  <EsPagoExteriorSujetoRetencionNormaLegal>false</EsPagoExteriorSujetoRetencionNormaLegal>
+  <Impuestos>
+    <Impuesto>
+      <CodigoImpuesto>2</CodigoImpuesto>
+      <CodigoPorcentaje>4</CodigoPorcentaje>
+      <Porcentaje />
+      <descuentoAdicional />
+      <BaseImponible>15350.07</BaseImponible>
+      <Valor>2302.51</Valor>
+      <UnidadMedida xsi:nil="true" />
+      <FechaPago xsi:nil="true" />
+      <ValorImpuestoRenta xsi:nil="true" />
+      <AnioEjercicioFiscal xsi:nil="true" />
+      <Exonerado>false</Exonerado>
+    </Impuesto>
+  </Impuestos>
+  <ValidarFP>true</ValidarFP>
+  <Pagos>
+    <Pago>
+      <FormaPagoEcuador>OTROS_CON_UTILIZACION_DEL_SISTEMA_FINANCIERO_20</FormaPagoEcuador>
+      <FormaPagoColombia>Cheque</FormaPagoColombia>
+      <CodigoFormaPago>20</CodigoFormaPago>
+      <Total>17652.58</Total>
+      <Plazo>60</Plazo>
+      <UnidadTiempo>dias</UnidadTiempo>
+      <InformacionAdicional />
+    </Pago>
+  </Pagos>
+  <NoProcesable>false</NoProcesable>
+  <EstadoComprobante>Autorizado</EstadoComprobante>
+  <ImprimeComprobante>false</ImprimeComprobante>
+  <ClaveAcceso>0206202603179082484500120010030000008560000085617</ClaveAcceso>
+  <Propina />
+  <NumeroAutorizacion>0206202603179082484500120010030000008560000085617</NumeroAutorizacion>
+  <FechaAutorizacion>02/06/2026 12:50:52</FechaAutorizacion>
+  <FechaIN>02/06/2026 12:50:51</FechaIN>
+  <IdRequerimiento>263229152462468385</IdRequerimiento>
+  <IdReqAsociado>0</IdReqAsociado>
+  <ReprocesoManual>false</ReprocesoManual>
+  <CodigoEmisor>1</CodigoEmisor>
+  <RucEmisor>1790824845001</RucEmisor>
+  <RazonSocialEmisor>SERVICIOS Y ASESORIA TECNICA COMERCIAL S.A.</RazonSocialEmisor>
+  <RazonComercialEmisor>SERVICIOS Y ASESORIA TECNICA COMERCIAL S.A.</RazonComercialEmisor>
+  <DireccionEmisor>Av. Colon E4-105 y 9 de octubre</DireccionEmisor>
+  <NumeroContribuyenteEspecialEmisor />
+  <ObligadoLlevarContabilidadEmisor>SI</ObligadoLlevarContabilidadEmisor>
+  <TipoEmision>1</TipoEmision>
+  <Establecimiento>001</Establecimiento>
+  <Punto>003</Punto>
+  <Moneda>USD</Moneda>
+  <Ambiente>2</Ambiente>
+  <Version>1.1.0</Version>
+  <TotalTributos>0</TotalTributos>
+  <Cliente>
+    <IdCliente>3305081</IdCliente>
+    <RazonSocial>ORACLE COLOMBIA LTDA</RazonSocial>
+    <TipoIdentificacion>06</TipoIdentificacion>
+    <NumeroIdentificacion>8001030528</NumeroIdentificacion>
+    <Ubicacion />
+    <email>payables_co@oracle.com;facturasemitidas@satcomla.com</email>
+    <Placa />
+    <NombreComercial xsi:nil="true" />
+    <NumeroContribuyenteEspecial xsi:nil="true" />
+    <ContabilidadObligada xsi:nil="true" />
+    <CodigoTipoSujetoRetenido xsi:nil="true" />
+    <EsParteRelacionalConEmisor>false</EsParteRelacionalConEmisor>
+  </Cliente>
+  <Transporte />
+  <TipoEnvio />
+  <Detalles>
+    <Detalle id="1">
+      <Cantidad>1.00</Cantidad>
+      <Descuento>0.00</Descuento>
+      <SubTotal>4979.85</SubTotal>
+      <Exonerar>false</Exonerar>
+      <Producto>
+        <TipoProducto />
+        <Codigo>Infraestructura Hosting</Codigo>
+        <CodigoAuxiliar>False</CodigoAuxiliar>
+        <Descripcion>Infraestructura Hosting</Descripcion>
+        <ValorUnitario>4979.8500</ValorUnitario>
+        <CineCenter>false</CineCenter>
+      </Producto>
+      <Impuestos>
+        <Impuesto>
+          <CodigoImpuesto>2</CodigoImpuesto>
+          <CodigoPorcentaje>4</CodigoPorcentaje>
+          <Porcentaje>15.00</Porcentaje>
+          <descuentoAdicional />
+          <BaseImponible>4979.85</BaseImponible>
+          <Valor>746.98</Valor>
+          <UnidadMedida xsi:nil="true" />
+          <FechaPago xsi:nil="true" />
+          <ValorImpuestoRenta xsi:nil="true" />
+          <AnioEjercicioFiscal xsi:nil="true" />
+          <Exonerado>false</Exonerado>
+        </Impuesto>
+      </Impuestos>
+    </Detalle>
+    <Detalle id="2">
+      <Cantidad>1.00</Cantidad>
+      <Descuento>0.00</Descuento>
+      <SubTotal>7443.46</SubTotal>
+      <Exonerar>false</Exonerar>
+      <Producto>
+        <TipoProducto />
+        <Codigo>Simphony</Codigo>
+        <CodigoAuxiliar>False</CodigoAuxiliar>
+        <Descripcion>Simphony</Descripcion>
+        <ValorUnitario>7443.4600</ValorUnitario>
+        <CineCenter>false</CineCenter>
+      </Producto>
+      <Impuestos>
+        <Impuesto>
+          <CodigoImpuesto>2</CodigoImpuesto>
+          <CodigoPorcentaje>4</CodigoPorcentaje>
+          <Porcentaje>15.00</Porcentaje>
+          <descuentoAdicional />
+          <BaseImponible>7443.46</BaseImponible>
+          <Valor>1116.52</Valor>
+          <UnidadMedida xsi:nil="true" />
+          <FechaPago xsi:nil="true" />
+          <ValorImpuestoRenta xsi:nil="true" />
+          <AnioEjercicioFiscal xsi:nil="true" />
+          <Exonerado>false</Exonerado>
+        </Impuesto>
+      </Impuestos>
+    </Detalle>
+    <Detalle id="3">
+      <Cantidad>1.00</Cantidad>
+      <Descuento>0.00</Descuento>
+      <SubTotal>2926.76</SubTotal>
+      <Exonerar>false</Exonerar>
+      <Producto>
+        <TipoProducto />
+        <Codigo>Inventory - R&amp;A</Codigo>
+        <CodigoAuxiliar>False</CodigoAuxiliar>
+        <Descripcion>Inventory - R&amp;A</Descripcion>
+        <ValorUnitario>2926.7600</ValorUnitario>
+        <CineCenter>false</CineCenter>
+      </Producto>
+      <Impuestos>
+        <Impuesto>
+          <CodigoImpuesto>2</CodigoImpuesto>
+          <CodigoPorcentaje>4</CodigoPorcentaje>
+          <Porcentaje>15.00</Porcentaje>
+          <descuentoAdicional />
+          <BaseImponible>2926.76</BaseImponible>
+          <Valor>439.01</Valor>
+          <UnidadMedida xsi:nil="true" />
+          <FechaPago xsi:nil="true" />
+          <ValorImpuestoRenta xsi:nil="true" />
+          <AnioEjercicioFiscal xsi:nil="true" />
+          <Exonerado>false</Exonerado>
+        </Impuesto>
+      </Impuestos>
+    </Detalle>
+  </Detalles>
+  <DetalleExportacion />
+  <Canal>FTP</Canal>
+  <TotalIsc>0</TotalIsc>
+  <TotalIgv>0</TotalIgv>
+  <Gravadas>0</Gravadas>
+  <TotalDetraccion>0</TotalDetraccion>
+  <Procesar>false</Procesar>
+  <Actividad />
+  <ResolucionFiscal xsi:nil="true" />
+</Requerimiento>

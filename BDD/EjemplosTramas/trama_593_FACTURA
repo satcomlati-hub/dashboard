@@ -1,0 +1,395 @@
+<Requerimiento xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <InformacionAdicional>
+    <Campo id="1">
+      <Descripcion>Documento</Descripcion>
+      <Valor>FACTURA ELECTRONICA</Valor>
+    </Campo>
+    <Campo id="2">
+      <Descripcion>Cambio</Descripcion>
+      <Valor>0</Valor>
+    </Campo>
+    <Campo id="3">
+      <Descripcion>Direccion Matriz</Descripcion>
+      <Valor>Av. Rio Amazonas N24-181 y Luis Cordero, Diagonal al Hotel Rio Amazonas</Valor>
+    </Campo>
+    <Campo id="4">
+      <Descripcion>Direccion Sucursal</Descripcion>
+      <Valor>Av Rio Amazonas N24-181 y Luis Cordero</Valor>
+    </Campo>
+    <Campo id="5">
+      <Descripcion>Ciudad</Descripcion>
+      <Valor />
+    </Campo>
+    <Campo id="6">
+      <Descripcion>Telefono</Descripcion>
+      <Valor>022419370</Valor>
+    </Campo>
+    <Campo id="7">
+      <Descripcion>Email</Descripcion>
+      <Valor>facturacion@fruteriamonserrate.com</Valor>
+    </Campo>
+    <Campo id="8">
+      <Descripcion>CHECKNUMBER</Descripcion>
+      <Valor>22977</Valor>
+    </Campo>
+    <Campo id="9">
+      <Descripcion>Local</Descripcion>
+      <Valor>AMAZONAS</Valor>
+    </Campo>
+    <Campo id="10">
+      <Descripcion>Timestamp</Descripcion>
+      <Valor>2026-04-27T09:33:49.4620871-05:00</Valor>
+    </Campo>
+    <Campo id="11">
+      <Descripcion>Guid</Descripcion>
+      <Valor>514157456ff44ccd8af40f77473a875c00008229</Valor>
+    </Campo>
+    <Campo id="12">
+      <Descripcion>RVC</Descripcion>
+      <Valor>CLASICA</Valor>
+    </Campo>
+    <Campo id="12">
+      <Descripcion>CAJERO</Descripcion>
+      <Valor>LISSETH MOLINA VELEZ</Valor>
+    </Campo>
+    <Campo id="15">
+      <Descripcion>CalcularDescuentos</Descripcion>
+      <Valor>false</Valor>
+    </Campo>
+    <Campo id="16">
+      <Descripcion>ConsultarClienteBDD</Descripcion>
+      <Valor>true</Valor>
+    </Campo>
+    <Campo id="17">
+      <Descripcion>CalcularImpuestosGlobales</Descripcion>
+      <Valor>false</Valor>
+    </Campo>
+    <Campo id="18">
+      <Descripcion>CalcularTotales</Descripcion>
+      <Valor>false</Valor>
+    </Campo>
+    <Campo id="19">
+      <Descripcion>ConsConsolidarDetallesDecimales</Descripcion>
+      <Valor>4</Valor>
+    </Campo>
+    <Campo id="20">
+      <Descripcion>ConsolidarDetalles</Descripcion>
+      <Valor>false</Valor>
+    </Campo>
+    <Campo id="20">
+      <Descripcion>RazonSocial_Complemento</Descripcion>
+      <Valor />
+    </Campo>
+    <Campo id="20">
+      <Descripcion>Direccion_Complemento</Descripcion>
+      <Valor />
+    </Campo>
+    <Campo id="21">
+      <Descripcion>DiferenciaRedondeo</Descripcion>
+      <Valor>0</Valor>
+    </Campo>
+    <Campo id="24">
+      <Descripcion>FPMASTERCARD MEDIANET</Descripcion>
+      <Valor>11.9</Valor>
+    </Campo>
+    <Campo>
+      <Descripcion>MensajeInformativo</Descripcion>
+    </Campo>
+  </InformacionAdicional>
+  <ConceptoEmision>DESAYUNO MONSERRATE:$11.9</ConceptoEmision>
+  <Codigo>01</Codigo>
+  <NumeroDocumento>000029521</NumeroDocumento>
+  <FechaEmision>27/04/2026</FechaEmision>
+  <FechaEmisionPais>27/04/2026 09:33:49</FechaEmisionPais>
+  <FechaEmisionFormatoPais>27/04/2026</FechaEmisionFormatoPais>
+  <TasaCambioPrincipal>0</TasaCambioPrincipal>
+  <TasaCambioAlternativa>0</TasaCambioAlternativa>
+  <ValorMinimoPrincipal>0</ValorMinimoPrincipal>
+  <ValorMinimoAlternativo>0</ValorMinimoAlternativo>
+  <CondicionVenta>01</CondicionVenta>
+  <CondicionVentaCR>Contado</CondicionVentaCR>
+  <CodigoReferencia />
+  <TotalSinImpuestos>10.35</TotalSinImpuestos>
+  <TotalConImpuestos>11.90</TotalConImpuestos>
+  <ResumenComprobante>
+    <MontoTotalSujetoIva xsi:nil="true" />
+    <CodigoMoneda>USD</CodigoMoneda>
+    <TipoCambio>0</TipoCambio>
+    <TotalVenta>11.9</TotalVenta>
+    <TotalImpAsumEmisorFabrica xsi:nil="true" />
+    <TotalComprobante>11.9</TotalComprobante>
+    <TotalMercNoSujeta xsi:nil="true" />
+    <TotalServNoSujeto xsi:nil="true" />
+  </ResumenComprobante>
+  <Retencion />
+  <DetallesProceso />
+  <CodigoPagoLocalizacionExtranjera xsi:nil="true" />
+  <CodigoTipoRegimenFiscalExterior xsi:nil="true" />
+  <CodigoPaisEfectuaPago xsi:nil="true" />
+  <AplicaConvenioDobleTributacion>false</AplicaConvenioDobleTributacion>
+  <EsPagoExteriorSujetoRetencionNormaLegal>false</EsPagoExteriorSujetoRetencionNormaLegal>
+  <Impuestos>
+    <Impuesto>
+      <CodigoImpuesto>2</CodigoImpuesto>
+      <Impuesto>15%IVA</Impuesto>
+      <CodigoPorcentaje>4</CodigoPorcentaje>
+      <Porcentaje>15.000000</Porcentaje>
+      <BaseImponible>10.34</BaseImponible>
+      <Valor>1.55</Valor>
+      <UnidadMedida xsi:nil="true" />
+      <FechaPago xsi:nil="true" />
+      <ValorImpuestoRenta xsi:nil="true" />
+      <AnioEjercicioFiscal xsi:nil="true" />
+      <Exonerado>false</Exonerado>
+    </Impuesto>
+  </Impuestos>
+  <ValidarFP>true</ValidarFP>
+  <Pagos>
+    <Pago>
+      <FormaPagoEcuador>OTROS_CON_UTILIZACION_DEL_SISTEMA_FINANCIERO_20</FormaPagoEcuador>
+      <FormaPagoColombia>Cheque</FormaPagoColombia>
+      <CodigoFormaPago>20</CodigoFormaPago>
+      <Total>11.9</Total>
+      <Plazo>0</Plazo>
+      <ControlCredito />
+      <Tip>0</Tip>
+      <InformacionAdicional />
+    </Pago>
+  </Pagos>
+  <NoProcesable>false</NoProcesable>
+  <EstadoComprobante>Autorizado</EstadoComprobante>
+  <ImprimeComprobante>true</ImprimeComprobante>
+  <ClaveAcceso>2704202601179320502700120031000000295210002952119</ClaveAcceso>
+  <NumeroAutorizacion>2704202601179320502700120031000000295210002952119</NumeroAutorizacion>
+  <Pais>Ecuador</Pais>
+  <FechaAutorizacion>27/04/2026 9:34:10</FechaAutorizacion>
+  <FechaIN>27/04/2026 09:34:09</FechaIN>
+  <IdRequerimiento>263229116344488577</IdRequerimiento>
+  <IdReqAsociado>0</IdReqAsociado>
+  <ReprocesoManual>false</ReprocesoManual>
+  <CodigoEmisor>2126</CodigoEmisor>
+  <RucEmisor>1793205027001</RucEmisor>
+  <RazonSocialEmisor>MONSEGROUP CL</RazonSocialEmisor>
+  <Establecimiento>003</Establecimiento>
+  <Punto>100</Punto>
+  <Moneda>USD</Moneda>
+  <Ambiente>2</Ambiente>
+  <Version>1.0.0</Version>
+  <TotalTributos>0</TotalTributos>
+  <Cliente>
+    <IdCliente>4074279</IdCliente>
+    <RazonSocial>CONSUMIDOR FINAL</RazonSocial>
+    <Direccion />
+    <TipoIdentificacion>07</TipoIdentificacion>
+    <NumeroIdentificacion>9999999999999</NumeroIdentificacion>
+    <TipoCliente>0</TipoCliente>
+    <DigitoVerificador />
+    <ResponsabilidadFiscal />
+    <ActividadEconomica />
+    <Ubicacion />
+    <email />
+    <NombreComercial xsi:nil="true" />
+    <NumeroContribuyenteEspecial xsi:nil="true" />
+    <ContabilidadObligada xsi:nil="true" />
+    <CodigoTipoSujetoRetenido xsi:nil="true" />
+    <EsParteRelacionalConEmisor>false</EsParteRelacionalConEmisor>
+    <Telefono />
+    <CodigoPaisTelefono>0</CodigoPaisTelefono>
+  </Cliente>
+  <Transporte />
+  <TipoEnvio />
+  <Detalles>
+    <Detalle id="1">
+      <InformacionAdicional>
+        <Campo id="1">
+          <Descripcion>MAJOR GROUP</Descripcion>
+          <Valor>10</Valor>
+        </Campo>
+        <Campo id="2">
+          <Descripcion>FAMILY GROUP</Descripcion>
+          <Valor>10001</Valor>
+        </Campo>
+      </InformacionAdicional>
+      <Cantidad>2</Cantidad>
+      <Descuento>0</Descuento>
+      <NaturalezaDescuento />
+      <SubTotal>10.35</SubTotal>
+      <Total>12.13</Total>
+      <Tipo>Mercaderia</Tipo>
+      <Exonerar>false</Exonerar>
+      <Producto>
+        <TipoProducto />
+        <Codigo>100003</Codigo>
+        <CodigoAuxiliar />
+        <Descripcion>DESAYUNO MONSERRATE</Descripcion>
+        <ValorUnitario>5.174</ValorUnitario>
+        <CineCenter>false</CineCenter>
+      </Producto>
+      <Impuestos>
+        <Impuesto>
+          <CodigoImpuesto>2</CodigoImpuesto>
+          <Impuesto>15%IVA</Impuesto>
+          <CodigoPorcentaje>4</CodigoPorcentaje>
+          <Porcentaje>15.000000</Porcentaje>
+          <BaseImponible>10.35</BaseImponible>
+          <Valor>1.55</Valor>
+          <UnidadMedida xsi:nil="true" />
+          <FechaPago xsi:nil="true" />
+          <ValorImpuestoRenta xsi:nil="true" />
+          <AnioEjercicioFiscal xsi:nil="true" />
+          <Exonerado>false</Exonerado>
+        </Impuesto>
+      </Impuestos>
+    </Detalle>
+  </Detalles>
+  <DetalleExportacion />
+  <Canal>Servicios</Canal>
+  <TotalIsc>0</TotalIsc>
+  <TotalIgv>0</TotalIgv>
+  <Gravadas>0</Gravadas>
+  <TotalDetraccion>0</TotalDetraccion>
+  <Procesar>false</Procesar>
+  <Actividad />
+  <ResolucionFiscal xsi:nil="true" />
+</Requerimiento>
+
+
+-- Autorizado Ente fiscal:
+<?xml version="1.0" encoding="utf-8"?>
+<factura id="comprobante" version="1.1.0">
+	<infoTributaria>
+		<ambiente>2</ambiente>
+		<tipoEmision>1</tipoEmision>
+		<razonSocial>MONSEGROUP C.L</razonSocial>
+		<nombreComercial>FRUTERIA MONSERRATE</nombreComercial>
+		<ruc>1793205027001</ruc>
+		<claveAcceso>2704202601179320502700120031000000295210002952119</claveAcceso>
+		<codDoc>01</codDoc>
+		<estab>003</estab>
+		<ptoEmi>100</ptoEmi>
+		<secuencial>000029521</secuencial>
+		<dirMatriz>Barrio Alameda Calle Luis Saa Lote 114 y Sodiro Edificio Daniel Cadena</dirMatriz>
+	</infoTributaria>
+	<infoFactura>
+		<fechaEmision>27/04/2026</fechaEmision>
+		<dirEstablecimiento>Rio Amazonas N24181 y Luis cordero</dirEstablecimiento>
+		<obligadoContabilidad>SI</obligadoContabilidad>
+		<tipoIdentificacionComprador>07</tipoIdentificacionComprador>
+		<razonSocialComprador>CONSUMIDOR FINAL</razonSocialComprador>
+		<identificacionComprador>9999999999999</identificacionComprador>
+		<totalSinImpuestos>10.35</totalSinImpuestos>
+		<totalDescuento>0</totalDescuento>
+		<totalConImpuestos>
+			<totalImpuesto>
+				<codigo>2</codigo>
+				<codigoPorcentaje>4</codigoPorcentaje>
+				<descuentoAdicional>0</descuentoAdicional>
+				<baseImponible>10.34</baseImponible>
+				<tarifa>15.000000</tarifa>
+				<valor>1.55</valor>
+			</totalImpuesto>
+		</totalConImpuestos>
+		<propina>0</propina>
+		<importeTotal>11.90</importeTotal>
+		<moneda>USD</moneda>
+		<pagos>
+			<pago>
+				<formaPago>20</formaPago>
+				<total>11.9</total>
+			</pago>
+		</pagos>
+	</infoFactura>
+	<detalles>
+		<detalle>
+			<codigoPrincipal>100003</codigoPrincipal>
+			<descripcion>DESAYUNO MONSERRATE</descripcion>
+			<cantidad>2</cantidad>
+			<precioUnitario>5.174</precioUnitario>
+			<descuento>0</descuento>
+			<precioTotalSinImpuesto>10.35</precioTotalSinImpuesto>
+			<detallesAdicionales>
+				<detAdicional nombre="MAJOR GROUP" valor="10"/>
+				<detAdicional nombre="FAMILY GROUP" valor="10001"/>
+			</detallesAdicionales>
+			<impuestos>
+				<impuesto>
+					<codigo>2</codigo>
+					<codigoPorcentaje>4</codigoPorcentaje>
+					<tarifa>15</tarifa>
+					<baseImponible>10.35</baseImponible>
+					<valor>1.55</valor>
+				</impuesto>
+			</impuestos>
+		</detalle>
+	</detalles>
+	<infoAdicional>
+		<campoAdicional nombre="FPMASTERCARD MEDIANET">11.9</campoAdicional>
+		<campoAdicional nombre="CHECKNUMBER">22977</campoAdicional>
+		<campoAdicional nombre="Documento">FACTURA ELECTRONICA</campoAdicional>
+		<campoAdicional nombre="Cambio">0</campoAdicional>
+		<campoAdicional nombre="Direccion Matriz">Av. Rio Amazonas N24-181 y Luis Cordero, Diagonal al Hotel Rio Amazonas</campoAdicional>
+		<campoAdicional nombre="Direccion Sucursal">Av Rio Amazonas N24-181 y Luis Cordero</campoAdicional>
+		<campoAdicional nombre="Telefono">022419370</campoAdicional>
+		<campoAdicional nombre="Email">facturacion@fruteriamonserrate.com</campoAdicional>
+		<campoAdicional nombre="Local">AMAZONAS</campoAdicional>
+		<campoAdicional nombre="Timestamp">2026-04-27T09:33:49.4620871-05:00</campoAdicional>
+		<campoAdicional nombre="Guid">514157456ff44ccd8af40f77473a875c00008229</campoAdicional>
+		<campoAdicional nombre="RVC">CLASICA</campoAdicional>
+		<campoAdicional nombre="CAJERO">LISSETH MOLINA VELEZ</campoAdicional>
+		<campoAdicional nombre="CalcularDescuentos">false</campoAdicional>
+	</infoAdicional>
+	<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#" Id="Signature-f788d858-eec5-4454-a6ff-0d54a8a744b9">
+		<ds:SignedInfo>
+			<ds:CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>
+			<ds:SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1"/>
+			<ds:Reference Id="Reference-29dfe4ac-2803-48d7-850e-0b9a07d41b49" URI="#comprobante">
+				<ds:Transforms>
+					<ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>
+				</ds:Transforms>
+				<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha512"/>
+				<ds:DigestValue>mibuJareDAJGjCTakYGRjp6cXvbeDJRFlYBr3l3FGQI2XSdgJk08xO718VpmkoWodX2VF/gLH78C4A1G23c4Cw==</ds:DigestValue>
+			</ds:Reference>
+			<ds:Reference Id="ReferenceKeyInfo" URI="#Signature-f788d858-eec5-4454-a6ff-0d54a8a744b9-KeyInfo">
+				<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha512"/>
+				<ds:DigestValue>3DurTx1mQFgXwW1xEqkxJ88qOaXNQFOq9Mt4o8Vn+jVuSl0VpS9qe1HrR1Jhmhid7MODIFgWFc4LgBogFibf/Q==</ds:DigestValue>
+			</ds:Reference>
+			<ds:Reference Type="http://uri.etsi.org/01903#SignedProperties" URI="#SignedProperties-Signature-f788d858-eec5-4454-a6ff-0d54a8a744b9">
+				<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha512"/>
+				<ds:DigestValue>V3Ihh7n7AraKdxtgoE+OKX3WJX3HyhAZrGMurOT1vxCVg4DM96yunQZ6uz/bm5F3Hs5ghQaxqcBzaR2pre8iYA==</ds:DigestValue>
+			</ds:Reference>
+		</ds:SignedInfo>
+		<ds:SignatureValue Id="SignatureValue-f788d858-eec5-4454-a6ff-0d54a8a744b9">gTshxlYQbzSDztmV2Qkst06U4hqMNTZm05Eic8lfIVMEaHZTFxw5+kDhpEgNmZi3UazFZshEUhKgE30UFcwoMWNnFY+nFoyguFJIeeQAhTqelDho2WUjpaMiXbdQSH4ruzHcRszsZm15ttswokAbNs5sH5BK3lPWfjaK4OU2ndHrLHqbtWUOUW8WLUdZaAP2nPYRyUtzm8SD38jycXSaTlxKoSOIf2yqCu6VpKQOnNyWEcL93xowV9vvCUzg8c7gyuxSal9Ecc6OYP7GNgvTCeGApxGANHEHNIHYFlzl57j/a2klevBjpwzO1zUZnCcr6rFLAt8MajvX9bd/wwluoQ==</ds:SignatureValue>
+		<ds:KeyInfo Id="Signature-f788d858-eec5-4454-a6ff-0d54a8a744b9-KeyInfo">
+			<ds:X509Data>
+				<ds:X509Certificate>MIILFDCCCPygAwIBAgIINGwu4q38ivcwDQYJKoZIhvcNAQELBQAwgZkxCzAJBgNVBAYTAkVDMR0wGwYDVQQKDBRTRUNVUklUWSBEQVRBIFMuQS4gMjEwMC4GA1UECwwnRU5USURBRCBERSBDRVJUSUZJQ0FDSU9OIERFIElORk9STUFDSU9OMTkwNwYDVQQDDDBBVVRPUklEQUQgREUgQ0VSVElGSUNBQ0lPTiBTVUJDQS0yIFNFQ1VSSVRZIERBVEEwHhcNMjUxMjA5MTQyMTQzWhcNMjYxMjA5MTQyMTQzWjCBpjEkMCIGA1UEAwwbQkVSQ0VMSU8gQkVSTkFSRE8gTUFMQSBNQUxBMSAwHgYDVQQFExcyMzAwNjk4NzcyLTA5MTIyNTA5MzEzNjEwMC4GA1UECwwnRU5USURBRCBERSBDRVJUSUZJQ0FDSU9OIERFIElORk9STUFDSU9OMR0wGwYDVQQKDBRTRUNVUklUWSBEQVRBIFMuQS4gMjELMAkGA1UEBhMCRUMwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC59zKTgDKPBggdmFhSpEhPg5gcn0Lr4huw55yZvajzLHtdhnW+uBnG/qh7E6g3KGfx+HxfximgXPvj+2VLfmJ3pDO/DP+BZw3IQhkLArkzk3E3dGYqLSa1AjZaPhjpieT7BAG/OPUl6HBodJiXLqTyvraLVNl1FTA5RJoTiMwpLuD7jthEHtQoP3lSZmMsvU6Bh0l54jSsCMSJV52oVlIFWvfRiJq+4eEIcFizc9sGvEyckVnfFaaquvg1/ySBGJQDscLsAYZQV1IWja+4wvhIQy7oFkos8P3GDaORyGtnqPdj2iP/KslcGkVyRoU52hEi9YhFC5TB8ebwwsNcb9WnAgMBAAGjggZPMIIGSzAMBgNVHRMBAf8EAjAAMB8GA1UdIwQYMBaAFIy6yhFXeCWAHWsKS1W/ja5i3b2PMFkGCCsGAQUFBwEBBE0wSzBJBggrBgEFBQcwAYY9aHR0cDovL29jc3Bndy5zZWN1cml0eWRhdGEubmV0LmVjL2VqYmNhL3B1YmxpY3dlYi9zdGF0dXMvb2NzcDAgBgNVHREEGTAXgRViZXJtYWxhMjBAaG90bWFpbC5jb20wggESBgNVHSAEggEJMIIBBTBgBgorBgEEAYKmcgIKMFIwUAYIKwYBBQUHAgIwRB5CAEMAZQByAHQAaQBmAGkAYwBhAGQAbwAgAGQAZQAgAE0AaQBlAG0AYgByAG8AIABkAGUAIABFAG0AcAByAGUAcwBhMIGgBgorBgEEAYKmcgIEMIGRMIGOBggrBgEFBQcCARaBgWh0dHBzOi8vd3d3LnNlY3VyaXR5ZGF0YS5uZXQuZWMvd3AtY29udGVudC9kb3dubG9hZHMvTm9ybWF0aXZhcy9QX2RlX0NlcnRpZmljYWRvcy9Qb2xpdGljYXMgZGUgQ2VydGlmaWNhZG8gTWllbWJybyBkZSBFbXByZXNhLnBkZjAdBgNVHSUEFjAUBggrBgEFBQcDAgYIKwYBBQUHAwQwggIPBgNVHR8EggIGMIICAjCB3qA6oDiGNmh0dHA6Ly9jcmwxLnNlY3VyaXR5ZGF0YS5uZXQuZWMvc3ViY2EyY3JsMS9jcmxmaWxlLmNybKKBn6SBnDCBmTE5MDcGA1UEAwwwQVVUT1JJREFEIERFIENFUlRJRklDQUNJT04gU1VCQ0EtMiBTRUNVUklUWSBEQVRBMTAwLgYDVQQLDCdFTlRJREFEIERFIENFUlRJRklDQUNJT04gREUgSU5GT1JNQUNJT04xHTAbBgNVBAoMFFNFQ1VSSVRZIERBVEEgUy5BLiAyMQswCQYDVQQGEwJFQzA8oDqgOIY2aHR0cDovL2NybDIuc2VjdXJpdHlkYXRhLm5ldC5lYy9zdWJjYTJjcmwyL2NybGZpbGUuY3JsMIHgoIHdoIHahoHXaHR0cHM6Ly9wb3J0YWwtb3BlcmFkb3IyLnNlY3VyaXR5ZGF0YS5uZXQuZWMvZWpiY2EvcHVibGljd2ViL3dlYmRpc3QvY2VydGRpc3Q/Y21kPWNybCZpc3N1ZXI9Q049QVVUT1JJREFEIERFIENFUlRJRklDQUNJT04gU1VCQ0EtMiBTRUNVUklUWSBEQVRBLE9VPUVOVElEQUQgREUgQ0VSVElGSUNBQ0lPTiBERSBJTkZPUk1BQ0lPTixPPVNFQ1VSSVRZIERBVEEgUy5BLiAyLEM9RUMwHQYDVR0OBBYEFN2ZXNYF22yFLhVytszIbkMX48syMCsGA1UdEAQkMCKADzIwMjUxMjA5MTQyMTQzWoEPMjAyNjEyMDkxNDIxNDNaMAsGA1UdDwQEAwIF4DAiBgorBgEEAYKmcgMFBBQMEkFTSVNURU5URSBDT05UQUJMRTAaBgorBgEEAYKmcgMBBAwMCjIzMDA2OTg3NzIwbwYKKwYBBAGCpnIDCQRhDF9RVUlUTyBESVNUUklUTyBNRVRST1BPTElUQU5PIENBQkVDRVJBIENBTlRPTkFMIENBUElUQUwgUFJPVklOQ0lBTCBZIERFIExBIFJFUFVCTElDQSBERUwgRUNVQURPUjARBgorBgEEAYKmcgMiBAMMAS4wGQYKKwYBBAGCpnIDBwQLDAlUQUJBQ1VORE8wIQYKKwYBBAGCpnIDAgQTDBFCRVJDRUxJTyBCRVJOQVJETzAfBgorBgEEAYKmcgMgBBEMDzAwMjAwMTAwMTExNTg2MzATBgorBgEEAYKmcgMhBAUMA1BGWDAXBgorBgEEAYKmcgMMBAkMB0VDVUFET1IwFAYKKwYBBAGCpnIDAwQGDARNQUxBMBEGCisGAQQBgqZyAx4EAwwBLjAeBgorBgEEAYKmcgMKBBAMDk1PTlNFR1JPVVAgQyBMMB0GCisGAQQBgqZyAwsEDwwNMTc5MzIwNTAyNzAwMTARBgorBgEEAYKmcgMdBAMMAS4wFAYKKwYBBAGCpnIDBAQGDARNQUxBMBoGCisGAQQBgqZyAwgEDAwKMDk4MTkxMTcyMzANBgkqhkiG9w0BAQsFAAOCAgEACvPWD3+AEeNn8l0zRedpT6Gv7IX0ZJ8/V5q+avtzHpi99eCnYthtDzncdL+PrEeZIfNmpGhU8weseZBJ5VGDFK2sdLxPDQF+lcUXiwMBjVYKTef8MsaZelIgVMz5hhcI2RF9/46Bx6UH1Hk4Xj6GUL6uKMrSzlBW+byQhxqjpgQt2DZ6HrXD38KK4HBGPhItGhUakzdpljWNZSWin/4C9UtiE0bPGV+zdmVeD35Z8CfrCrMY8ptE684milDWEZBaAoiPzeC4G95KUPJUgvJXgfwA/ZiZI+qBzBNHkrNYjqAAWwbfO5Qt+ZcqMy0Loyld+k8HlzbTXog7Y/vOf6rfW0hBXL6Ow4+PRJE8BEz6DtqA0GGgeQlCcU1eXux6eg/KmkbFKL4kSVqBJtQPCsDdeGLv+ed2Ys11OGKeDBcLnAXJ9NoDRTUIVinuSGyj2WWu0R4xMIqpgUC71bNUkyF8mmCag7fLZMCOOAobk+kA5CqESnLyWDh/Zfe9eV1Q8TxMNP8ZmuX2FnJa7AUFFM9+RrF0fq9GHsC2MlzHN+EDg714WldU8b/sPOr4B0R91xB3sBqL/SAdGMzNe+xM37IXL2O8Icd4QlwPmipa9l5Oon7FtchR5CyXmGFGvVlH+dtppVjLjMXtOhtZt1ju2Knkm8etFrvFPO6AJ1wvnsjy7GE=</ds:X509Certificate>
+			</ds:X509Data>
+			<ds:KeyValue>
+				<ds:RSAKeyValue>
+					<ds:Modulus>ufcyk4AyjwYIHZhYUqRIT4OYHJ9C6+IbsOecmb2o8yx7XYZ1vrgZxv6oexOoNyhn8fh8X8YpoFz74/tlS35id6Qzvwz/gWcNyEIZCwK5M5NxN3RmKi0mtQI2Wj4Y6Ynk+wQBvzj1JehwaHSYly6k8r62i1TZdRUwOUSaE4jMKS7g+47YRB7UKD95UmZjLL1OgYdJeeI0rAjEiVedqFZSBVr30YiavuHhCHBYs3PbBrxMnJFZ3xWmqrr4Nf8kgRiUA7HC7AGGUFdSFo2vuML4SEMu6BZKLPD9xg2jkchrZ6j3Y9oj/yrJXBpFckaFOdoRIvWIRQuUwfHm8MLDXG/Vpw==</ds:Modulus>
+					<ds:Exponent>AQAB</ds:Exponent>
+				</ds:RSAKeyValue>
+			</ds:KeyValue>
+		</ds:KeyInfo>
+		<ds:Object Id="XadesObjectId-d9c85870-b770-4958-acea-c6778785ac2c">
+			<xades:QualifyingProperties xmlns:xades="http://uri.etsi.org/01903/v1.3.2#" Id="QualifyingProperties-8709e9c7-83dd-4c73-ab5f-8431326b4a74" Target="#Signature-f788d858-eec5-4454-a6ff-0d54a8a744b9">
+				<xades:SignedProperties Id="SignedProperties-Signature-f788d858-eec5-4454-a6ff-0d54a8a744b9">
+					<xades:SignedSignatureProperties>
+						<xades:SigningTime>2026-04-27T09:34:10.103-05:00</xades:SigningTime>
+						<xades:SigningCertificate>
+							<xades:Cert>
+								<xades:CertDigest>
+									<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha512"/>
+									<ds:DigestValue>FiTHkDeVbrIWgnwtE2FLE5b9LQcdStVxbWYFlNre7ti0CNXfk5cN5TnOkqq/C7/BxYkawtjAoAiejqig9BObjw==</ds:DigestValue>
+								</xades:CertDigest>
+								<xades:IssuerSerial>
+									<ds:X509IssuerName>CN=AUTORIDAD DE CERTIFICACION SUBCA-2 SECURITY DATA, OU=ENTIDAD DE CERTIFICACION DE INFORMACION, O=SECURITY DATA S.A. 2, C=EC</ds:X509IssuerName>
+									<ds:X509SerialNumber>3777445738573499127</ds:X509SerialNumber>
+								</xades:IssuerSerial>
+							</xades:Cert>
+						</xades:SigningCertificate>
+					</xades:SignedSignatureProperties>
+				</xades:SignedProperties>
+			</xades:QualifyingProperties>
+		</ds:Object>
+	</ds:Signature>
+</factura>
