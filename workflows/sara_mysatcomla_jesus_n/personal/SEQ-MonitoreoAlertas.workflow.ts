@@ -283,7 +283,7 @@ for (const log of logs) {
 
   // Permalink al evento en Seq
   const seqPermalink = eventId
-    ? \`\${conexionUrl}/#/events/?filter=@Id%20%3D%20%27\${eventId}%27&showExpanded\`
+    ? `https://dashboard-one-ivory-58.vercel.app/seq-monitor?Id=\${eventId}&Origen=\${conexionNombre}`
     : '';
 
   const payloadEjemplo = {
