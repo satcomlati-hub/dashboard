@@ -1,12 +1,13 @@
 import Link from 'next/link';
 import AgentesNav from '@/components/agentes/AgentesNav';
+import { delegateTargetId } from '@/lib/agentes';
 
 const API_URL = (process.env.AGENTES_API_URL ?? 'http://localhost:8080').replace(/\/$/, '');
 const API_TOKEN = process.env.AGENTES_API_TOKEN ?? '';
 
-async function getAgents() {
+async function getJson(path: string) {
   try {
-    const res = await fetch(`${API_URL}/v1/agents`, {
+    const res = await fetch(`${API_URL}${path}`, {
       headers: { Authorization: `Bearer ${API_TOKEN}` },
       cache: 'no-store',
     });
@@ -18,7 +19,16 @@ async function getAgents() {
 }
 
 export default async function AgentesPage() {
-  const agents: any[] = await getAgents();
+  const [agents, tools]: [any[], any[]] = await Promise.all([
+    getJson('/v1/agents'),
+    getJson('/v1/http-tools'),
+  ]);
+  // Agentes que son destino de alguna delegate-tool = subagentes.
+  const subagentIds = new Set(
+    (Array.isArray(tools) ? tools : [])
+      .map((t: any) => delegateTargetId(t.url))
+      .filter(Boolean) as string[],
+  );
 
   return (
     <>
@@ -76,13 +86,20 @@ export default async function AgentesPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                   </svg>
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                  agent.enabled
-                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500'
-                }`}>
-                  {agent.enabled ? 'Activo' : 'Inactivo'}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  {subagentIds.has(agent.id) && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-[#71BF44]/15 text-[#5ea832] dark:text-[#71BF44]" title="Otro agente delega en este">
+                      🤝 Subagente
+                    </span>
+                  )}
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    agent.enabled
+                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                      : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500'
+                  }`}>
+                    {agent.enabled ? 'Activo' : 'Inactivo'}
+                  </span>
+                </div>
               </div>
               <h3 className="text-base font-bold text-neutral-900 dark:text-white mb-1">{agent.name}</h3>
               <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-2 mb-3">

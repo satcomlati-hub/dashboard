@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { delegateTargetId } from '@/lib/agentes';
 
 const API_URL = (process.env.AGENTES_API_URL ?? 'http://localhost:8080').replace(/\/$/, '');
 const API_TOKEN = process.env.AGENTES_API_TOKEN ?? '';
@@ -52,6 +53,24 @@ async function getTrace(runId: string): Promise<TraceItem[]> {
   } catch { return []; }
 }
 
+// Mapa nombre-de-tool → nombre del subagente destino, para marcar delegaciones.
+async function getDelegateMap(): Promise<Record<string, string>> {
+  try {
+    const [tools, agents] = await Promise.all([
+      fetch(`${API_URL}/v1/http-tools`, { headers: HEADERS, cache: 'no-store' }).then(r => r.ok ? r.json() : []),
+      fetch(`${API_URL}/v1/agents`, { headers: HEADERS, cache: 'no-store' }).then(r => r.ok ? r.json() : []),
+    ]);
+    const agentName: Record<string, string> = {};
+    (Array.isArray(agents) ? agents : []).forEach((a: any) => { agentName[a.id] = a.name; });
+    const map: Record<string, string> = {};
+    (Array.isArray(tools) ? tools : []).forEach((t: any) => {
+      const tgt = delegateTargetId(t.url);
+      if (tgt) map[t.name] = agentName[tgt] ?? 'subagente';
+    });
+    return map;
+  } catch { return {}; }
+}
+
 const STATUS_COLORS: Record<string, string> = {
   completed: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
   error: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400',
@@ -59,14 +78,18 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500',
 };
 
-function ToolTrace({ trace }: { trace: TraceItem[] }) {
+function ToolTrace({ trace, delegateMap = {} }: { trace: TraceItem[]; delegateMap?: Record<string, string> }) {
   if (!trace.length) return null;
   const calls = trace.filter((t) => t.type === 'tool_call').length;
   const errors = trace.filter((t) => t.type === 'tool_result' && t.is_error).length;
+  const delegations = trace.filter((t) => t.type === 'tool_call' && delegateMap[t.name]).length;
   return (
     <details className="mt-3 group">
       <summary className="text-xs cursor-pointer select-none text-[#71BF44] hover:underline flex items-center gap-2">
         <span>Traza de tools · {calls} llamada{calls === 1 ? '' : 's'}</span>
+        {delegations > 0 && (
+          <span className="text-[#5ea832] dark:text-[#71BF44] font-medium">🤝 {delegations} a subagente</span>
+        )}
         {errors > 0 && (
           <span className="text-red-500 font-medium">{errors} con error</span>
         )}
@@ -74,10 +97,12 @@ function ToolTrace({ trace }: { trace: TraceItem[] }) {
       <div className="mt-2 space-y-2 border-l-2 border-neutral-200 dark:border-neutral-800 pl-3">
         {trace.map((t, i) => {
           if (t.type === 'tool_call') {
+            const sub = delegateMap[t.name];
             return (
               <div key={i} className="text-xs">
-                <div className="font-mono font-medium text-neutral-700 dark:text-neutral-300">
-                  ▶ {t.name}
+                <div className={`font-mono font-medium ${sub ? 'text-[#5ea832] dark:text-[#71BF44]' : 'text-neutral-700 dark:text-neutral-300'}`}>
+                  {sub ? '🤝' : '▶'} {t.name}
+                  {sub && <span className="ml-1 font-sans font-normal text-neutral-400">↳ delega en {sub}</span>}
                 </div>
                 {t.args && (
                   <pre className="mt-0.5 whitespace-pre-wrap break-words text-[11px] text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900/60 rounded p-1.5">
@@ -105,7 +130,7 @@ function ToolTrace({ trace }: { trace: TraceItem[] }) {
 
 export default async function RunsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [agent, runs] = await Promise.all([getAgent(id), getRuns(id)]);
+  const [agent, runs, delegateMap] = await Promise.all([getAgent(id), getRuns(id), getDelegateMap()]);
   const traces: TraceItem[][] = await Promise.all(
     (runs as any[]).map((r) => getTrace(r.id)),
   );
@@ -166,7 +191,7 @@ export default async function RunsPage({ params }: { params: Promise<{ id: strin
               {run.error && (
                 <p className="text-xs text-red-500 mt-1">{run.error}</p>
               )}
-              <ToolTrace trace={traces[idx] ?? []} />
+              <ToolTrace trace={traces[idx] ?? []} delegateMap={delegateMap} />
             </div>
           ))}
         </div>

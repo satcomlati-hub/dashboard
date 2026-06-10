@@ -4,14 +4,24 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import AgentesNav from '@/components/agentes/AgentesNav';
+import { BUILTIN_TOOLS, delegateTargetId, isDelegateTool } from '@/lib/agentes';
 
 const MODELS = ['gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-3.1-flash-image-preview'];
 const THINKING_LEVELS = ['minimal', 'low', 'medium', 'high'];
+
+type Capabilities = {
+  max_steps?: number;
+  allow_tools?: boolean;
+  allow_skills?: boolean;
+  disabled_tools?: string[];
+  [k: string]: unknown;
+};
 
 type Agent = {
   id: string; name: string; slug: string; description: string; identity: string;
   system_sections: { title: string; content: string }[];
   model: string; thinking_level: string | null; enabled: boolean;
+  capabilities: Capabilities;
 };
 
 export default function AgentEditorPage() {
@@ -23,7 +33,9 @@ export default function AgentEditorPage() {
     name: '', slug: '', description: '', identity: '',
     system_sections: [{ title: 'user_system_instructions', content: '' }],
     model: 'gemini-3.5-flash', thinking_level: null, enabled: true,
+    capabilities: { max_steps: 6, allow_tools: true, allow_skills: true, disabled_tools: [] },
   });
+  const [allAgents, setAllAgents] = useState<any[]>([]);
   const [skills, setSkills] = useState<any[]>([]);
   const [allSkills, setAllSkills] = useState<any[]>([]);
   const [mcpServers, setMcpServers] = useState<any[]>([]);
@@ -43,7 +55,15 @@ export default function AgentEditorPage() {
     fetch('/api/skills').then(r => r.json()).then(setAllSkills);
     fetch('/api/agentes/v1/mcp-servers').then(r => r.json()).then(setAllMcp);
     fetch('/api/agentes/v1/http-tools').then(r => r.json()).then(setAllHttpTools);
+    fetch('/api/agentes/v1/agents').then(r => r.json()).then(d => Array.isArray(d) && setAllAgents(d)).catch(() => {});
   }, [id, isNew]);
+
+  const caps: Capabilities = agent.capabilities ?? {};
+  const disabledTools: string[] = Array.isArray(caps.disabled_tools) ? caps.disabled_tools : [];
+  const setCap = (patch: Partial<Capabilities>) =>
+    setAgent(a => ({ ...a, capabilities: { ...(a.capabilities ?? {}), ...patch } }));
+  const toggleBuiltin = (name: string, disabled: boolean) =>
+    setCap({ disabled_tools: disabled ? disabledTools.filter(t => t !== name) : [...disabledTools, name] });
 
   const save = async () => {
     setSaving(true); setError('');
@@ -120,9 +140,16 @@ export default function AgentEditorPage() {
           </Link>
         </div>
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-neutral-900 dark:text-[#e5e5e5] tracking-tight">
-            {isNew ? 'Nuevo agente' : (agent.name ?? '…')}
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-bold text-neutral-900 dark:text-[#e5e5e5] tracking-tight">
+              {isNew ? 'Nuevo agente' : (agent.name ?? '…')}
+            </h2>
+            {!isNew && allHttpTools.some((t: any) => delegateTargetId(t.url) === id) && (
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#71BF44]/15 text-[#5ea832] dark:text-[#71BF44] font-medium" title="Otro agente delega en este vía una herramienta de subagente">
+                🤝 Subagente
+              </span>
+            )}
+          </div>
           {!isNew && (
             <div className="flex gap-2">
               <Link
@@ -212,6 +239,52 @@ export default function AgentEditorPage() {
             />
             <span className="text-sm text-neutral-700 dark:text-neutral-300">Agente activo</span>
           </label>
+        </section>
+
+        {/* Capabilities */}
+        <section className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 space-y-4">
+          <div>
+            <h3 className="font-semibold text-neutral-800 dark:text-neutral-200">Capacidades</h3>
+            <p className="text-xs text-neutral-500 mt-0.5">Pasos máximos, acceso a tools/skills y tools builtin del runtime. Útil para subagentes (acotar herramientas y evitar que se distraiga).</p>
+          </div>
+          <div className="grid grid-cols-3 gap-4 items-end">
+            <div>
+              <label className="block text-xs text-neutral-500 mb-1">Pasos máximos</label>
+              <input
+                type="number" min={1} max={30}
+                className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-white"
+                value={caps.max_steps ?? 6}
+                onChange={e => setCap({ max_steps: Number(e.target.value) || 1 })}
+              />
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer pb-2">
+              <input type="checkbox" className="w-4 h-4 accent-[#71BF44]" checked={caps.allow_tools ?? true} onChange={e => setCap({ allow_tools: e.target.checked })} />
+              <span className="text-sm text-neutral-700 dark:text-neutral-300">Permitir tools</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer pb-2">
+              <input type="checkbox" className="w-4 h-4 accent-[#71BF44]" checked={caps.allow_skills ?? true} onChange={e => setCap({ allow_skills: e.target.checked })} />
+              <span className="text-sm text-neutral-700 dark:text-neutral-300">Permitir skills</span>
+            </label>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">Tools builtin desactivadas</label>
+            <p className="text-[11px] text-neutral-400 mb-2">Marca las que NO quieres que el agente pueda usar (filesystem, shell, etc.). Recomendado desactivar las de archivos/comandos en subagentes.</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              {BUILTIN_TOOLS.map(bt => {
+                const off = disabledTools.includes(bt.name);
+                return (
+                  <label key={bt.name} className="flex items-center gap-2 cursor-pointer py-0.5">
+                    <input type="checkbox" className="w-4 h-4 accent-red-500" checked={off} onChange={() => toggleBuiltin(bt.name, off)} />
+                    <span className={`text-sm ${off ? 'text-red-600 dark:text-red-400 line-through' : 'text-neutral-700 dark:text-neutral-300'}`}>
+                      {bt.label}
+                    </span>
+                    <code className="text-[10px] text-neutral-400">{bt.name}</code>
+                    {bt.danger && !off && <span className="text-[10px] text-amber-500">⚠</span>}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
         </section>
 
         {/* System prompt */}
@@ -332,6 +405,34 @@ export default function AgentEditorPage() {
                 Gestionar →
               </Link>
             </div>
+
+            {/* Subagentes que invoca (delegate-tools asignadas) */}
+            {(() => {
+              const delegated = (httpTools as any[]).filter(t => isDelegateTool(t));
+              if (delegated.length === 0) return null;
+              return (
+                <div className="rounded-lg bg-[#71BF44]/5 border border-[#71BF44]/30 p-3">
+                  <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-2">🤝 Subagentes que invoca</p>
+                  <div className="space-y-1">
+                    {delegated.map((t: any) => {
+                      const tgt = delegateTargetId(t.url);
+                      const ag = allAgents.find((a: any) => a.id === tgt);
+                      return (
+                        <div key={t.id} className="flex items-center gap-2 text-xs">
+                          <span className="font-mono text-neutral-500">{t.name}</span>
+                          <span className="text-neutral-400">→</span>
+                          {ag ? (
+                            <Link href={`/projects/agentes/${tgt}`} className="text-[#71BF44] hover:underline font-medium">{ag.name}</Link>
+                          ) : (
+                            <span className="text-neutral-400">{tgt}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
             {allHttpTools.length === 0 ? (
               <p className="text-sm text-neutral-400">No hay herramientas HTTP creadas aún.</p>
             ) : (
