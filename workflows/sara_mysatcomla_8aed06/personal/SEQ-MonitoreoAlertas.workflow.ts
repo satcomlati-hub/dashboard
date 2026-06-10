@@ -278,9 +278,11 @@ for (const log of logs) {
       else if (el.includes('bad request')   || ml.includes('bad request'))     isClient = true;
       else if (el.includes('not found')     || ml.includes('not found'))       isClient = true;
     }
+    /*
     if (isServer && !DOMINIOS_CLOUD.some(d => destino.toLowerCase().includes(d))) {
       isClient = true; isServer = false;
     }
+    */
   }
 
   totalErrores++;

@@ -8,7 +8,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 Las directrices específicas de desarrollo (n8n, SQL Logging, etc.) se encuentran en la carpeta `/skills`. Consulta estos archivos antes de realizar implementaciones en sus respectivas áreas.
 
 <!-- n8n-as-code-start -->
-<!-- n8nac-version: 2.3.6 -->
+<!-- n8nac-version: 2.4.0 -->
 
 ## n8n-as-code Context Root
 

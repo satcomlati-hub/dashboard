@@ -273,10 +273,12 @@ for (const log of logs) {
       else if (el.includes('not found')      || ml.includes('not found'))        isClient = true;
     }
     
+    /*
     // Si el destino no es un dominio cloud administrado → reclasificar como error de cliente
     if (isServer && !DOMINIOS_CLOUD.some(d => destino.toLowerCase().includes(d))) {
       isClient = true; isServer = false;
     }
+    */
   }
 
   totalErrores++;
