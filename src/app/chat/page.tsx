@@ -83,6 +83,11 @@ const IconSend = () => (
     <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
   </svg>
 );
+const IconStop = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <rect x="6" y="6" width="12" height="12" rx="2" />
+  </svg>
+);
 const IconAttach = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.51a2 2 0 0 1-2.83-2.83l8.49-8.48" />
@@ -124,6 +129,7 @@ export default function SaraChatPage() {
   const [messages, setMessages]             = useState<Message[]>([]);
   const [input, setInput]                   = useState('');
   const [isLoading, setIsLoading]           = useState(false);
+  const [isResponding, setIsResponding]     = useState(false);
   const [selectedFile, setSelectedFile]     = useState<File | null>(null);
   const [previewUrl, setPreviewUrl]         = useState<string | null>(null);
   const [isDragging, setIsDragging]         = useState(false);
@@ -131,6 +137,12 @@ export default function SaraChatPage() {
   const endRef      = useRef<HTMLDivElement>(null);
   const fileRef     = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortRef    = useRef<AbortController | null>(null);
+
+  // Cancela la petición en curso hacia SARA (corta el streaming en pantalla).
+  function handleStop() {
+    abortRef.current?.abort();
+  }
 
   // Load sessions (localStorage cache → instant UI)
   useEffect(() => {
@@ -356,7 +368,7 @@ export default function SaraChatPage() {
 
   const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
-    if ((!input.trim() && !selectedFile) || isLoading) return;
+    if ((!input.trim() && !selectedFile) || isResponding) return;
 
     const userMsg: Message = { id: newId(), role: 'user', content: input, userImage: previewUrl, timestamp: Date.now() };
     const withUser = [...messages, userMsg];
@@ -365,6 +377,10 @@ export default function SaraChatPage() {
     setInput('');
     clearFile();
     setIsLoading(true);
+    setIsResponding(true);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
       // Si hay imagen, subirla a Supabase Storage primero
@@ -387,7 +403,7 @@ export default function SaraChatPage() {
       if (imageUrl) fd.append('imageUrl', imageUrl);
       if (f) fd.append('image', f);
 
-      const res = await fetch('/api/chat', { method: 'POST', body: fd });
+      const res = await fetch('/api/chat', { method: 'POST', body: fd, signal: controller.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       if (res.body) {
@@ -450,6 +466,12 @@ export default function SaraChatPage() {
             for (const line of lines) processLine(line.trim());
           }
           if (buffer.trim()) processLine(buffer.trim());
+        } catch (streamErr) {
+          // Si el usuario pulsó Stop, conservamos el texto ya acumulado.
+          // Cualquier otro error sí se propaga al catch externo.
+          if (!(streamErr instanceof DOMException && streamErr.name === 'AbortError')) {
+            throw streamErr;
+          }
         } finally {
           reader.releaseLock();
         }
@@ -501,13 +523,18 @@ export default function SaraChatPage() {
         persist(final, sid);
       }
 
-    } catch {
-      const err: Message = { id: newId(), role: 'assistant', content: 'No pude obtener respuesta de SARA. La consulta puede haber tardado demasiado — intenta reformularla o reintenta en unos segundos.' };
-      const final = [...withUser, err];
-      setMessages(final);
-      persist(final, sid);
+    } catch (err) {
+      // Cancelación del usuario (Stop): no es un error, no mostramos aviso.
+      if (!(err instanceof DOMException && err.name === 'AbortError')) {
+        const errMsg: Message = { id: newId(), role: 'assistant', content: 'No pude obtener respuesta de SARA. La consulta puede haber tardado demasiado — intenta reformularla o reintenta en unos segundos.' };
+        const final = [...withUser, errMsg];
+        setMessages(final);
+        persist(final, sid);
+      }
     } finally {
+      abortRef.current = null;
       setIsLoading(false);
+      setIsResponding(false);
     }
   };
 
@@ -885,15 +912,24 @@ export default function SaraChatPage() {
                   className="flex-1 bg-transparent border-none outline-none resize-none text-[15px] text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 py-3.5 min-h-[48px] max-h-40"
                   style={{ scrollbarWidth: 'none' }}
                 />
-                <button type="submit"
-                  disabled={(!input.trim() && !selectedFile) || isLoading}
-                  className={`p-3 rounded-xl transition-all shrink-0 mb-1 ${
-                    (input.trim() || selectedFile) && !isLoading
-                      ? 'bg-[#71BF44] text-white hover:bg-[#5a9c33] shadow-md shadow-[#71BF44]/25 hover:-translate-y-0.5'
-                      : 'bg-neutral-100 dark:bg-[#2a2a2a] text-neutral-300 dark:text-neutral-600 cursor-not-allowed'
-                  }`}>
-                  <IconSend />
-                </button>
+                {isResponding ? (
+                  <button type="button"
+                    onClick={handleStop}
+                    title="Detener a SARA"
+                    className="p-3 rounded-xl transition-all shrink-0 mb-1 bg-red-500 text-white hover:bg-red-600 shadow-md shadow-red-500/25 hover:-translate-y-0.5">
+                    <IconStop />
+                  </button>
+                ) : (
+                  <button type="submit"
+                    disabled={!input.trim() && !selectedFile}
+                    className={`p-3 rounded-xl transition-all shrink-0 mb-1 ${
+                      (input.trim() || selectedFile)
+                        ? 'bg-[#71BF44] text-white hover:bg-[#5a9c33] shadow-md shadow-[#71BF44]/25 hover:-translate-y-0.5'
+                        : 'bg-neutral-100 dark:bg-[#2a2a2a] text-neutral-300 dark:text-neutral-600 cursor-not-allowed'
+                    }`}>
+                    <IconSend />
+                  </button>
+                )}
               </form>
             </div>
           </div>
