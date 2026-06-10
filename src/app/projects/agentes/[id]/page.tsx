@@ -245,7 +245,7 @@ export default function AgentEditorPage() {
         <section className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 space-y-4">
           <div>
             <h3 className="font-semibold text-neutral-800 dark:text-neutral-200">Capacidades</h3>
-            <p className="text-xs text-neutral-500 mt-0.5">Pasos máximos, acceso a tools/skills y tools builtin del runtime. Útil para subagentes (acotar herramientas y evitar que se distraiga).</p>
+            <p className="text-xs text-neutral-500 mt-0.5">Aplica a cualquier agente (principal o subagente). Pasos máximos, acceso a tools/skills y tools builtin del runtime. Apagar builtins de archivos/shell evita que el agente se distraiga; recomendado también en el principal.</p>
           </div>
           <div className="grid grid-cols-3 gap-4 items-end">
             <div>
@@ -393,7 +393,58 @@ export default function AgentEditorPage() {
           </section>
         )}
 
-        {/* Herramientas HTTP */}
+        {/* Subagentes (delegaciones) */}
+        {!isNew && (
+          <section className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-neutral-800 dark:text-neutral-200">🤝 Subagentes</h3>
+                <p className="text-xs text-neutral-500 mt-0.5">Habilita qué subagentes puede invocar este agente (vía herramientas de delegación).</p>
+              </div>
+              <Link href="/projects/agentes/herramientas" className="text-xs text-[#71BF44] hover:underline whitespace-nowrap">
+                + Crear delegación
+              </Link>
+            </div>
+            {allHttpTools.filter((t: any) => isDelegateTool(t)).length === 0 ? (
+              <p className="text-sm text-neutral-400">
+                No hay delegaciones creadas. <Link href="/projects/agentes/herramientas" className="text-[#71BF44] hover:underline">Crea una →</Link>
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {allHttpTools.filter((t: any) => isDelegateTool(t)).map((t: any) => {
+                  const assigned = httpTools.some((x: any) => x.id === t.id);
+                  const tgt = delegateTargetId(t.url);
+                  const ag = allAgents.find((a: any) => a.id === tgt);
+                  return (
+                    <label key={t.id} className="flex items-center gap-3 cursor-pointer rounded-lg border border-transparent hover:border-[#71BF44]/30 hover:bg-[#71BF44]/5 px-2 py-1 -mx-2 transition-colors">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 accent-[#71BF44]"
+                        checked={assigned}
+                        onChange={() => toggleHttpTool(t.id, assigned)}
+                      />
+                      <span className="text-base">🤝</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">{ag?.name ?? (tgt ?? t.name)}</span>
+                          {!t.enabled && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-500">inactiva</span>
+                          )}
+                        </div>
+                        <span className="text-xs text-neutral-400 block truncate font-mono">{t.name}</span>
+                      </div>
+                      {ag && (
+                        <Link href={`/projects/agentes/${tgt}`} className="text-xs text-[#71BF44] hover:underline shrink-0">ver →</Link>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Herramientas HTTP (excluye delegaciones, que tienen su propia sección) */}
         {!isNew && (
           <section className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 space-y-3">
             <div className="flex items-center justify-between">
@@ -405,39 +456,11 @@ export default function AgentEditorPage() {
                 Gestionar →
               </Link>
             </div>
-
-            {/* Subagentes que invoca (delegate-tools asignadas) */}
-            {(() => {
-              const delegated = (httpTools as any[]).filter(t => isDelegateTool(t));
-              if (delegated.length === 0) return null;
-              return (
-                <div className="rounded-lg bg-[#71BF44]/5 border border-[#71BF44]/30 p-3">
-                  <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-2">🤝 Subagentes que invoca</p>
-                  <div className="space-y-1">
-                    {delegated.map((t: any) => {
-                      const tgt = delegateTargetId(t.url);
-                      const ag = allAgents.find((a: any) => a.id === tgt);
-                      return (
-                        <div key={t.id} className="flex items-center gap-2 text-xs">
-                          <span className="font-mono text-neutral-500">{t.name}</span>
-                          <span className="text-neutral-400">→</span>
-                          {ag ? (
-                            <Link href={`/projects/agentes/${tgt}`} className="text-[#71BF44] hover:underline font-medium">{ag.name}</Link>
-                          ) : (
-                            <span className="text-neutral-400">{tgt}</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })()}
-            {allHttpTools.length === 0 ? (
+            {allHttpTools.filter((t: any) => !isDelegateTool(t)).length === 0 ? (
               <p className="text-sm text-neutral-400">No hay herramientas HTTP creadas aún.</p>
             ) : (
               <div className="space-y-2">
-                {allHttpTools.map((t: any) => {
+                {allHttpTools.filter((t: any) => !isDelegateTool(t)).map((t: any) => {
                   const assigned = httpTools.some((x: any) => x.id === t.id);
                   const methodColor: Record<string, string> = {
                     GET: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400',
