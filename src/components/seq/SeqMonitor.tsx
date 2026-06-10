@@ -4177,46 +4177,23 @@ return [
                                               >
                                                 <Search className="w-2.5 h-2.5" />
                                               </button>
-                                              <select
-                                                onChange={(e) => {
-                                                  if (e.target.value === '') return;
-                                                  const duration = e.target.value as any;
+                                              <button
+                                                onClick={() => {
                                                   setIgnoreOriginalError(a.ejemplo.error);
                                                   setIgnorePattern(a.ejemplo.error);
-                                                  setIgnoreDurationOption(duration);
-                                                  if (duration === 'manual') {
-                                                    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-                                                    const tzOffset = tomorrow.getTimezoneOffset() * 60000;
-                                                    const localISOTime = new Date(tomorrow.getTime() - tzOffset).toISOString().slice(0, 16);
-                                                    setIgnoreManualDate(localISOTime);
-                                                  } else {
-                                                    setIgnoreManualDate('');
-                                                  }
+                                                  setIgnoreDurationOption('hoy');
+                                                  setIgnoreManualDate('');
                                                   setIsIgnoreModalOpen(true);
-                                                  e.target.value = '';
                                                 }}
-                                                className="bg-neutral-100 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 text-[9px] text-neutral-550 dark:text-neutral-400 rounded px-1 py-0.5 hover:text-[#71BF44] transition-colors cursor-pointer focus:outline-none"
+                                                className="bg-neutral-100 hover:bg-red-500/10 hover:text-red-500 dark:bg-[#181818] dark:hover:bg-red-950/20 border border-neutral-250 dark:border-neutral-800 text-[9px] text-neutral-550 dark:text-neutral-400 rounded px-1.5 py-0.5 transition-colors cursor-pointer font-bold"
                                               >
-                                                <option value="">Ignorar...</option>
-                                                <option value="hoy">Hoy</option>
-                                                <option value="semana">1 Sem</option>
-                                                <option value="mes">1 Mes</option>
-                                                <option value="manual">Manual</option>
-                                              </select>
+                                                Ignorar
+                                              </button>
                                             </div>
                                           </div>
                                         <div className="flex items-center gap-3 text-[9px] text-neutral-500 dark:text-neutral-400 border-t border-neutral-200 dark:border-neutral-800 pt-1">
                                           <span><strong>App:</strong> {a.ejemplo.app || 'Desconocido'}</span>
                                           <span><strong>Host:</strong> {a.ejemplo.hostname || 'Desconocido'}</span>
-                                          {a.ejemplo.id && (
-                                            <button
-                                              onClick={() => handleFilterById(a.ejemplo.id)}
-                                              className="text-[#5ba135] dark:text-[#71BF44] hover:underline flex items-center gap-0.5 font-sans whitespace-nowrap shrink-0"
-                                              title={`Buscar este evento ID (@Id = '${a.ejemplo.id}') en todos los orígenes de Seq`}
-                                            >
-                                              Buscar ID <Search className="w-2.5 h-2.5" />
-                                            </button>
-                                          )}
                                           {a.ejemplo.seqPermalink && (
                                             <a 
                                               href={a.ejemplo.seqPermalink} 
@@ -4327,45 +4304,22 @@ return [
                                               >
                                                 <Search className="w-2.5 h-2.5" />
                                               </button>
-                                              <select
-                                                onChange={(e) => {
-                                                  if (e.target.value === '') return;
-                                                  const duration = e.target.value as any;
+                                              <button
+                                                onClick={() => {
                                                   setIgnoreOriginalError(a.ejemplo.mensajeError);
                                                   setIgnorePattern(a.ejemplo.mensajeError);
-                                                  setIgnoreDurationOption(duration);
-                                                  if (duration === 'manual') {
-                                                    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-                                                    const tzOffset = tomorrow.getTimezoneOffset() * 60000;
-                                                    const localISOTime = new Date(tomorrow.getTime() - tzOffset).toISOString().slice(0, 16);
-                                                    setIgnoreManualDate(localISOTime);
-                                                  } else {
-                                                    setIgnoreManualDate('');
-                                                  }
+                                                  setIgnoreDurationOption('hoy');
+                                                  setIgnoreManualDate('');
                                                   setIsIgnoreModalOpen(true);
-                                                  e.target.value = '';
                                                 }}
-                                                className="bg-neutral-100 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 text-[9px] text-neutral-550 dark:text-neutral-400 rounded px-1 py-0.5 hover:text-[#71BF44] transition-colors cursor-pointer focus:outline-none"
+                                                className="bg-neutral-100 hover:bg-red-500/10 hover:text-red-500 dark:bg-[#181818] dark:hover:bg-red-950/20 border border-neutral-250 dark:border-neutral-800 text-[9px] text-neutral-550 dark:text-neutral-400 rounded px-1.5 py-0.5 transition-colors cursor-pointer font-bold"
                                               >
-                                                <option value="">Ignorar...</option>
-                                                <option value="hoy">Hoy</option>
-                                                <option value="semana">1 Sem</option>
-                                                <option value="mes">1 Mes</option>
-                                                <option value="manual">Manual</option>
-                                              </select>
+                                                Ignorar
+                                              </button>
                                             </div>
                                           </div>
                                         <div className="flex items-center gap-3 text-[9px] text-neutral-500 dark:text-neutral-400 border-t border-neutral-200 dark:border-neutral-800 pt-1">
                                           <span><strong>Host:</strong> {a.ejemplo.hostname || 'Desconocido'}</span>
-                                          {a.ejemplo.id && (
-                                            <button
-                                              onClick={() => handleFilterById(a.ejemplo.id)}
-                                              className="text-[#5ba135] dark:text-[#71BF44] hover:underline flex items-center gap-0.5 font-sans whitespace-nowrap shrink-0"
-                                              title={`Buscar este evento ID (@Id = '${a.ejemplo.id}') en todos los orígenes de Seq`}
-                                            >
-                                              Buscar ID <Search className="w-2.5 h-2.5" />
-                                            </button>
-                                          )}
                                           {a.ejemplo.seqPermalink && (
                                             <a 
                                               href={a.ejemplo.seqPermalink} 
