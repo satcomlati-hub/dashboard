@@ -1,12 +1,9 @@
 /**
  * Script de clasificación de alertas para Seq en n8n.
  * 
- * Este script procesa logs de Seq, clasifica las fallas entre errores de cliente (ej. Bad Request, HTTP 4xx)
- * y errores de servidor (ej. Timeouts, fallas de red, HTTP 5xx), y genera alertas basadas en reglas de negocio.
- * 
- * Reglas de alertas (umbrales):
- * - Alerta de cliente: Combinaciones unique 'cliente' + 'hostname' con más de 20 eventos de error.
- * - Alerta de servidor global: Si más de 3 clientes registran más de 10 eventos de error de servidor cada uno.
+ * Este script procesa logs de Seq, clasifica las fallas entre errores de cliente,
+ * errores de servidor e infraestructura cloud, y genera alertas basadas en reglas de negocio.
+ * También agrupa los errores por tipo/mensaje principal (excluyendo detalles o stack trace).
  */
 
 // Recuperar los elementos de entrada de n8n
@@ -31,13 +28,60 @@ if (items.length > 0) {
   }
 }
 
+// Configuración de infraestructura
+const infraClientes = ['HostingSAT', 'PAC', 'Panama', 'BOLIVIA', 'Panama2', 'HostingV5', 'aws.colombia'];
+const infraUrls = ['https://webapi.mysatcomla.com', 'https://api-app-prod.mysatcomla.com'];
+
 // Estructuras de almacenamiento para agrupamiento
 const clientGroups = {}; // Agrupado por: Cliente | Hostname
 const serverGroups = {}; // Agrupado por: Cliente
+const infraGroups = {};  // Agrupado por: Cliente (Infraestructura)
+const erroresPorTipo = {}; // Agrupado por el mensaje limpio del error
 
 let totalErrores = 0;
 let erroresClienteCount = 0;
 let erroresServidorCount = 0;
+let erroresInfraestructuraCount = 0;
+
+// Función para extraer el tipo de error de forma limpia, excluyendo stack trace y detalles dinámicos
+function obtenerTipoErrorLimpio(message, exception) {
+  let errorText = '';
+  
+  if (exception) {
+    // Tomar la primera línea de la excepción
+    const primeraLinea = exception.split(/[\r\n]+/)[0].trim();
+    if (primeraLinea) {
+      errorText = primeraLinea;
+    }
+  }
+  
+  if (!errorText && message) {
+    // Si no hay excepción, usar la primera línea del mensaje
+    const primeraLineaMsg = message.split(/[\r\n]+/)[0].trim();
+    errorText = primeraLineaMsg;
+  }
+
+  if (!errorText) {
+    return 'Error Desconocido';
+  }
+
+  // Limpiar prefijo común del tipo de excepción si existe (ej. "System.ArgumentException: ...")
+  const exceptionPrefixMatch = errorText.match(/^[a-zA-Z0-9\._]+Exception:\s*(.+)$/);
+  if (exceptionPrefixMatch && exceptionPrefixMatch[1]) {
+    errorText = exceptionPrefixMatch[1].trim();
+  }
+
+  // Ocultar IDs numéricos largos y UUIDs para una agrupación más efectiva
+  errorText = errorText.replace(/\b\d{10,}\b/g, '{ID}');
+  errorText = errorText.replace(/\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b/g, '{UUID}');
+  
+  // Limitar longitud
+  if (errorText.length > 150) {
+    errorText = errorText.substring(0, 150) + '...';
+  }
+
+  return errorText;
+}
 
 // 1. Procesar y clasificar cada log
 logs.forEach(log => {
@@ -46,6 +90,14 @@ logs.forEach(log => {
   const hostname = log.Hostname || log._hostname || log.hostname || 'Desconocido';
   const cliente = log.Cliente || log._cliente || log.cliente || 'Desconocido';
   
+  const msgLower = message.toLowerCase();
+  const excLower = exception.toLowerCase();
+
+  // Determinar si corresponde a infraestructura cloud
+  const esClienteInfra = infraClientes.some(c => c.toLowerCase() === cliente.toLowerCase());
+  const contieneUrlInfra = infraUrls.some(url => msgLower.includes(url.toLowerCase()) || excLower.includes(url.toLowerCase()));
+  const isInfraestructura = esClienteInfra || contieneUrlInfra;
+
   // Extraer código de estado HTTP si existe en la excepción o mensaje
   let statusCode = null;
   const statusCodeMatch = exception.match(/"StatusCode"\s*:\s*(\d+)/) || 
@@ -70,9 +122,6 @@ logs.forEach(log => {
   let isClient = false;
   let isServer = false;
   let tipoError = 'Desconocido';
-
-  const msgLower = message.toLowerCase();
-  const excLower = exception.toLowerCase();
 
   // Clasificación por código HTTP
   if (statusCode) {
@@ -136,15 +185,32 @@ logs.forEach(log => {
 
   totalErrores++;
 
-  // Agrupamiento
-  if (isClient) {
+  // Obtener y registrar tipo de error agrupado
+  const errorLimpio = obtenerTipoErrorLimpio(message, exception);
+  if (!erroresPorTipo[errorLimpio]) {
+    erroresPorTipo[errorLimpio] = { tipo: errorLimpio, count: 0, fuentes: new Set() };
+  }
+  erroresPorTipo[errorLimpio].count++;
+  erroresPorTipo[errorLimpio].fuentes.add(cliente);
+
+  // Clasificar y agrupar por origen/destino
+  if (isInfraestructura) {
+    erroresInfraestructuraCount++;
+    if (!infraGroups[cliente]) {
+      infraGroups[cliente] = { cliente, eventos: 0, errores: [] };
+    }
+    infraGroups[cliente].eventos++;
+    if (infraGroups[cliente].errores.length < 5) {
+      infraGroups[cliente].errores.push({ timestamp: log.Timestamp, tipoError, mensaje: message.substring(0, 150) });
+    }
+  } else if (isClient) {
     erroresClienteCount++;
     const key = `${cliente} | ${hostname}`;
     if (!clientGroups[key]) {
       clientGroups[key] = { cliente, hostname, eventos: 0, errores: [] };
     }
     clientGroups[key].eventos++;
-    if (clientGroups[key].errores.length < 5) { // Guardar muestra
+    if (clientGroups[key].errores.length < 5) {
       clientGroups[key].errores.push({ timestamp: log.Timestamp, tipoError, mensaje: message.substring(0, 150) });
     }
   } else if (isServer) {
@@ -153,7 +219,7 @@ logs.forEach(log => {
       serverGroups[cliente] = { cliente, hostname, eventos: 0, errores: [] };
     }
     serverGroups[cliente].eventos++;
-    if (serverGroups[cliente].errores.length < 5) { // Guardar muestra
+    if (serverGroups[cliente].errores.length < 5) {
       serverGroups[cliente].errores.push({ timestamp: log.Timestamp, tipoError, mensaje: message.substring(0, 150) });
     }
   }
@@ -167,6 +233,7 @@ const alertasServidor = {
   detalleClientes: [],
   mensaje: ""
 };
+const alertasInfraestructura = [];
 
 // Regla 1: Alerta Cliente si supera 20 eventos
 for (const key in clientGroups) {
@@ -202,6 +269,28 @@ if (clientesServidorAfectados.length > 3) {
   alertasServidor.mensaje = `CRÍTICO: Posible indisponibilidad del servidor. Afecta a ${clientesServidorAfectados.length} clientes con más de 10 errores de conexión/timeout cada uno.`;
 }
 
+// Regla 3: Alerta Infraestructura si supera 20 eventos
+for (const cliente in infraGroups) {
+  const group = infraGroups[cliente];
+  if (group.eventos > 20) {
+    alertasInfraestructura.push({
+      cliente: group.cliente,
+      eventos: group.eventos,
+      ejemplos: group.errores,
+      mensaje: `Alerta Infraestructura Crítica: El nodo de infraestructura '${group.cliente}' registra ${group.eventos} eventos de error.`
+    });
+  }
+}
+
+// Convertir el Set de fuentes a Array para serialización JSON
+const erroresAgrupadosPorTipo = Object.values(erroresPorTipo)
+  .map(g => ({
+    tipo: g.tipo,
+    count: g.count,
+    fuentes: Array.from(g.fuentes)
+  }))
+  .sort((a, b) => b.count - a.count);
+
 // Retornar en el formato requerido por n8n (array con propiedad json)
 return [
   {
@@ -210,12 +299,16 @@ return [
         totalErrores,
         erroresCliente: erroresClienteCount,
         erroresServidor: erroresServidorCount,
+        erroresInfraestructura: erroresInfraestructuraCount,
         alertaServidorGlobal: alertasServidor.globalTriggered,
         alertaClienteCritico: alertasCliente.length > 0,
+        alertaInfraestructuraCritica: alertasInfraestructura.length > 0,
         timestampMonitoreo: new Date().toISOString()
       },
       alertasServidor,
-      alertasCliente
+      alertasCliente,
+      alertasInfraestructura,
+      erroresPorTipo: erroresAgrupadosPorTipo
     }
   }
 ];
