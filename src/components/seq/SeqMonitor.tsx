@@ -205,6 +205,13 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
   const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
+  
+  // Estados para silenciar errores (ignorar) de manera interactiva
+  const [isIgnoreModalOpen, setIsIgnoreModalOpen] = useState(false);
+  const [ignorePattern, setIgnorePattern] = useState('');
+  const [ignoreOriginalError, setIgnoreOriginalError] = useState('');
+  const [ignoreDurationOption, setIgnoreDurationOption] = useState<'hoy' | 'semana' | 'mes' | 'manual'>('hoy');
+  const [ignoreManualDate, setIgnoreManualDate] = useState('');
   const [selectedQueryForAlert, setSelectedQueryForAlert] = useState<SavedQuery | null>(null);
   const [alertConfig, setAlertConfig] = useState({
     timeWindowMinutes: 10,
@@ -4172,14 +4179,19 @@ return [
                                               <select
                                                 onChange={(e) => {
                                                   if (e.target.value === '') return;
-                                                  if (e.target.value === 'manual') {
-                                                    const dateStr = prompt("Ingrese la fecha límite en formato YYYY-MM-DD HH:mm (Ej: 2026-06-30 18:00):");
-                                                    if (dateStr) {
-                                                      handleIgnoreError(a.ejemplo.error, 'manual', dateStr);
-                                                    }
+                                                  const duration = e.target.value as any;
+                                                  setIgnoreOriginalError(a.ejemplo.error);
+                                                  setIgnorePattern(a.ejemplo.error);
+                                                  setIgnoreDurationOption(duration);
+                                                  if (duration === 'manual') {
+                                                    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+                                                    const tzOffset = tomorrow.getTimezoneOffset() * 60000;
+                                                    const localISOTime = new Date(tomorrow.getTime() - tzOffset).toISOString().slice(0, 16);
+                                                    setIgnoreManualDate(localISOTime);
                                                   } else {
-                                                    handleIgnoreError(a.ejemplo.error, e.target.value as any);
+                                                    setIgnoreManualDate('');
                                                   }
+                                                  setIsIgnoreModalOpen(true);
                                                   e.target.value = '';
                                                 }}
                                                 className="bg-neutral-100 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 text-[9px] text-neutral-550 dark:text-neutral-400 rounded px-1 py-0.5 hover:text-[#71BF44] transition-colors cursor-pointer focus:outline-none"
@@ -4317,14 +4329,19 @@ return [
                                               <select
                                                 onChange={(e) => {
                                                   if (e.target.value === '') return;
-                                                  if (e.target.value === 'manual') {
-                                                    const dateStr = prompt("Ingrese la fecha límite en formato YYYY-MM-DD HH:mm (Ej: 2026-06-30 18:00):");
-                                                    if (dateStr) {
-                                                      handleIgnoreError(a.ejemplo.mensajeError, 'manual', dateStr);
-                                                    }
+                                                  const duration = e.target.value as any;
+                                                  setIgnoreOriginalError(a.ejemplo.mensajeError);
+                                                  setIgnorePattern(a.ejemplo.mensajeError);
+                                                  setIgnoreDurationOption(duration);
+                                                  if (duration === 'manual') {
+                                                    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+                                                    const tzOffset = tomorrow.getTimezoneOffset() * 60000;
+                                                    const localISOTime = new Date(tomorrow.getTime() - tzOffset).toISOString().slice(0, 16);
+                                                    setIgnoreManualDate(localISOTime);
                                                   } else {
-                                                    handleIgnoreError(a.ejemplo.mensajeError, e.target.value as any);
+                                                    setIgnoreManualDate('');
                                                   }
+                                                  setIsIgnoreModalOpen(true);
                                                   e.target.value = '';
                                                 }}
                                                 className="bg-neutral-100 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 text-[9px] text-neutral-550 dark:text-neutral-400 rounded px-1 py-0.5 hover:text-[#71BF44] transition-colors cursor-pointer focus:outline-none"
@@ -5825,6 +5842,111 @@ return [
                 className="bg-red-500 hover:bg-red-600 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors"
               >
                 {confirmModal.actionLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL SILENCIAR ERROR (IGNORAR) --- */}
+      {isIgnoreModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-[#111] border border-neutral-200 dark:border-neutral-800 rounded-xl p-5 w-full max-w-lg shadow-2xl animate-scale-in flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-900 pb-3 mb-1">
+              <h3 className="text-sm font-bold text-neutral-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                <BellOff className="w-4 h-4 text-[#71BF44]" />
+                Silenciar Evento (Ignorar)
+              </h3>
+              <button 
+                onClick={() => {
+                  setIsIgnoreModalOpen(false);
+                }} 
+                className="text-neutral-550 hover:text-neutral-800 dark:text-neutral-450 dark:hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] text-neutral-550 dark:text-neutral-400 font-bold uppercase">Texto Original del Error</label>
+                <div className="bg-neutral-50 dark:bg-neutral-900/60 p-2.5 rounded-lg border border-neutral-200 dark:border-neutral-850 text-xs text-neutral-600 dark:text-neutral-400 font-mono break-all max-h-24 overflow-y-auto select-all">
+                  {ignoreOriginalError}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] text-neutral-550 dark:text-neutral-400 font-bold uppercase">Patrón de Texto para Excluir</label>
+                <textarea
+                  value={ignorePattern}
+                  onChange={(e) => setIgnorePattern(e.target.value)}
+                  placeholder="El evento se ignorará si contiene este texto..."
+                  className="w-full bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-850 rounded-lg p-2.5 text-xs text-neutral-900 dark:text-white font-mono h-24 resize-y focus:outline-none focus:border-[#71BF44]"
+                />
+                <span className="text-[10px] text-neutral-450 italic">
+                  Puedes editar este texto para excluir una frase más general y filtrar variaciones dinámicas del mismo error.
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] text-neutral-550 dark:text-neutral-400 font-bold uppercase">Duración de la Exclusión</label>
+                  <select
+                    value={ignoreDurationOption}
+                    onChange={(e) => {
+                      const option = e.target.value as any;
+                      setIgnoreDurationOption(option);
+                      if (option === 'manual') {
+                        const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+                        const tzOffset = tomorrow.getTimezoneOffset() * 60000;
+                        const localISOTime = new Date(tomorrow.getTime() - tzOffset).toISOString().slice(0, 16);
+                        setIgnoreManualDate(localISOTime);
+                      }
+                    }}
+                    className="bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-850 rounded-lg p-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] cursor-pointer"
+                  >
+                    <option value="hoy">Hoy (Hasta las 23:59)</option>
+                    <option value="semana">1 Semana (7 días)</option>
+                    <option value="mes">1 Mes (30 días)</option>
+                    <option value="manual">Manual (Fecha específica)</option>
+                  </select>
+                </div>
+
+                {ignoreDurationOption === 'manual' && (
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] text-neutral-550 dark:text-neutral-400 font-bold uppercase">Fecha y Hora Límite</label>
+                    <input
+                      type="datetime-local"
+                      value={ignoreManualDate}
+                      onChange={(e) => setIgnoreManualDate(e.target.value)}
+                      className="bg-neutral-50 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-850 rounded-lg p-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] dark:focus:border-[#71BF44] w-full"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 mt-3 border-t border-neutral-100 dark:border-neutral-900 pt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsIgnoreModalOpen(false);
+                }}
+                className="border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-[#181818] hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs font-bold px-4 py-2.5 rounded-lg text-neutral-600 dark:text-neutral-300 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleIgnoreError(ignorePattern, ignoreDurationOption, ignoreManualDate);
+                  setIsIgnoreModalOpen(false);
+                }}
+                disabled={!ignorePattern.trim()}
+                className="bg-[#71BF44] hover:bg-[#71BF44]/90 disabled:opacity-55 disabled:cursor-not-allowed text-white dark:text-[#131313] text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-1.5 transition-colors"
+              >
+                <BellOff className="w-3.5 h-3.5" />
+                Ignorar Evento
               </button>
             </div>
           </div>
