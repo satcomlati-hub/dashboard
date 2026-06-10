@@ -931,16 +931,28 @@ return [
     }
   };
 
-  const isErrorIgnored = (message: string, exception: string) => {
-    const msgLower = (message || '').toLowerCase();
-    const excLower = (exception || '').toLowerCase();
+  const isErrorIgnored = (message: string, exception: string, log?: any) => {
+    const textToEvaluate = log 
+      ? JSON.stringify(log).toLowerCase() 
+      : `${message || ''} ${exception || ''}`.toLowerCase();
     
     return ignoredErrors.some(ignored => {
       if (ignored.expiresAt && new Date(ignored.expiresAt).getTime() < Date.now()) {
         return false;
       }
-      const patLower = (ignored.pattern || '').toLowerCase();
-      return msgLower.includes(patLower) || excLower.includes(patLower);
+      const pattern = ignored.pattern || '';
+      const patLower = pattern.toLowerCase();
+      
+      try {
+        let regexPattern = patLower;
+        if (regexPattern.includes('*') && !regexPattern.includes('.*')) {
+          regexPattern = regexPattern.replace(/\*/g, '.*');
+        }
+        const regex = new RegExp(regexPattern, 'i');
+        return regex.test(textToEvaluate);
+      } catch (e) {
+        return textToEvaluate.includes(patLower);
+      }
     });
   };
 
@@ -2589,7 +2601,7 @@ return [
       const origenConexion = log.Origen || 'Desconocido';
       const eventId = log.Id || log['@Id'];
 
-      const ignored = isErrorIgnored(message, exception);
+      const ignored = isErrorIgnored(message, exception, log);
 
       // Buscar la URL del origen en el array de connections para construir el permalink
       const matchingConn = connections.find(c => c.name === origenConexion);
@@ -2828,7 +2840,7 @@ return [
         }
       }
 
-      const ignored = isErrorIgnored(message, exceptionStr);
+      const ignored = isErrorIgnored(message, exceptionStr, log);
       const origenConexion = log.Origen || 'Desconocido';
       const matchingConn = connections.find(c => c.name === origenConexion);
       const baseUrl = matchingConn ? matchingConn.url : 'http://logs-sender.mysatcomla.com:5341';
@@ -3010,7 +3022,7 @@ return [
     return logs.map(log => {
       const message = (log.RenderedMessage || log.MessageTemplate || '').toString();
       const exception = (log.Exception || '').toString();
-      const ignored = isErrorIgnored(message, exception);
+      const ignored = isErrorIgnored(message, exception, log);
       return {
         ...log,
         isIgnored: ignored
