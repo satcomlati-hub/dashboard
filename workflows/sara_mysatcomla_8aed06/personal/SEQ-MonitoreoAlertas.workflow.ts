@@ -144,15 +144,15 @@ try {
   const seqUrl = \`\${conexionUrl}/api/events?filter=\${encodeURIComponent(filter)}&count=1000&render=true\`;
   const headers = apiKey ? { 'X-Seq-ApiKey': apiKey } : {};
   const res = await fetch(seqUrl, { headers });
-  if (!res.ok) return undefined; // Error HTTP → sin alerta
+  if (!res.ok) return []; // Error HTTP → sin alerta
   const data = await res.json();
   if      (Array.isArray(data))         events = data;
   else if (Array.isArray(data.Events))  events = data.Events;
   else if (Array.isArray(data.Items))   events = data.Items;
 } catch (_e) {
-  return undefined; // Error de red → sin alerta
+  return []; // Error de red → sin alerta
 }
-if (!events.length) return undefined; // Sin eventos → sin alerta
+if (!events.length) return []; // Sin eventos → sin alerta
 
 // =================================================================
 // PASO 2: Normalizar eventos (soporta Seq REST API v1 y CLEF)
@@ -360,7 +360,7 @@ if (criticos.length >= UMBRAL_SRV_C) {
   alertasInfraestructura.mensaje = \`Alerta Infraestructura: posible falla del Servidor de APIs. \${criticos.length} clientes con más de \${UMBRAL_SRV} errores cada uno.\`;
 }
 
-if (!alertasMesaDeAyuda.length && !alertasInfraestructura.triggered) return undefined;
+if (!alertasMesaDeAyuda.length && !alertasInfraestructura.triggered) return [];
 
 // =================================================================
 // PASO 6: Generar JSON de notificaciones
@@ -369,39 +369,41 @@ const rangoHorario = (minTs && maxTs) ? \`\${minTs} a \${maxTs}\` : 'No disponib
 const tipoAlerta   = alertasInfraestructura.triggered ? 'INFRAESTRUCTURA' : 'MESA_DE_AYUDA';
 const now          = new Date();
 
-return {
-  json: {
-    reglaId,
-    reglaNombre,
-    conexionId,
-    conexionNombre,
-    conexionUrl,
-    consultaEvaluada:    filter,
-    alertaGenerada:      true,
-    tipoAlerta,
-    fechaEvaluacion:     now.toISOString(),
-    resumen: {
-      totalErroresEvaluados:    totalErrores,
-      totalErroresCliente:      errCliCount,
-      totalErroresServidor:     errSrvCount,
-      ventanaEvaluacionMinutos: VENTANA,
-      alertaClienteCritico:     alertasMesaDeAyuda.length > 0,
-      alertaServidorGlobal:     alertasInfraestructura.triggered,
-      rangoHorario,
+return [
+  {
+    json: {
+      reglaId,
+      reglaNombre,
+      conexionId,
+      conexionNombre,
+      conexionUrl,
+      consultaEvaluada:    filter,
+      alertaGenerada:      true,
+      tipoAlerta,
+      fechaEvaluacion:     now.toISOString(),
+      resumen: {
+        totalErroresEvaluados:    totalErrores,
+        totalErroresCliente:      errCliCount,
+        totalErroresServidor:     errSrvCount,
+        ventanaEvaluacionMinutos: VENTANA,
+        alertaClienteCritico:     alertasMesaDeAyuda.length > 0,
+        alertaServidorGlobal:     alertasInfraestructura.triggered,
+        rangoHorario,
+      },
+      alertasMesaDeAyuda,
+      alertasInfraestructura,
+      notificacion: {
+        clave:        `SEQ:\${reglaNombre}|CONN:\${conexionNombre}|TIPO:\${tipoAlerta}|P:\${now.toISOString().split('T')[0]}`,
+        titulo:       `ALERTA SEQ | \${conexionNombre} | \${reglaNombre}`,
+        mensaje:      alertasInfraestructura.triggered
+                        ? alertasInfraestructura.mensaje
+                        : (alertasMesaDeAyuda[0]?.mensaje || 'Alerta SEQ detectada'),
+        totalEventos: totalErrores,
+        rangoHorario,
+      },
     },
-    alertasMesaDeAyuda,
-    alertasInfraestructura,
-    notificacion: {
-      clave:        \`SEQ:\${reglaNombre}|CONN:\${conexionNombre}|TIPO:\${tipoAlerta}|P:\${now.toISOString().split('T')[0]}\`,
-      titulo:       \`ALERTA SEQ | \${conexionNombre} | \${reglaNombre}\`,
-      mensaje:      alertasInfraestructura.triggered
-                      ? alertasInfraestructura.mensaje
-                      : (alertasMesaDeAyuda[0]?.mensaje || 'Alerta SEQ detectada'),
-      totalEventos: totalErrores,
-      rangoHorario,
-    },
-  },
-};
+  }
+];
 `,
     };
 
