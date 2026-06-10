@@ -2817,6 +2817,7 @@ return [
         tipoOrigen: esCloud ? 'Cloud mySatcom' : 'Cliente Dedicado/Normal',
         erroresAgrupados: erroresAgrupados.slice(0, 1), // Sólo el primer error representativo
         ejemplo: erroresAgrupados[0]?.ejemplo || null,
+        isIgnored: erroresAgrupados[0]?.isIgnored || false,
         mensaje: `Alerta Mesa de Ayuda: El origen ${g.cliente} en ${g.hostname} tiene ${g.eventosNoIgnorados} errores (Umbral: ${umbral}, Supera Umbral: ${superaUmbral}).`
       });
     }
@@ -2913,6 +2914,7 @@ return [
         totalEventosError: data.totalEventos,
         totalEventosErrorNoIgnorados: data.totalEventosNoIgnorados,
         ejemplo: data.ejemplos[0] || null,
+        isIgnored: data.ejemplos[0]?.isIgnored || false,
         mensaje: `Alerta Infraestructura: Se detectaron ${data.totalEventosNoIgnorados} errores afectando a ${data.clientesNoIgnorados.size} clientes al invocar el destino ${data.destino} (Supera Umbral: ${superaUmbral}).`
       });
     }
@@ -4147,48 +4149,54 @@ return [
                               {simulatedResult.alertasMesaDeAyuda.length === 0 ? (
                                 <span className="text-[11px] text-neutral-500 italic p-2">Sin orígenes de error reportados en esta ventana.</span>
                               ) : (
-                                simulatedResult.alertasMesaDeAyuda.map((a, idx) => (
-                                  <div key={idx} className="pt-2.5 first:pt-0 flex flex-col gap-1 text-[11px]">
-                                    <div className="flex items-center justify-between">
-                                      <div className="flex items-center gap-2">
-                                        <span className="font-bold text-neutral-900 dark:text-white">{a.origen}</span>
-                                        <button
-                                          onClick={() => handleFilterByOrigin(a.cliente, a.hostname)}
-                                          className="text-[#5ba135] dark:text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-                                          title={`Buscar / filtrar eventos para este origen: ${a.origen}`}
-                                        >
-                                          <Search className="w-3 h-3" />
-                                        </button>
-                                        {a.ejemplo && (
+                                simulatedResult.alertasMesaDeAyuda.map((a, idx) => {
+                                  const isIgnored = a.isIgnored || a.eventosNoIgnorados === 0;
+                                  return (
+                                    <div key={idx} className={`pt-2.5 first:pt-0 flex flex-col gap-1 text-[11px] ${isIgnored ? 'opacity-60' : ''}`}>
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                          <span className={`font-bold ${isIgnored ? 'text-neutral-500 line-through' : 'text-neutral-900 dark:text-white'}`}>{a.origen}</span>
                                           <button
-                                            onClick={() => {
-                                              setIgnoreOriginalError(a.ejemplo.error);
-                                              setIgnorePattern(a.ejemplo.error);
-                                              setIgnoreDurationOption('hoy');
-                                              setIgnoreManualDate('');
-                                              setIsIgnoreModalOpen(true);
-                                            }}
-                                            className="text-neutral-450 hover:text-red-500 p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-                                            title="Configurar silencio (Ignorar) para este origen"
+                                            onClick={() => handleFilterByOrigin(a.cliente, a.hostname)}
+                                            className="text-[#5ba135] dark:text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                                            title={`Buscar / filtrar eventos para este origen: ${a.origen}`}
                                           >
-                                            <BellOff className="w-3 h-3" />
+                                            <Search className="w-3 h-3" />
                                           </button>
-                                        )}
+                                          {a.ejemplo && (
+                                            <button
+                                              onClick={() => {
+                                                setIgnoreOriginalError(a.ejemplo.error);
+                                                setIgnorePattern(a.ejemplo.error);
+                                                setIgnoreDurationOption('hoy');
+                                                setIgnoreManualDate('');
+                                                setIsIgnoreModalOpen(true);
+                                              }}
+                                              className={`p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors ${isIgnored ? 'text-emerald-500 dark:text-emerald-400 font-bold' : 'text-neutral-450 hover:text-red-500'}`}
+                                              title={isIgnored ? "Silencio activo. Clic para editar" : "Configurar silencio (Ignorar) para este origen"}
+                                            >
+                                              <BellOff className="w-3.5 h-3.5" />
+                                            </button>
+                                          )}
+                                          {isIgnored && <span className="text-[9px] bg-neutral-100 dark:bg-neutral-800 text-neutral-500 px-1 py-0.2 rounded font-bold uppercase select-none">Silenciado 🔕</span>}
+                                        </div>
                                       </div>
                                       <span
                                         onClick={() => handleFilterByOrigin(a.cliente, a.hostname)}
                                         className={`px-2 py-0.5 rounded-full text-[9px] font-bold cursor-pointer hover:opacity-85 transition-all ${
-                                          a.superaUmbral
-                                            ? 'bg-red-100 text-red-750 border border-red-200 dark:bg-red-950/35 dark:text-red-300 dark:border-red-900/30 animate-pulse'
-                                            : 'bg-amber-100 text-amber-800 dark:bg-amber-955/20 dark:text-amber-400'
+                                          isIgnored
+                                            ? 'bg-neutral-100 text-neutral-500 dark:bg-neutral-900/60 dark:text-neutral-400'
+                                            : a.superaUmbral
+                                              ? 'bg-red-100 text-red-750 border border-red-200 dark:bg-red-950/35 dark:text-red-300 dark:border-red-900/30 animate-pulse'
+                                              : 'bg-amber-100 text-amber-800 dark:bg-amber-955/20 dark:text-amber-400'
                                         }`}
                                         title={`Filtrar localmente por origen: ${a.origen}`}
                                       >
-                                        {a.totalEventos} errores / Umbral {a.umbralDefinido}
+                                        {a.eventosNoIgnorados} activos / {a.totalEventos} err / Umbral {a.umbralDefinido}
                                       </span>
                                     </div>
-                                  </div>
-                                ))
+                                  );
+                                })
                               )}
                             </div>
                           </div>
@@ -4239,51 +4247,57 @@ return [
                               {simulatedResult.alertasInfraestructura.length === 0 ? (
                                 <span className="text-[11px] text-neutral-500 italic p-2">Sin fallas de infraestructura en esta ventana.</span>
                               ) : (
-                                simulatedResult.alertasInfraestructura.map((a, idx) => (
-                                  <div key={idx} className="pt-2.5 first:pt-0 flex flex-col gap-1 text-[11px]">
-                                    <div className="flex items-center justify-between">
-                                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                                        <span className="font-bold text-neutral-900 dark:text-white truncate pr-2" title={a.destino}>{a.destino}</span>
-                                        <button
-                                          onClick={() => handleFilterByDestino(a.destino)}
-                                          className="text-[#5ba135] dark:text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors shrink-0"
-                                          title={`Buscar / filtrar eventos para este destino: ${a.destino}`}
-                                        >
-                                          <Search className="w-3 h-3" />
-                                        </button>
-                                        {a.ejemplo && (
+                                simulatedResult.alertasInfraestructura.map((a, idx) => {
+                                  const isIgnored = a.isIgnored || a.totalEventosErrorNoIgnorados === 0;
+                                  return (
+                                    <div key={idx} className={`pt-2.5 first:pt-0 flex flex-col gap-1 text-[11px] ${isIgnored ? 'opacity-60' : ''}`}>
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                                          <span className={`font-bold truncate pr-2 ${isIgnored ? 'text-neutral-500 line-through' : 'text-neutral-900 dark:text-white'}`} title={a.destino}>{a.destino}</span>
                                           <button
-                                            onClick={() => {
-                                              setIgnoreOriginalError(a.ejemplo.mensajeError);
-                                              setIgnorePattern(a.ejemplo.mensajeError);
-                                              setIgnoreDurationOption('hoy');
-                                              setIgnoreManualDate('');
-                                              setIsIgnoreModalOpen(true);
-                                            }}
-                                            className="text-neutral-450 hover:text-red-500 p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors shrink-0"
-                                            title="Configurar silencio (Ignorar) para este destino"
+                                            onClick={() => handleFilterByDestino(a.destino)}
+                                            className="text-[#5ba135] dark:text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors shrink-0"
+                                            title={`Buscar / filtrar eventos para este destino: ${a.destino}`}
                                           >
-                                            <BellOff className="w-3 h-3" />
+                                            <Search className="w-3 h-3" />
                                           </button>
-                                        )}
+                                          {a.ejemplo && (
+                                            <button
+                                              onClick={() => {
+                                                setIgnoreOriginalError(a.ejemplo.mensajeError);
+                                                setIgnorePattern(a.ejemplo.mensajeError);
+                                                setIgnoreDurationOption('hoy');
+                                                setIgnoreManualDate('');
+                                                setIsIgnoreModalOpen(true);
+                                              }}
+                                              className={`p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors shrink-0 ${isIgnored ? 'text-emerald-500 dark:text-emerald-400 font-bold' : 'text-neutral-450 hover:text-red-500'}`}
+                                              title={isIgnored ? "Silencio activo. Clic para editar" : "Configurar silencio (Ignorar) para este destino"}
+                                            >
+                                              <BellOff className="w-3.5 h-3.5" />
+                                            </button>
+                                          )}
+                                          {isIgnored && <span className="text-[9px] bg-neutral-100 dark:bg-neutral-800 text-neutral-500 px-1 py-0.2 rounded font-bold uppercase select-none shrink-0">Silenciado 🔕</span>}
+                                        </div>
                                       </div>
                                       <span
                                         onClick={() => handleFilterByDestino(a.destino)}
                                         className={`px-2 py-0.5 rounded-full text-[9px] font-bold whitespace-nowrap cursor-pointer hover:opacity-85 transition-all ${
-                                          a.superaUmbral
-                                            ? 'bg-red-100 text-red-750 border border-red-200 dark:bg-red-950/35 dark:text-red-300 dark:border-red-900/30 animate-pulse'
-                                            : 'bg-amber-100 text-amber-800 dark:bg-amber-955/20 dark:text-amber-400'
+                                          isIgnored
+                                            ? 'bg-neutral-100 text-neutral-500 dark:bg-neutral-900/60 dark:text-neutral-400'
+                                            : a.superaUmbral
+                                              ? 'bg-red-100 text-red-750 border border-red-200 dark:bg-red-950/35 dark:text-red-300 dark:border-red-900/30 animate-pulse'
+                                              : 'bg-amber-100 text-amber-800 dark:bg-amber-955/20 dark:text-amber-400'
                                         }`}
                                         title={`Filtrar localmente por destino: ${a.destino}`}
                                       >
-                                        {a.totalEventosError} err / {a.cantidadClientesAfectados} clientes (Umbral: &gt;10 err y &gt;3 clientes)
+                                        {a.totalEventosErrorNoIgnorados} activos / {a.totalEventosError} err / {a.clientesAfectados.length} clientes (Umbral: &gt;10 err y &gt;3 clientes)
                                       </span>
+                                      <div className="text-[10px] text-neutral-650 dark:text-neutral-400 pl-1 font-semibold">
+                                        <strong>Clientes Afectados:</strong> {a.clientesAfectados.join(', ')}
+                                      </div>
                                     </div>
-                                    <div className="text-[10px] text-neutral-650 dark:text-neutral-400 pl-1 font-semibold">
-                                      <strong>Clientes Afectados:</strong> {a.clientesAfectados.join(', ')}
-                                    </div>
-                                  </div>
-                                ))
+                                  );
+                                })
                               )}
                             </div>
                           </div>
