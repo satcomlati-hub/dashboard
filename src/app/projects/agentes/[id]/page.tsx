@@ -405,13 +405,13 @@ export default function AgentEditorPage() {
                 + Crear delegación
               </Link>
             </div>
-            {allHttpTools.filter((t: any) => isDelegateTool(t)).length === 0 ? (
+            {allHttpTools.filter((t: any) => isDelegateTool(t) && delegateTargetId(t.url) !== id).length === 0 ? (
               <p className="text-sm text-neutral-400">
                 No hay delegaciones creadas. <Link href="/projects/agentes/herramientas" className="text-[#71BF44] hover:underline">Crea una →</Link>
               </p>
             ) : (
               <div className="space-y-2">
-                {allHttpTools.filter((t: any) => isDelegateTool(t)).map((t: any) => {
+                {allHttpTools.filter((t: any) => isDelegateTool(t) && delegateTargetId(t.url) !== id).map((t: any) => {
                   const assigned = httpTools.some((x: any) => x.id === t.id);
                   const tgt = delegateTargetId(t.url);
                   const ag = allAgents.find((a: any) => a.id === tgt);
