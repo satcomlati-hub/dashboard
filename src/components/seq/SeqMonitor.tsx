@@ -2595,7 +2595,7 @@ return [
       const matchingConn = connections.find(c => c.name === origenConexion);
       const baseUrl = matchingConn ? matchingConn.url : 'http://logs-sender.mysatcomla.com:5341';
       const seqPermalink = eventId 
-        ? `${baseUrl}/#/events/?filter=@Id%20%3D%20%27${eventId}%27&showExpanded`
+        ? `https://dashboard-one-ivory-58.vercel.app/seq-monitor?Id=${eventId}&Origen=${encodeURIComponent(origenConexion)}`
         : '';
 
       // Buscar StatusCode en Exception o Message
@@ -2804,6 +2804,7 @@ return [
         umbralDefinido: umbral,
         tipoOrigen: esCloud ? 'Cloud mySatcom' : 'Cliente Dedicado/Normal',
         erroresAgrupados: erroresAgrupados.slice(0, 1), // Sólo el primer error representativo
+        ejemplo: erroresAgrupados[0]?.ejemplo || null,
         mensaje: `Alerta Mesa de Ayuda: El origen ${g.cliente} en ${g.hostname} tiene ${g.eventosNoIgnorados} errores (Umbral: ${umbral}, Supera Umbral: ${superaUmbral}).`
       });
     }
@@ -2879,7 +2880,7 @@ return [
             app: log.App || log._app,
             hostname: log.Hostname || log._hostname,
             isIgnored: ignored,
-            seqPermalink: log.Id ? `${baseUrl}/#/events/?filter=@Id%20%3D%20%27${log.Id}%27&showExpanded` : ''
+            seqPermalink: log.Id ? `https://dashboard-one-ivory-58.vercel.app/seq-monitor?Id=${log.Id}&Origen=${encodeURIComponent(origenConexion)}` : ''
           });
         }
       }
