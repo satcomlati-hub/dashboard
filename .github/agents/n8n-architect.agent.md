@@ -5,65 +5,40 @@ description: Use when the user explicitly wants to create, edit, validate, sync,
 
 # n8n Architect
 
-Use this workspace agent for all n8n-as-code work: workspace readiness, migration, environments, managed local instances, tunnels, workflow authoring, validation, sync, push, and pull.
+Use this workspace agent for all n8n-as-code work: workspace readiness, environments, managed local instances, tunnels, workflow authoring, validation, sync, push, and pull.
 
 Use `npx --yes n8nac` as the primary interface. Use `npx --yes @n8n-as-code/n8n-manager` only for local managed runtime lifecycle, tunnels, and workflow presentation commands that are explicitly exposed by n8n-manager.
 
 ## Context Root Protocol
 
-- Treat the current context root as the directory containing `n8nac-config.json`, `AGENTS.md`, `.agents/skills`, and the workflow sync folder.
-- Generated context root hint: `c:\@Antigravity\Satcom`. If this path exists, run workspace commands from there.
+- Treat the current context root as the directory containing `n8nac-config.json`, `AGENTS.md`, `.agents/skills`, and the configured `workflowsPath`.
+- Generated context root hint: `c:\Antigravity2026\Satcom`. If this path exists, run workspace commands from there.
 - Before any n8n work, first run `npx --yes n8nac update-ai` from the context root, then read `AGENTS.md`. `update-ai` is designed to create or refresh the n8n-as-code block without destroying existing user or agent instructions.
 - Use the exact `n8nac command` and `n8n-manager command` listed in `AGENTS.md`. Those context-root commands override the portable examples in this skill.
 - Run every `npx --yes n8nac env ...`, `npx --yes n8nac workspace ...`, `npx --yes n8nac list`, `pull`, `push`, `validate`, `test`, and `update-ai` command from the context root unless the user explicitly gives another context root.
 - `AGENTS.md` is bootstrap context only, not a source of configuration truth.
-- Do not infer environment, project, sync folder, or workflow directory from `AGENTS.md`.
+- Do not infer environment, project, or `workflowsPath` from `AGENTS.md`.
 - Before n8n work, resolve the effective context from the backend:
 
 ```bash
 npx --yes n8nac env status --json
 ```
 
-- Use the returned `workflowDir` for workflow files. Do not reconstruct it from `syncFolder`, `instanceIdentifier`, or `projectName`.
+- Use the returned `workflowsPath` for workflow files. It is the configured workflow directory for the active environment.
+- Do not reconstruct `workflowsPath` from environment name/id, `instanceIdentifier`, `instanceUserIdentifier`, `projectId`, `projectName`, or legacy sync fields.
 - Never write `n8nac-config.json`, `~/.n8n-manager`, or n8n-manager secret files by hand.
 
 ## Workspace Readiness
 
-Use the unified migration preflight before resolving the effective environment. The dry-run is safe and reports whether any workspace migration is required:
+Resolve the effective environment through the backend before workflow work:
 
 ```bash
-npx --yes n8nac workspace migrate --json
 npx --yes n8nac env status --json
 ```
 
-- Treat `workspace migrate --json` as the source of migration need.
-- Treat `env status --json` as the source of effective workspace readiness only after migration is not required or has been applied.
+- Treat `env status --json` as the source of effective workspace readiness.
 - Do not infer readiness from raw files, generated agent docs, or directory names.
-- If migration is required, do not edit config files by hand or continue with environment/workflow work until it has been applied or explicitly deferred by the user.
-
-## Migration
-
-Migration is one user-facing command. Do not reason about internal migration phases directly; summarize the report `operations` array when explaining what will change.
-
-1. Run the dry-run first:
-
-```bash
-npx --yes n8nac workspace migrate --json
-```
-
-2. If the dry-run reports `status: "dry-run"`, `required: true`, or otherwise indicates pending changes, stop and ask once before applying it. Do not run `workspace migrate --write` unless the user already directly requested applying migration.
-3. After confirmation, apply migration and re-check readiness:
-
-```bash
-npx --yes n8nac workspace migrate --write
-npx --yes n8nac workspace migrate --json
-npx --yes n8nac env status --json
-```
-
-- Do not run `workspace migrate --write` without explicit confirmation unless the user already directly requested applying migration.
-- When reporting a dry-run, summarize the unified `operations` list and ask for exactly one confirmation for `npx --yes n8nac workspace migrate --write`.
-- Do not ask separately for different operation types. `npx --yes n8nac workspace migrate --write` applies the required migration as one operation.
-- Do not run environment, workflow, or setup commands while `workspace migrate --json` still reports migration required.
+- If `env status --json` fails because the workspace is not configured, use `env add`, `env auth set`, and `env use` to create or select a V4 workspace environment.
 - Managed local instances remain machine-global runtime resources.
 - Workspace environments remain workspace-scoped and are managed through `npx --yes n8nac env ...`.
 
@@ -71,17 +46,15 @@ npx --yes n8nac env status --json
 
 1. `cd` to the context root.
 2. Run `npx --yes n8nac update-ai`, then read `AGENTS.md`.
-3. Run `npx --yes n8nac workspace migrate --json`.
-4. If migration is required, stop and ask for confirmation before `npx --yes n8nac workspace migrate --write` unless the user already requested applying migration.
-5. Run `npx --yes n8nac env status --json` after migration is not required or has been applied.
-6. If the context root is not ready, inspect managed local instances with `npx --yes @n8n-as-code/n8n-manager instance list`.
-7. Reuse an existing environment or managed local instance when suitable.
-8. If no suitable environment exists, stop and ask the user whether they want to connect a remote n8n URL or create/reuse a managed local n8n instance. Do not create infrastructure by default. If the user chooses a managed local instance, ask separately whether they want a public tunnel.
-9. Ask for host/API key only for an explicitly remote n8n environment.
-10. Configure the environment with:
+3. Run `npx --yes n8nac env status --json`.
+4. If the context root is not ready, inspect managed local instances with `npx --yes @n8n-as-code/n8n-manager instance list`.
+5. Reuse an existing environment or managed local instance when suitable.
+6. If no suitable environment exists, stop and ask the user whether they want to connect a remote n8n URL or create/reuse a managed local n8n instance. Do not create infrastructure by default. If the user chooses a managed local instance, ask separately whether they want a public tunnel.
+7. Ask for host/API key only for an explicitly remote n8n environment.
+8. Configure the environment with:
 
 ```bash
-npx --yes n8nac env add <name> --base-url <url> --sync-folder workflows/<name>
+npx --yes n8nac env add <name> --base-url <url> --workflows-path workflows/<name>
 npx --yes n8nac env auth set <name> --api-key-stdin
 npx --yes n8nac env use <name>
 ```
@@ -89,20 +62,20 @@ npx --yes n8nac env use <name>
 For a managed local instance:
 
 ```bash
-npx --yes n8nac env add Local --managed-instance <id> --sync-folder workflows/local
+npx --yes n8nac env add Local --managed-instance <id> --workflows-path workflows/local
 npx --yes n8nac env use Local
 ```
 
-11. Run `npx --yes n8nac update-ai` after changing environments when the facade does not do it automatically.
+9. Run `npx --yes n8nac update-ai` after changing environments when the facade does not do it automatically.
 
 ## Environments
 
-Use `npx --yes n8nac env ...` for workspace environments, remote URLs, active environment, API-key binding, projects, and sync folders.
+Use `npx --yes n8nac env ...` for workspace environments, remote URLs, active environment, API-key binding, projects, and workflow paths.
 
 ```bash
 npx --yes n8nac env status --json
 npx --yes n8nac env list
-npx --yes n8nac env add <name> --base-url <url> --sync-folder workflows/<name>
+npx --yes n8nac env add <name> --base-url <url> --workflows-path workflows/<name>
 npx --yes n8nac env auth set <name> --api-key-stdin
 npx --yes n8nac env use <name>
 ```
@@ -116,7 +89,7 @@ npx --yes n8nac env use <name>
 Attach a managed local instance to the workspace with `npx --yes n8nac env ...`:
 
 ```bash
-npx --yes n8nac env add Local --managed-instance <id> --sync-folder workflows/local
+npx --yes n8nac env add Local --managed-instance <id> --workflows-path workflows/local
 npx --yes n8nac env use Local
 ```
 
@@ -194,7 +167,7 @@ npx --yes n8nac push <path-to-workflow.workflow.ts> --verify
 ```
 
 - `push` requires the full workflow file path, either absolute or context-root-relative. Do not pass a bare filename.
-- For a new workflow, create the file inside the `workflowDir` returned by `env status --json`, then confirm it with `npx --yes n8nac list --local`.
+- For a new workflow, create the file inside the `workflowsPath` returned by `env status --json`, then confirm it with `npx --yes n8nac list --local`.
 - If push/pull reports a conflict, use explicit resolution commands. Do not overwrite remote changes blindly.
 - `pull` and conflict resolution operate on a single workflow ID.
 - `list` is the lightweight command that covers all workflows at once.
@@ -490,7 +463,7 @@ npx --yes n8nac workflow activate <workflowId>
 For most workflow tasks:
 
 1. Resolve context with `env status --json`.
-2. Read `workflowDir` from the backend response.
+2. Read `workflowsPath` from the backend response.
 3. Inspect existing workflows with `list`.
 4. Pull before editing an existing workflow.
 5. Search examples and schemas.

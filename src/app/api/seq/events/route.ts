@@ -45,7 +45,7 @@ export async function GET(request: Request) {
     if (isColombia && clientSideLevels && count) {
       const requestedCount = parseInt(count, 10);
       if (!isNaN(requestedCount)) {
-        countToSend = Math.min(1000, requestedCount * 3).toString();
+        countToSend = Math.min(6000, requestedCount * 3).toString();
       }
     }
 

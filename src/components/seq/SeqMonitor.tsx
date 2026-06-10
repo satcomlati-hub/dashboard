@@ -23,6 +23,7 @@ import {
   ExternalLink,
   Clock,
   Bell,
+  BellOff,
   Save
 } from 'lucide-react';
 import {
@@ -148,8 +149,19 @@ const CLOUD_CLIENTS = new Set([
 ]);
 
 export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
-  const [activeTab, setActiveTab] = useState<'monitor' | 'tasks' | 'connections'>('monitor');
+  const [activeTab, setActiveTab] = useState<'monitor' | 'tasks' | 'connections' | 'ignored'>('monitor');
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [ignoredErrors, setIgnoredErrors] = useState<any[]>([]);
+  const [analysisErrorTextFilter, setAnalysisErrorTextFilter] = useState<string>('');
+
+  const clearLocalFilters = () => {
+    setLocalFilterOrigin(null);
+    setLocalFilterDestino(null);
+    setLocalFilterMessage(null);
+    setLocalFilterId(null);
+    setFilterOnlyAlerts(false);
+    setLocalSearchQuery('');
+  };
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -336,6 +348,7 @@ export default function SeqMonitor({ isAdmin = false }: { isAdmin?: boolean }) {
     const queryFilter = alertQueryFilter || '';
     const cleanFilter = cleanFilterPrefix(queryFilter);
     const formattedFilter = formatFilterForSeq(cleanFilter);
+    const ignoredPatternsJson = JSON.stringify(ignoredErrors.map(e => e.pattern), null, 2);
 
     const jsCode = `/**
  * Script de Alerta Automatizado para N8N
@@ -361,6 +374,9 @@ const VENTANA_TIEMPO_MINUTOS = primeraReglaUmbrales.timeWindowMinutes || ${alert
 const UMBRAL_CLIENTE_EVENTOS = primeraReglaUmbrales.clientEventsThreshold || ${alertConfig.clientEventsThreshold};
 const UMBRAL_SERVIDOR_EVENTOS = primeraReglaUmbrales.serverEventsThreshold || ${alertConfig.serverEventsThreshold};
 const UMBRAL_SERVIDOR_CLIENTES = primeraReglaUmbrales.serverClientsThreshold || ${alertConfig.serverClientsThreshold};
+
+// Lista de errores silenciados cargada desde el tablero de monitoreo
+const PATRONES_IGNORADOS = ${ignoredPatternsJson};
 
 // Consulta evaluada dinámica (opcional, para el reporte final)
 const CONSULTA_EVALUADA = reglasInput[0]?.json?.query_filter || "${queryFilter.replace(/"/g, '\\"').replace(/\n/g, ' ')}";
@@ -428,6 +444,19 @@ logs.forEach(log => {
 
   const message = stringifyValue(propMap['Mensaje'] || log.Message || log.RenderedMessage || '');
   const exception = stringifyValue(propMap['Exception'] || log.Exception || log.exception || '');
+
+  // Verificar si el error está silenciado
+  const msgLower = message.toLowerCase();
+  const excLower = exception.toLowerCase();
+  const esIgnorado = PATRONES_IGNORADOS.some(patron => {
+    const patLower = patron.toLowerCase();
+    return msgLower.includes(patLower) || excLower.includes(patLower);
+  });
+
+  if (esIgnorado) {
+    return;
+  }
+
   const hostname = propMap['_hostname'] || propMap['hostname'] || log.Hostname || 'Desconocido';
   const cliente = propMap['cliente'] || propMap['_cliente'] || 'Desconocido';
   const app = propMap['_app'] || propMap['app'] || 'Desconocido';
@@ -469,14 +498,14 @@ logs.forEach(log => {
   }
 
   if (!isClient && !isServer) {
-    const msgLower = message.toLowerCase();
-    const excLower = exception.toLowerCase();
+    const msgLowerLog = message.toLowerCase();
+    const excLowerLog = exception.toLowerCase();
     
-    if (excLower.includes('threadpool') || excLower.includes('timeout') || msgLower.includes('timeout')) {
+    if (excLowerLog.includes('threadpool') || excLowerLog.includes('timeout') || msgLowerLog.includes('timeout')) {
       isServer = true;
-    } else if (excLower.includes('conexión') || excLower.includes('conexion') || excLower.includes('connectfailure')) {
+    } else if (excLowerLog.includes('conexión') || excLowerLog.includes('conexion') || excLowerLog.includes('connectfailure')) {
       isServer = true;
-    } else if (excLower.includes('bad request') || excLower.includes('not found')) {
+    } else if (excLowerLog.includes('bad request') || excLowerLog.includes('not found')) {
       isClient = true;
     }
   }
@@ -661,7 +690,7 @@ return [
     if (!isCustomAlertEdited) {
       setCustomJsAlert(jsCode);
     }
-  }, [selectedQueryForAlert, alertQueryFilter, alertConfig, connections, isCustomAlertEdited, isAlertModalOpen]);
+  }, [selectedQueryForAlert, alertQueryFilter, alertConfig, connections, isCustomAlertEdited, isAlertModalOpen, ignoredErrors]);
 
   // Cerrar popups al hacer clic afuera
   useEffect(() => {
@@ -767,9 +796,10 @@ return [
       setLimit(parseInt(savedLimit, 10));
     }
 
-    // Cargar conexiones y tareas iniciales
+    // Cargar conexiones, tareas iniciales y errores ignorados
     fetchConnections();
     fetchTasks();
+    fetchIgnoredErrors();
 
     // Polling de notificaciones de tareas Seq en segundo plano
     const notifInterval = setInterval(async () => {
@@ -824,6 +854,88 @@ return [
       }
     }
   }, [connections]);
+
+  // CRUD Errores Ignorados / Silenciados
+  const fetchIgnoredErrors = async () => {
+    try {
+      const res = await fetch('/api/seq/ignored-errors');
+      if (res.ok) {
+        const data = await res.json();
+        setIgnoredErrors(data);
+      }
+    } catch (err) {
+      console.error('Error fetching ignored errors:', err);
+    }
+  };
+
+  const handleIgnoreError = async (pattern: string, durationOption: 'hoy' | 'semana' | 'mes' | 'manual', manualDate?: string) => {
+    if (!pattern) return;
+    
+    let expiresAt: Date | null = null;
+    const now = new Date();
+    
+    if (durationOption === 'hoy') {
+      const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      expiresAt = todayEnd;
+    } else if (durationOption === 'semana') {
+      expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    } else if (durationOption === 'mes') {
+      expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    } else if (durationOption === 'manual' && manualDate) {
+      expiresAt = new Date(manualDate);
+    }
+    
+    try {
+      const res = await fetch('/api/seq/ignored-errors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pattern,
+          expiresAt: expiresAt ? expiresAt.toISOString() : null,
+          timeOption: durationOption
+        })
+      });
+      
+      if (res.ok) {
+        showToast(`Error silenciado (${durationOption})`, 'success');
+        fetchIgnoredErrors();
+      } else {
+        const err = await res.json();
+        showToast(`Error al silenciar: ${err.error}`, 'error');
+      }
+    } catch (err: any) {
+      showToast(`Error: ${err.message}`, 'error');
+    }
+  };
+
+  const handleUnignoreError = async (id: string) => {
+    try {
+      const res = await fetch(`/api/seq/ignored-errors?id=${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        showToast('Silencio removido correctamente', 'success');
+        fetchIgnoredErrors();
+      } else {
+        showToast('Error al remover silencio', 'error');
+      }
+    } catch (err: any) {
+      showToast(`Error: ${err.message}`, 'error');
+    }
+  };
+
+  const isErrorIgnored = (message: string, exception: string) => {
+    const msgLower = (message || '').toLowerCase();
+    const excLower = (exception || '').toLowerCase();
+    
+    return ignoredErrors.some(ignored => {
+      if (ignored.expiresAt && new Date(ignored.expiresAt).getTime() < Date.now()) {
+        return false;
+      }
+      const patLower = (ignored.pattern || '').toLowerCase();
+      return msgLower.includes(patLower) || excLower.includes(patLower);
+    });
+  };
 
   // CRUD Conexiones
   const fetchConnections = async () => {
@@ -1921,6 +2033,7 @@ return [
 
   // Modifica el script si es necesario agregando el filtro de tiempo de 3 horas por defecto y ejecuta
   const handleExecuteQuery = () => {
+    clearLocalFilters();
     const cleanedQuery = cleanFilterPrefix(currentFilter);
     let queryToRun = cleanedQuery;
     if (queryToRun && queryToRun.trim().toLowerCase().startsWith('select ')) {
@@ -2449,12 +2562,27 @@ return [
     flattenedLogs.forEach(log => {
       const message = stringifyValue(log.Message);
       const exception = stringifyValue(log.Exception);
+
+      // Filtro local por texto en el tablero de análisis
+      if (analysisErrorTextFilter.trim() !== '') {
+        const searchTerm = analysisErrorTextFilter.toLowerCase();
+        const msgMatch = message.toLowerCase().includes(searchTerm);
+        const excMatch = exception.toLowerCase().includes(searchTerm);
+        const clientMatch = String(log.Cliente || log._cliente || '').toLowerCase().includes(searchTerm);
+        const hostMatch = String(log.Hostname || log._hostname || '').toLowerCase().includes(searchTerm);
+        if (!msgMatch && !excMatch && !clientMatch && !hostMatch) {
+          return;
+        }
+      }
+
       const hostname = log.Hostname || log._hostname || log.hostname || 'Desconocido';
       const cliente = log.Cliente || log._cliente || log.cliente || 'Desconocido';
       const app = log.App || log._app || log.app || 'Desconocido';
       const version = log.Version || log._version || log.version || 'Desconocido';
       const origenConexion = log.Origen || 'Desconocido';
       const eventId = log.Id || log['@Id'];
+
+      const ignored = isErrorIgnored(message, exception);
 
       // Buscar la URL del origen en el array de connections para construir el permalink
       const matchingConn = connections.find(c => c.name === origenConexion);
@@ -2552,7 +2680,7 @@ return [
         }
       }
 
-      totalErrores++;
+      if (!ignored) totalErrores++;
 
       const buildSeqQuery = (originalFilter: string, cl: string, hn: string): string => {
         const cleanFilter = originalFilter ? originalFilter.trim() : '';
@@ -2588,26 +2716,38 @@ return [
       const genericMsg = getGenericMessage(message, exception);
 
       if (isClient) {
-        erroresClienteCount++;
+        if (!ignored) erroresClienteCount++;
         const key = `${cliente} | ${hostname}`;
         if (!clientGroups[key]) {
-          clientGroups[key] = { cliente, hostname, eventos: 0, errores: {} };
+          clientGroups[key] = { cliente, hostname, eventos: 0, eventosNoIgnorados: 0, errores: {} };
         }
         clientGroups[key].eventos++;
+        if (!ignored) {
+          clientGroups[key].eventosNoIgnorados++;
+        }
         if (!clientGroups[key].errores[genericMsg]) {
-          clientGroups[key].errores[genericMsg] = { cantidad: 0, ejemplo: payloadComun };
+          clientGroups[key].errores[genericMsg] = { cantidad: 0, cantidadNoIgnorada: 0, isIgnored: ignored, ejemplo: payloadComun };
         }
         clientGroups[key].errores[genericMsg].cantidad++;
+        if (!ignored) {
+          clientGroups[key].errores[genericMsg].cantidadNoIgnorada++;
+        }
       } else if (isServer) {
-        erroresServidorCount++;
+        if (!ignored) erroresServidorCount++;
         if (!serverGroups[cliente]) {
-          serverGroups[cliente] = { cliente, hostname, eventos: 0, errores: {} };
+          serverGroups[cliente] = { cliente, hostname, eventos: 0, eventosNoIgnorados: 0, errores: {} };
         }
         serverGroups[cliente].eventos++;
+        if (!ignored) {
+          serverGroups[cliente].eventosNoIgnorados++;
+        }
         if (!serverGroups[cliente].errores[genericMsg]) {
-          serverGroups[cliente].errores[genericMsg] = { cantidad: 0, ejemplo: payloadComun };
+          serverGroups[cliente].errores[genericMsg] = { cantidad: 0, cantidadNoIgnorada: 0, isIgnored: ignored, ejemplo: payloadComun };
         }
         serverGroups[cliente].errores[genericMsg].cantidad++;
+        if (!ignored) {
+          serverGroups[cliente].errores[genericMsg].cantidadNoIgnorada++;
+        }
       }
     });
 
@@ -2621,7 +2761,7 @@ return [
       const g = clientGroups[key];
       const esCloud = CLOUD_CLIENTS.has(g.cliente);
       const umbral = esCloud ? 100 : 20;
-      const superaUmbral = g.eventos > umbral;
+      const superaUmbral = g.eventosNoIgnorados > umbral;
       if (superaUmbral) {
         algunaAlertaMesaAyudaSuperada = true;
       }
@@ -2632,6 +2772,8 @@ return [
         erroresAgrupados.push({
           errorGenerico: msgKey,
           cantidad: errGroup.cantidad,
+          cantidadNoIgnorada: errGroup.cantidadNoIgnorada,
+          isIgnored: errGroup.isIgnored,
           ejemplo: {
             destino: errGroup.ejemplo.destino,
             error: errGroup.ejemplo.mensajeError,
@@ -2639,7 +2781,8 @@ return [
             app: errGroup.ejemplo.app,
             origenConsulta: errGroup.ejemplo.origenConsulta,
             seqQuery: errGroup.ejemplo.seqQuery,
-            seqPermalink: errGroup.ejemplo.seqPermalink
+            seqPermalink: errGroup.ejemplo.seqPermalink,
+            id: errGroup.ejemplo.id
           }
         });
       }
@@ -2649,19 +2792,35 @@ return [
         cliente: g.cliente,
         hostname: g.hostname,
         totalEventos: g.eventos,
+        eventosNoIgnorados: g.eventosNoIgnorados,
         superaUmbral: superaUmbral,
         umbralDefinido: umbral,
         tipoOrigen: esCloud ? 'Cloud mySatcom' : 'Cliente Dedicado/Normal',
         erroresAgrupados: erroresAgrupados.slice(0, 1), // Sólo el primer error representativo
-        mensaje: `Alerta Mesa de Ayuda: El origen ${g.cliente} en ${g.hostname} tiene ${g.eventos} errores (Umbral: ${umbral}, Supera Umbral: ${superaUmbral}).`
+        mensaje: `Alerta Mesa de Ayuda: El origen ${g.cliente} en ${g.hostname} tiene ${g.eventosNoIgnorados} errores (Umbral: ${umbral}, Supera Umbral: ${superaUmbral}).`
       });
     }
 
     // Evaluar Infraestructura (Servidor): Todos los destinos
-    const infraestructuraMap: { [key: string]: { destino: string, clientes: Set<string>, totalEventos: number, ejemplos: any[] } } = {};
+    const infraestructuraMap: { [key: string]: { destino: string, clientes: Set<string>, clientesNoIgnorados: Set<string>, totalEventos: number, totalEventosNoIgnorados: number, ejemplos: any[] } } = {};
     flattenedLogs.forEach(log => {
       let apiDestino = log.apiClientUrl || null;
       const exceptionStr = stringifyValue(log.Exception);
+      const message = stringifyValue(log.Message);
+      
+      // Aplicar filtro de búsqueda de texto del tablero de análisis
+      if (analysisErrorTextFilter.trim() !== '') {
+        const searchTerm = analysisErrorTextFilter.toLowerCase();
+        const msgMatch = message.toLowerCase().includes(searchTerm);
+        const excMatch = exceptionStr.toLowerCase().includes(searchTerm);
+        const clientMatch = String(log.Cliente || log._cliente || '').toLowerCase().includes(searchTerm);
+        const hostMatch = String(log.Hostname || log._hostname || '').toLowerCase().includes(searchTerm);
+        if (!msgMatch && !excMatch && !clientMatch && !hostMatch) {
+          return;
+        }
+      }
+
+      const ignored = isErrorIgnored(message, exceptionStr);
       const origenConexion = log.Origen || 'Desconocido';
       const matchingConn = connections.find(c => c.name === origenConexion);
       const baseUrl = matchingConn ? matchingConn.url : 'http://logs-sender.mysatcomla.com:5341';
@@ -2686,22 +2845,33 @@ return [
           infraestructuraMap[destOrigin] = {
             destino: destOrigin,
             clientes: new Set(),
+            clientesNoIgnorados: new Set(),
             totalEventos: 0,
+            totalEventosNoIgnorados: 0,
             ejemplos: []
           };
         }
-        infraestructuraMap[destOrigin].clientes.add(log.Cliente || log._cliente || 'Desconocido');
+        
+        const clientVal = log.Cliente || log._cliente || 'Desconocido';
+        infraestructuraMap[destOrigin].clientes.add(clientVal);
         infraestructuraMap[destOrigin].totalEventos++;
+
+        if (!ignored) {
+          infraestructuraMap[destOrigin].clientesNoIgnorados.add(clientVal);
+          infraestructuraMap[destOrigin].totalEventosNoIgnorados++;
+        }
+        
         if (infraestructuraMap[destOrigin].ejemplos.length < 1) {
           // Guardar solo un ejemplo simplificado
           infraestructuraMap[destOrigin].ejemplos.push({
             timestamp: log.Timestamp || new Date().toISOString(),
             mensajeError: log.Message,
             destino: destOrigin,
-            cliente: log.Cliente || log._cliente || 'Desconocido',
+            cliente: clientVal,
             version: log.Version || log._version,
             app: log.App || log._app,
             hostname: log.Hostname || log._hostname,
+            isIgnored: ignored,
             seqPermalink: log.Id ? `${baseUrl}/#/events/?filter=@Id%20%3D%20%27${log.Id}%27&showExpanded` : ''
           });
         }
@@ -2710,7 +2880,7 @@ return [
 
     for (const dest in infraestructuraMap) {
       const data = infraestructuraMap[dest];
-      const superaUmbral = data.clientes.size > 3 && data.totalEventos > 10;
+      const superaUmbral = data.clientesNoIgnorados.size > 3 && data.totalEventosNoIgnorados > 10;
       if (superaUmbral) {
         algunaAlertaInfraestructuraSuperada = true;
       }
@@ -2721,8 +2891,9 @@ return [
         cantidadClientesAfectados: data.clientes.size,
         clientesAfectados: Array.from(data.clientes),
         totalEventosError: data.totalEventos,
+        totalEventosErrorNoIgnorados: data.totalEventosNoIgnorados,
         ejemplo: data.ejemplos[0] || null,
-        mensaje: `Alerta Infraestructura: Se detectaron ${data.totalEventos} errores afectando a ${data.clientes.size} clientes al invocar el destino ${data.destino} (Supera Umbral: ${superaUmbral}).`
+        mensaje: `Alerta Infraestructura: Se detectaron ${data.totalEventosNoIgnorados} errores afectando a ${data.clientesNoIgnorados.size} clientes al invocar el destino ${data.destino} (Supera Umbral: ${superaUmbral}).`
       });
     }
 
@@ -2828,7 +2999,15 @@ return [
 
   // Filtrado local y por texto (Memoizado)
   const filteredLogs = useMemo(() => {
-    return logs.filter(log => {
+    return logs.map(log => {
+      const message = (log.RenderedMessage || log.MessageTemplate || '').toString();
+      const exception = (log.Exception || '').toString();
+      const ignored = isErrorIgnored(message, exception);
+      return {
+        ...log,
+        isIgnored: ignored
+      };
+    }).filter(log => {
       // Filtrar por conexión seleccionada
       if (log.connectionId && !activeConnectionFilters.has(log.connectionId)) {
         return false;
@@ -2917,7 +3096,10 @@ return [
             'api-app-prod.mysatcomla.com'
           ];
           const esDestinoCloud = DOMINIOS_INFRAESTRUCTURA.some(dom => destino.includes(dom));
-          if (!esDestinoCloud) {
+          if (esDestinoCloud) {
+            isClient = false;
+            isServer = true;
+          } else {
             isClient = true;
             isServer = false;
           }
@@ -3009,7 +3191,8 @@ return [
     localFilterOrigin, 
     localFilterDestino, 
     localFilterMessage, 
-    localFilterId
+    localFilterId,
+    ignoredErrors
   ]);
 
   // Toggle de nivel en los chips de filtro local
@@ -3095,7 +3278,8 @@ return [
             tabs={[
               { id: 'monitor', label: 'Monitor', icon: <Activity className="w-4 h-4" /> },
               { id: 'tasks', label: 'Tareas', icon: <Bell className="w-4 h-4" /> },
-              { id: 'connections', label: 'Conexiones', icon: <Server className="w-4 h-4" /> }
+              { id: 'connections', label: 'Conexiones', icon: <Server className="w-4 h-4" /> },
+              { id: 'ignored', label: 'Silenciados', icon: <BellOff className="w-4 h-4" /> }
             ]}
             activeTab={activeTab}
             onChange={(id) => setActiveTab(id as any)}
@@ -3236,6 +3420,7 @@ return [
                                     key={q.id}
                                     className="flex items-center justify-between p-2 hover:bg-[#71BF44]/5 dark:hover:bg-[#71BF44]/10 cursor-pointer rounded-lg group text-xs transition-colors"
                                     onClick={() => {
+                                      clearLocalFilters();
                                       setCurrentFilter(q.filter);
                                       setTimeout(() => {
                                         stateRef.current.currentFilter = q.filter;
@@ -3471,7 +3656,7 @@ return [
                         type="number"
                         value={limit}
                         onChange={(e) => {
-                          const val = Math.min(500, Math.max(1, parseInt(e.target.value) || 50));
+                          const val = Math.min(2000, Math.max(1, parseInt(e.target.value) || 50));
                           setLimit(val);
                           localStorage.setItem('seq_monitor_limit', val.toString());
                         }}
@@ -3827,6 +4012,33 @@ return [
                           </div>
                         </div>
 
+                        {/* Filtro de Mensajes de Error en el Análisis */}
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-neutral-50 dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-800 p-2.5 rounded-lg shadow-sm">
+                          <div className="flex items-center gap-2 w-full sm:w-auto">
+                            <Search className="w-3.5 h-3.5 text-neutral-450 dark:text-neutral-500 shrink-0" />
+                            <span className="text-[10px] text-neutral-650 dark:text-neutral-400 font-bold uppercase tracking-wider whitespace-nowrap">Filtrar análisis por texto:</span>
+                            <input
+                              type="text"
+                              value={analysisErrorTextFilter}
+                              onChange={(e) => setAnalysisErrorTextFilter(e.target.value)}
+                              placeholder="Buscar error, origen o app en el análisis..."
+                              className="bg-white dark:bg-neutral-900 border border-neutral-350 dark:border-neutral-800 rounded-md px-2 py-1 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#71BF44] w-full sm:w-80"
+                            />
+                            {analysisErrorTextFilter && (
+                              <button
+                                type="button"
+                                onClick={() => setAnalysisErrorTextFilter('')}
+                                className="text-red-500 hover:text-red-650 text-[10px] font-bold px-1.5 uppercase hover:underline"
+                              >
+                                Limpiar
+                              </button>
+                            )}
+                          </div>
+                          <span className="text-[9px] text-neutral-450 italic hidden sm:inline">
+                            Recalculando alertas dinámicamente según el texto de búsqueda.
+                          </span>
+                        </div>
+
                         {/* Controles de Umbrales Dinámicos */}
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-neutral-50 dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-800 p-3 rounded-lg">
                           <div className="flex flex-col gap-1">
@@ -3940,20 +4152,46 @@ return [
                                         {a.totalEventos} errores / Umbral {a.umbralDefinido}
                                       </span>
                                     </div>
-                                    {a.ejemplo && (
-                                      <div className="bg-neutral-50 dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-800 p-2 rounded text-[10px] text-neutral-800 dark:text-neutral-300 font-mono flex flex-col gap-1.5 shadow-sm">
-                                        <div className="text-neutral-900 dark:text-white font-semibold truncate flex items-center justify-between gap-1.5">
-                                          <span className="truncate flex-1">
-                                            <strong>Error:</strong> {a.ejemplo.error}
-                                          </span>
-                                          <button
-                                            onClick={() => handleFilterByMessage(a.ejemplo.error)}
-                                            className="text-[#5ba135] dark:text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors shrink-0"
-                                            title="Buscar / filtrar eventos por este mensaje de error"
-                                          >
-                                            <Search className="w-2.5 h-2.5" />
-                                          </button>
-                                        </div>
+                                    {a.ejemplo && (() => {
+                                      const isThisIgnored = a.erroresAgrupados && a.erroresAgrupados[0]?.isIgnored;
+                                      return (
+                                        <div className="bg-neutral-50 dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-800 p-2 rounded text-[10px] text-neutral-800 dark:text-neutral-300 font-mono flex flex-col gap-1.5 shadow-sm">
+                                          <div className="text-neutral-900 dark:text-white font-semibold truncate flex items-center justify-between gap-1.5">
+                                            <span className="truncate flex-1 flex items-center gap-1.5 min-w-0">
+                                              {isThisIgnored && <span className="text-[9px] bg-neutral-200 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 px-1 py-0.2 rounded font-bold uppercase text-neutral-500 shrink-0">Silenciado 🔕</span>}
+                                              <span className="truncate"><strong>Error:</strong> {a.ejemplo.error}</span>
+                                            </span>
+                                            <div className="flex items-center gap-1 shrink-0 select-none">
+                                              <button
+                                                onClick={() => handleFilterByMessage(a.ejemplo.error)}
+                                                className="text-[#5ba135] dark:text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors"
+                                                title="Buscar / filtrar eventos por este mensaje de error"
+                                              >
+                                                <Search className="w-2.5 h-2.5" />
+                                              </button>
+                                              <select
+                                                onChange={(e) => {
+                                                  if (e.target.value === '') return;
+                                                  if (e.target.value === 'manual') {
+                                                    const dateStr = prompt("Ingrese la fecha límite en formato YYYY-MM-DD HH:mm (Ej: 2026-06-30 18:00):");
+                                                    if (dateStr) {
+                                                      handleIgnoreError(a.ejemplo.error, 'manual', dateStr);
+                                                    }
+                                                  } else {
+                                                    handleIgnoreError(a.ejemplo.error, e.target.value as any);
+                                                  }
+                                                  e.target.value = '';
+                                                }}
+                                                className="bg-neutral-100 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 text-[9px] text-neutral-550 dark:text-neutral-400 rounded px-1 py-0.5 hover:text-[#71BF44] transition-colors cursor-pointer focus:outline-none"
+                                              >
+                                                <option value="">Ignorar...</option>
+                                                <option value="hoy">Hoy</option>
+                                                <option value="semana">1 Sem</option>
+                                                <option value="mes">1 Mes</option>
+                                                <option value="manual">Manual</option>
+                                              </select>
+                                            </div>
+                                          </div>
                                         <div className="flex items-center gap-3 text-[9px] text-neutral-500 dark:text-neutral-400 border-t border-neutral-200 dark:border-neutral-800 pt-1">
                                           <span><strong>App:</strong> {a.ejemplo.app || 'Desconocido'}</span>
                                           <span><strong>Host:</strong> {a.ejemplo.hostname || 'Desconocido'}</span>
@@ -3978,7 +4216,7 @@ return [
                                           )}
                                         </div>
                                       </div>
-                                    )}
+                                    ); })()}
                                   </div>
                                 ))
                               )}
@@ -4059,20 +4297,46 @@ return [
                                     <div className="text-[10px] text-neutral-600 dark:text-neutral-400 pl-1 font-semibold">
                                       <strong>Clientes Afectados:</strong> {a.clientesAfectados.join(', ')}
                                     </div>
-                                    {a.ejemplo && (
-                                      <div className="bg-neutral-50 dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-800 p-2 rounded text-[10px] text-neutral-800 dark:text-neutral-300 font-mono flex flex-col gap-1.5 shadow-sm">
-                                        <div className="text-neutral-900 dark:text-white font-semibold truncate flex items-center justify-between gap-1.5">
-                                          <span className="truncate flex-1">
-                                            <strong>Error:</strong> {a.ejemplo.mensajeError}
-                                          </span>
-                                          <button
-                                            onClick={() => handleFilterByMessage(a.ejemplo.mensajeError)}
-                                            className="text-[#5ba135] dark:text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-neutral-250 dark:hover:bg-neutral-800 transition-colors shrink-0"
-                                            title="Buscar / filtrar eventos por este mensaje de error"
-                                          >
-                                            <Search className="w-2.5 h-2.5" />
-                                          </button>
-                                        </div>
+                                    {a.ejemplo && (() => {
+                                      const isThisIgnored = a.ejemplo.isIgnored;
+                                      return (
+                                        <div className="bg-neutral-50 dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-800 p-2 rounded text-[10px] text-neutral-800 dark:text-neutral-300 font-mono flex flex-col gap-1.5 shadow-sm">
+                                          <div className="text-neutral-900 dark:text-white font-semibold truncate flex items-center justify-between gap-1.5">
+                                            <span className="truncate flex-1 flex items-center gap-1.5 min-w-0">
+                                              {isThisIgnored && <span className="text-[9px] bg-neutral-250 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 px-1 py-0.2 rounded font-bold uppercase text-neutral-500 shrink-0">Silenciado 🔕</span>}
+                                              <span className="truncate"><strong>Error:</strong> {a.ejemplo.mensajeError}</span>
+                                            </span>
+                                            <div className="flex items-center gap-1 shrink-0 select-none">
+                                              <button
+                                                onClick={() => handleFilterByMessage(a.ejemplo.mensajeError)}
+                                                className="text-[#5ba135] dark:text-[#71BF44] hover:text-[#71BF44]/80 p-0.5 rounded hover:bg-neutral-250 dark:hover:bg-neutral-800 transition-colors shrink-0"
+                                                title="Buscar / filtrar eventos por este mensaje de error"
+                                              >
+                                                <Search className="w-2.5 h-2.5" />
+                                              </button>
+                                              <select
+                                                onChange={(e) => {
+                                                  if (e.target.value === '') return;
+                                                  if (e.target.value === 'manual') {
+                                                    const dateStr = prompt("Ingrese la fecha límite en formato YYYY-MM-DD HH:mm (Ej: 2026-06-30 18:00):");
+                                                    if (dateStr) {
+                                                      handleIgnoreError(a.ejemplo.mensajeError, 'manual', dateStr);
+                                                    }
+                                                  } else {
+                                                    handleIgnoreError(a.ejemplo.mensajeError, e.target.value as any);
+                                                  }
+                                                  e.target.value = '';
+                                                }}
+                                                className="bg-neutral-100 dark:bg-[#181818] border border-neutral-250 dark:border-neutral-800 text-[9px] text-neutral-550 dark:text-neutral-400 rounded px-1 py-0.5 hover:text-[#71BF44] transition-colors cursor-pointer focus:outline-none"
+                                              >
+                                                <option value="">Ignorar...</option>
+                                                <option value="hoy">Hoy</option>
+                                                <option value="semana">1 Sem</option>
+                                                <option value="mes">1 Mes</option>
+                                                <option value="manual">Manual</option>
+                                              </select>
+                                            </div>
+                                          </div>
                                         <div className="flex items-center gap-3 text-[9px] text-neutral-500 dark:text-neutral-400 border-t border-neutral-200 dark:border-neutral-800 pt-1">
                                           <span><strong>Host:</strong> {a.ejemplo.hostname || 'Desconocido'}</span>
                                           {a.ejemplo.id && (
@@ -4096,7 +4360,7 @@ return [
                                           )}
                                         </div>
                                       </div>
-                                    )}
+                                    ); })()}
                                   </div>
                                 ))
                               )}
@@ -4390,9 +4654,11 @@ return [
                           <div
                             key={rowId}
                             className={`group flex flex-col rounded border transition-all ${
-                              isExpanded 
-                                ? 'bg-white/70 dark:bg-[#122e26] border-teal-200/50 dark:border-teal-800/40 my-1 text-[#0f2d26] dark:text-white shadow-sm' 
-                                : 'hover:bg-white/40 dark:hover:bg-[#112a23]/40 border-transparent text-[#12332c] dark:text-[#d1ebe6]'
+                              log.isIgnored
+                                ? 'opacity-50 bg-neutral-100/40 dark:bg-neutral-900/40 border-neutral-200/30 dark:border-neutral-800/30 my-0.5 text-neutral-400'
+                                : isExpanded 
+                                  ? 'bg-white/70 dark:bg-[#122e26] border-teal-200/50 dark:border-teal-800/40 my-1 text-[#0f2d26] dark:text-white shadow-sm' 
+                                  : 'hover:bg-white/40 dark:hover:bg-[#112a23]/40 border-transparent text-[#12332c] dark:text-[#d1ebe6]'
                             }`}
                           >
                             <div
@@ -4404,6 +4670,12 @@ return [
                               </button>
                               
                               <span className="text-[10px] text-teal-650 dark:text-teal-400 shrink-0 select-none mt-0.5 font-bold">{timeStr}</span>
+
+                              {log.isIgnored && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider shrink-0 select-none bg-neutral-200 dark:bg-neutral-800 border-neutral-300 dark:border-neutral-700 text-neutral-500 flex items-center gap-0.5">
+                                  Ignorado 🔕
+                                </span>
+                              )}
 
                               {log.connectionName && (
                                 <span 
@@ -4823,6 +5095,100 @@ return [
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Pestaña de Errores Silenciados / Ignorados */}
+        {activeTab === 'ignored' && (
+          <div className="flex-1 overflow-y-auto p-6 bg-neutral-50 dark:bg-[#0d0d0d] flex flex-col gap-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-neutral-900 dark:text-white flex items-center gap-2">
+                  <BellOff className="w-5 h-5 text-neutral-550 dark:text-neutral-400" />
+                  Errores Silenciados (Ignorados)
+                </h3>
+                <p className="text-xs text-neutral-550 dark:text-neutral-400 mt-1">
+                  Gestiona los patrones de error configurados para no disparar alertas automáticas en n8n ni contabilizarse en las simulaciones de alerta.
+                </p>
+              </div>
+            </div>
+
+            {ignoredErrors.length === 0 ? (
+              <div className="border border-dashed border-neutral-300 dark:border-neutral-800 rounded-xl p-12 flex flex-col items-center justify-center text-center text-neutral-500">
+                <BellOff className="w-12 h-12 opacity-30 mb-2" />
+                <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">No hay errores silenciados</p>
+                <p className="text-xs mt-1 text-neutral-400 font-sans">
+                  Usa el menú desplegable "Ignorar..." de un error en el tablero de análisis para silenciarlo.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {ignoredErrors.map(err => {
+                  const isExpired = err.expiresAt && new Date(err.expiresAt).getTime() < Date.now();
+                  const expirationDate = err.expiresAt ? new Date(err.expiresAt) : null;
+                  const timeOptionLabels = {
+                    hoy: 'Hoy',
+                    semana: '1 Semana',
+                    mes: '1 Mes',
+                    manual: 'Manual'
+                  };
+
+                  return (
+                    <div key={err.id} className={`bg-white dark:bg-[#111] border rounded-xl p-4 flex flex-col gap-3 justify-between shadow-sm transition-all ${
+                      isExpired ? 'border-red-200 dark:border-red-905/30 opacity-60' : 'border-neutral-200 dark:border-neutral-800'
+                    }`}>
+                      <div>
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="text-xs font-bold text-neutral-900 dark:text-white break-all font-mono bg-neutral-50 dark:bg-neutral-900/60 p-2 rounded border border-neutral-200 dark:border-neutral-800 flex-1">
+                            {err.pattern}
+                          </span>
+                          <span className={`inline-block text-[9px] font-bold uppercase tracking-wider shrink-0 px-2 py-0.5 rounded border ${
+                            isExpired 
+                              ? 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400' 
+                              : 'bg-[#71BF44]/10 border-[#71BF44]/20 text-[#71BF44]'
+                          }`}>
+                            {isExpired ? 'Expirado' : 'Activo'}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 space-y-1.5 text-xs text-neutral-550 dark:text-neutral-400">
+                          <div className="flex justify-between">
+                            <span>Tipo de Duración:</span>
+                            <span className="font-semibold text-neutral-800 dark:text-neutral-200 uppercase">
+                              {timeOptionLabels[err.timeOption as keyof typeof timeOptionLabels] || err.timeOption}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Fecha de Expiración:</span>
+                            <span className="font-semibold text-neutral-800 dark:text-neutral-200 font-mono">
+                              {expirationDate ? expirationDate.toLocaleString() : 'Nunca (Permanente)'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-[11px] text-neutral-450">
+                            <span>Creado Por:</span>
+                            <span className="truncate max-w-[180px]" title={err.createdBy}>{err.createdBy}</span>
+                          </div>
+                          <div className="flex justify-between text-[11px] text-neutral-450">
+                            <span>Creado el:</span>
+                            <span>{new Date(err.createdAt).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end border-t border-neutral-100 dark:border-neutral-900 pt-3 mt-1">
+                        <button
+                          onClick={() => handleUnignoreError(err.id)}
+                          className="border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-[#181818] hover:bg-red-50 dark:hover:bg-red-950/20 hover:text-red-600 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-900/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 text-neutral-700 dark:text-neutral-350"
+                        >
+                          <Bell className="w-3.5 h-3.5" />
+                          Remover Silencio
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

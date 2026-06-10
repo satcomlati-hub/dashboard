@@ -18,7 +18,9 @@ export async function GET() {
           "timeWindowMinutes": 1,
           "clientEventsThreshold": 5,
           "serverEventsThreshold": 30,
-          "serverClientsThreshold": 1
+          "serverClientsThreshold": 1,
+          "includeApp": true,
+          "includeCliente": true
         }',
         es_activo       BOOLEAN      NOT NULL DEFAULT true,
         creado_por      TEXT         DEFAULT 'sistema@mysatcomla.com',
@@ -47,10 +49,10 @@ export async function GET() {
       filter: item.query_filter,
       conexionesIds: item.conexiones_ids || [],
       alertConfig: item.umbrales ? {
-        timeWindowMinutes: item.umbrales.timeWindowMinutes ?? 10,
-        clientEventsThreshold: item.umbrales.clientEventsThreshold ?? 30,
+        timeWindowMinutes: item.umbrales.timeWindowMinutes ?? 1,
+        clientEventsThreshold: item.umbrales.clientEventsThreshold ?? 5,
         serverEventsThreshold: item.umbrales.serverEventsThreshold ?? 30,
-        serverClientsThreshold: item.umbrales.serverClientsThreshold ?? 3,
+        serverClientsThreshold: item.umbrales.serverClientsThreshold ?? 1,
         includeVersion: item.umbrales.includeVersion ?? true,
         includeApp: item.umbrales.includeApp ?? true,
         includeHostname: item.umbrales.includeHostname ?? true,
@@ -90,7 +92,9 @@ export async function POST(request: Request) {
           "timeWindowMinutes": 1,
           "clientEventsThreshold": 5,
           "serverEventsThreshold": 30,
-          "serverClientsThreshold": 1
+          "serverClientsThreshold": 1,
+          "includeApp": true,
+          "includeCliente": true
         }',
         es_activo       BOOLEAN      NOT NULL DEFAULT true,
         creado_por      TEXT         DEFAULT 'sistema@mysatcomla.com',
@@ -117,23 +121,24 @@ export async function POST(request: Request) {
     }
 
     const umbrales = alertConfig ? {
-      timeWindowMinutes: parseInt(alertConfig.timeWindowMinutes, 10) || 10,
-      clientEventsThreshold: parseInt(alertConfig.clientEventsThreshold, 10) || 30,
-      serverEventsThreshold: parseInt(alertConfig.serverEventsThreshold, 10) || 30,
-      serverClientsThreshold: parseInt(alertConfig.serverClientsThreshold, 10) || 3,
-      includeVersion: !!alertConfig.includeVersion,
-      includeApp: !!alertConfig.includeApp,
+      timeWindowMinutes:      parseInt(alertConfig.timeWindowMinutes,      10) || 1,
+      clientEventsThreshold:  parseInt(alertConfig.clientEventsThreshold,  10) || 5,
+      serverEventsThreshold:  parseInt(alertConfig.serverEventsThreshold,  10) || 30,
+      serverClientsThreshold: parseInt(alertConfig.serverClientsThreshold, 10) || 1,
+      includeVersion:  !!alertConfig.includeVersion,
+      includeApp:      !!alertConfig.includeApp,
       includeHostname: !!alertConfig.includeHostname,
-      includeCliente: !!alertConfig.includeCliente
+      includeCliente:  !!alertConfig.includeCliente
     } : {
-      timeWindowMinutes: 10,
-      clientEventsThreshold: 30,
-      serverEventsThreshold: 30,
-      serverClientsThreshold: 3,
-      includeVersion: true,
-      includeApp: true,
+      // Defaults alineados con el flujo n8n SEQ-MonitoreoAlertas
+      timeWindowMinutes:      1,
+      clientEventsThreshold:  5,
+      serverEventsThreshold:  30,
+      serverClientsThreshold: 1,
+      includeVersion:  true,
+      includeApp:      true,
       includeHostname: true,
-      includeCliente: true
+      includeCliente:  true
     };
 
     const isActive = alertConfig ? !!alertConfig.isActive : true;
