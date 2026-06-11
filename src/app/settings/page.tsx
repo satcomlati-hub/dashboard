@@ -5,9 +5,8 @@ import { useSession } from 'next-auth/react';
 import AdminUsersTab from '@/components/settings/AdminUsersTab';
 import AdminRolesTab from '@/components/settings/AdminRolesTab';
 import MonitoreoRulesTab from '@/components/settings/MonitoreoRulesTab';
-import RabbitAlertsTab from '@/components/settings/RabbitAlertsTab';
 
-type Tab = 'users' | 'roles' | 'monitoreo-rules' | 'monitoreo-config' | 'rabbit-rules';
+type Tab = 'users' | 'roles' | 'monitoreo-rules' | 'monitoreo-config';
 
 export default function Settings() {
   const { data: session } = useSession();
@@ -32,7 +31,6 @@ export default function Settings() {
     { id: 'roles', label: 'Roles y Permisos', permission: 'admin:manage_roles' },
     { id: 'monitoreo-rules', label: 'Reglas de Alerta', permission: true },
     { id: 'monitoreo-config', label: 'Ambiente / Procesos', permission: true },
-    { id: 'rabbit-rules', label: 'Límites RabbitMQ', permission: true },
   ];
 
   const visibleTabs = tabs.filter(t => t.permission === true || permissions.includes(t.permission as string));
@@ -73,7 +71,6 @@ export default function Settings() {
         {activeTab === 'roles' && canManageRoles && <AdminRolesTab />}
         {activeTab === 'monitoreo-rules' && <MonitoreoRulesTab initialTab="rules" />}
         {activeTab === 'monitoreo-config' && <MonitoreoRulesTab initialTab="config" />}
-        {activeTab === 'rabbit-rules' && <RabbitAlertsTab />}
       </div>
     </>
   );

@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, Server, ExternalLink, Clock, RefreshCw, Inbox, Users, Gauge, AlertTriangle, Info, XCircle, Copy, Key } from 'lucide-react';
+import { ChevronLeft, Server, ExternalLink, Clock, RefreshCw, Inbox, Users, Gauge, AlertTriangle, Info, XCircle, Copy, Key, Edit2, Trash2, Plus, Search, Save, X, Settings, Play, Pause } from 'lucide-react';
 import { formatDate } from '@/lib/formatters';
 import { useSession } from 'next-auth/react';
+import { useNotification } from '@/components/NotificationProvider';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 interface Cola {
@@ -85,6 +86,7 @@ const AUTHORIZED_USERS = [
 
 export default function MonitoreoRabbitPage() {
   const { data: session } = useSession();
+  const { showNotification } = useNotification();
   const [data, setData] = useState<AmbienteRabbit[]>([]);
   const [events, setEvents] = useState<EventData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,6 +94,90 @@ export default function MonitoreoRabbitPage() {
   const [selectedEnv, setSelectedEnv] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [countdown, setCountdown] = useState(300); // 5 minutes in seconds
+  const [limits, setLimits] = useState<any[]>([]);
+
+  // Modals state
+  const [showQuickModal, setShowQuickModal] = useState(false);
+  const [quickEditData, setQuickEditData] = useState<{ id?: string, ambiente: string, nombre_cola: string, limite_mensajes: number, esta_activo: boolean }>({
+    ambiente: '',
+    nombre_cola: '',
+    limite_mensajes: 100,
+    esta_activo: true
+  });
+
+  const [showGeneralModal, setShowGeneralModal] = useState(false);
+  const [generalSearchQuery, setGeneralSearchQuery] = useState('');
+  const [showGeneralAddEditModal, setShowGeneralAddEditModal] = useState(false);
+  const [generalEditingConfig, setGeneralEditingConfig] = useState<any>({});
+
+  const fetchLimits = useCallback(async () => {
+    try {
+      const res = await fetch('/api/db/rabbit-alertas');
+      if (res.ok) {
+        const json = await res.json();
+        setLimits(json.data || []);
+      }
+    } catch (e) {
+      console.error('Error fetching rabbit limits:', e);
+    }
+  }, []);
+
+  const handleSaveLimit = async (limitData: any) => {
+    try {
+      const method = limitData.id ? 'PUT' : 'POST';
+      const res = await fetch('/api/db/rabbit-alertas', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(limitData)
+      });
+      const json = await res.json();
+      if (res.ok) {
+        showNotification(`Límite ${limitData.id ? 'actualizado' : 'creado'} correctamente`, 'success');
+        fetchLimits();
+        return true;
+      } else {
+        showNotification(`Error: ${json.error}`, 'error');
+        return false;
+      }
+    } catch (err: any) {
+      showNotification(`Error: ${err.message}`, 'error');
+      return false;
+    }
+  };
+
+  const handleDeleteLimit = async (id: string) => {
+    if (!confirm('¿Seguro que deseas eliminar este límite de mensajes?')) return;
+    try {
+      const res = await fetch('/api/db/rabbit-alertas', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      if (res.ok) {
+        showNotification('Límite eliminado correctamente', 'success');
+        fetchLimits();
+      }
+    } catch (err: any) {
+      showNotification(`Error: ${err.message}`, 'error');
+    }
+  };
+
+  const handleToggleStatus = async (limitItem: any) => {
+    try {
+      const updated = { id: limitItem.id, esta_activo: !limitItem.esta_activo };
+      const res = await fetch('/api/db/rabbit-alertas', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      });
+      if (res.ok) {
+        showNotification(`Límite ${!limitItem.esta_activo ? 'activado' : 'desactivado'} correctamente`, 'success');
+        fetchLimits();
+      }
+    } catch (err: any) {
+      showNotification(`Error: ${err.message}`, 'error');
+    }
+  };
 
   const isAuthorized = session?.user?.email ? AUTHORIZED_USERS.includes(session.user.email.toLowerCase()) : false;
 
@@ -114,6 +200,13 @@ export default function MonitoreoRabbitPage() {
         }
       } catch (e) {
         console.error('Error fetching events:', e);
+      }
+
+      // Fetch Limits
+      try {
+        await fetchLimits();
+      } catch (e) {
+        console.error('Error fetching limits in fetchData:', e);
       }
       
       // Normalize data into an array
@@ -219,13 +312,6 @@ export default function MonitoreoRabbitPage() {
     <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 pb-20">
       {/* Header */}
       <header className="mb-8 py-6 border-b border-neutral-100 dark:border-neutral-800">
-        <div className="flex items-center gap-2 mb-4">
-          <Link href="/analytics" className="text-sm text-[#71BF44] hover:underline flex items-center gap-1 font-semibold transition-all group">
-            <ChevronLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-            Volver a Analytics
-          </Link>
-        </div>
-
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-[#71BF44]/10 flex items-center justify-center shadow-inner">
@@ -246,6 +332,21 @@ export default function MonitoreoRabbitPage() {
               <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Próxima actualización en</span>
               <span className="text-sm font-mono font-bold text-[#71BF44]">{formatCountdown(countdown)}</span>
             </div>
+            <button
+              onClick={() => {
+                setGeneralEditingConfig({
+                  ambiente: 'V5-EC',
+                  nombre_cola: '',
+                  limite_mensajes: 100,
+                  esta_activo: true
+                });
+                setShowGeneralModal(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-[#111] text-xs font-bold text-neutral-600 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-800 rounded-lg shadow-sm hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-all"
+            >
+              <Settings className="w-4 h-4" />
+              Configurar Límites
+            </button>
             <button
               onClick={() => fetchData(true)}
               disabled={refreshing}
@@ -425,31 +526,60 @@ export default function MonitoreoRabbitPage() {
                       <th className="text-right px-6 py-3 text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Mensajes</th>
                       <th className="text-right px-6 py-3 text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Rate</th>
                       <th className="text-right px-6 py-3 text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Consumidores</th>
+                      <th className="text-right px-6 py-3 text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Límite Alerta</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedData.Colas.map((cola, i) => (
-                      <tr key={cola.NombreCola} className={`border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-[#1a1a1a] transition-colors ${i === selectedData.Colas.length - 1 ? 'border-b-0' : ''}`}>
-                        <td className="px-6 py-4 font-semibold text-neutral-900 dark:text-white">
-                          <div className="flex items-center gap-2">
-                            <Inbox className="w-4 h-4 text-neutral-400 flex-shrink-0" />
-                            <span className="truncate">{cola.NombreCola}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <span className={`font-bold ${cola.Mensajes > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
-                            {cola.Mensajes.toLocaleString()}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-right font-medium text-neutral-600 dark:text-neutral-300">{cola.Rate}</td>
-                        <td className="px-6 py-4 text-right">
-                          <span className={`inline-flex items-center gap-1 font-bold ${cola.Consumidores === 0 ? 'text-red-500' : 'text-emerald-500'}`}>
-                            <Users className="w-3.5 h-3.5" />
-                            {cola.Consumidores}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {selectedData.Colas.map((cola, i) => {
+                      const matchedLimit = limits.find(
+                        l => l.ambiente === selectedData.Ambiente && l.nombre_cola === cola.NombreCola
+                      );
+                      return (
+                        <tr key={cola.NombreCola} className={`border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-[#1a1a1a] transition-colors ${i === selectedData.Colas.length - 1 ? 'border-b-0' : ''}`}>
+                          <td className="px-6 py-4 font-semibold text-neutral-900 dark:text-white">
+                            <div className="flex items-center gap-2">
+                              <Inbox className="w-4 h-4 text-neutral-400 flex-shrink-0" />
+                              <span className="truncate">{cola.NombreCola}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <span className={`font-bold ${cola.Mensajes > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
+                              {cola.Mensajes.toLocaleString()}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right font-medium text-neutral-600 dark:text-neutral-300">{cola.Rate}</td>
+                          <td className="px-6 py-4 text-right">
+                            <span className={`inline-flex items-center gap-1 font-bold ${cola.Consumidores === 0 ? 'text-red-500' : 'text-emerald-500'}`}>
+                              <Users className="w-3.5 h-3.5" />
+                              {cola.Consumidores}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <span className={`font-mono text-xs font-bold px-2 py-0.5 rounded ${matchedLimit ? (matchedLimit.esta_activo ? 'bg-red-500/10 text-red-500' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400') : 'text-neutral-400 dark:text-neutral-600'}`}>
+                                {matchedLimit ? `${matchedLimit.limite_mensajes.toLocaleString()} msg` : '---'}
+                              </span>
+                              <button
+                                onClick={() => {
+                                  setQuickEditData({
+                                    id: matchedLimit?.id,
+                                    ambiente: selectedData.Ambiente,
+                                    nombre_cola: cola.NombreCola,
+                                    limite_mensajes: matchedLimit ? matchedLimit.limite_mensajes : 100,
+                                    esta_activo: matchedLimit ? matchedLimit.esta_activo : true
+                                  });
+                                  setShowQuickModal(true);
+                                }}
+                                className="p-1 hover:bg-[#71BF44]/10 rounded text-neutral-400 hover:text-[#71BF44] transition-colors"
+                                title="Configurar Límite"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -550,6 +680,271 @@ export default function MonitoreoRabbitPage() {
           </div>
         </div>
       </section>
+
+      {/* MODAL EDICIÓN RÁPIDA (POR COLA) */}
+      {showQuickModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 flex justify-between items-center bg-neutral-50/50 dark:bg-[#0c0c0c]/50">
+              <h3 className="font-bold text-base text-neutral-900 dark:text-white">
+                {quickEditData.id ? 'Editar Límite de Alerta' : 'Establecer Límite de Alerta'}
+              </h3>
+              <button onClick={() => setShowQuickModal(false)} className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-500">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-[10px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest mb-1">Ambiente</label>
+                <div className="text-sm font-bold text-neutral-800 dark:text-neutral-200 bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2.5">
+                  {quickEditData.ambiente}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest mb-1">Nombre de Cola</label>
+                <div className="text-xs font-mono text-neutral-800 dark:text-neutral-300 bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2.5 break-all">
+                  {quickEditData.nombre_cola}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest mb-1">Límite de Mensajes</label>
+                  <input 
+                    type="number"
+                    value={quickEditData.limite_mensajes}
+                    onChange={e => setQuickEditData({ ...quickEditData, limite_mensajes: Number(e.target.value) })}
+                    className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2.5 text-sm font-bold text-neutral-800 dark:text-neutral-200 outline-none focus:border-[#71BF44]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest mb-1">Estado</label>
+                  <select 
+                    value={quickEditData.esta_activo ? 'true' : 'false'}
+                    onChange={e => setQuickEditData({ ...quickEditData, esta_activo: e.target.value === 'true' })}
+                    className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2.5 text-sm font-bold text-neutral-800 dark:text-neutral-200 outline-none focus:border-[#71BF44]"
+                  >
+                    <option value="true">Activo</option>
+                    <option value="false">Inactivo</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-neutral-200 dark:border-neutral-800 flex justify-end gap-3 bg-neutral-50 dark:bg-[#0c0c0c]">
+              <button onClick={() => setShowQuickModal(false)} className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+                Cancelar
+              </button>
+              <button 
+                onClick={async () => {
+                  const ok = await handleSaveLimit(quickEditData);
+                  if (ok) setShowQuickModal(false);
+                }} 
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-[#71BF44] hover:bg-[#5da036] text-white flex items-center gap-1.5 shadow-sm"
+              >
+                <Save className="w-3.5 h-3.5" /> Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CONFIGURACIÓN GENERAL (HEADER) */}
+      {showGeneralModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
+            <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 flex justify-between items-center bg-neutral-50/50 dark:bg-[#0c0c0c]/50">
+              <div>
+                <h3 className="font-bold text-base text-neutral-900 dark:text-white flex items-center gap-2">
+                  <Server className="w-5 h-5 text-[#71BF44]" /> Gestión de Límites RabbitMQ
+                </h3>
+                <p className="text-[11px] text-neutral-500">Administración general de límites máximos para disparar alertas en n8n.</p>
+              </div>
+              <button onClick={() => setShowGeneralModal(false)} className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-500">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4 overflow-y-auto flex-1 custom-scrollbar">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por ambiente o cola..."
+                    value={generalSearchQuery}
+                    onChange={e => setGeneralSearchQuery(e.target.value)}
+                    className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl pl-10 pr-4 py-2 text-xs outline-none focus:border-[#71BF44] transition-all"
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    setGeneralEditingConfig({
+                      ambiente: 'V5-EC',
+                      nombre_cola: '',
+                      limite_mensajes: 100,
+                      esta_activo: true
+                    });
+                    setShowGeneralAddEditModal(true);
+                  }}
+                  className="bg-[#71BF44] hover:bg-[#5da036] text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shrink-0 shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Agregar Límite
+                </button>
+              </div>
+
+              {limits.length === 0 ? (
+                <div className="text-center py-12 border border-dashed border-neutral-200 dark:border-neutral-800 rounded-2xl">
+                  <Server className="w-8 h-8 text-neutral-300 dark:text-neutral-700 mx-auto mb-2" />
+                  <p className="text-xs text-neutral-500">No se encontraron límites configurados en base de datos.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-neutral-200 dark:border-neutral-800 rounded-2xl">
+                  <table className="w-full text-left text-xs whitespace-nowrap">
+                    <thead className="bg-neutral-50 dark:bg-[#1a1a1a] text-neutral-500 border-b border-neutral-200 dark:border-neutral-800">
+                      <tr>
+                        <th className="px-4 py-3 font-bold">Estado</th>
+                        <th className="px-4 py-3 font-bold">Ambiente</th>
+                        <th className="px-4 py-3 font-bold">Nombre de Cola</th>
+                        <th className="px-4 py-3 font-bold">Límite</th>
+                        <th className="px-4 py-3 font-bold text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                      {limits.filter(c => 
+                        c.ambiente.toLowerCase().includes(generalSearchQuery.toLowerCase()) ||
+                        c.nombre_cola.toLowerCase().includes(generalSearchQuery.toLowerCase())
+                      ).map(config => (
+                        <tr key={config.id} className="hover:bg-neutral-50 dark:hover:bg-white/[0.01]">
+                          <td className="px-4 py-3">
+                            <button onClick={() => handleToggleStatus(config)} className="transition-transform active:scale-95">
+                              {config.esta_activo ? (
+                                <Play className="w-3.5 h-3.5 text-emerald-500 fill-emerald-500/10" />
+                              ) : (
+                                <Pause className="w-3.5 h-3.5 text-neutral-400 fill-neutral-400/10" />
+                              )}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3 font-bold">{config.ambiente}</td>
+                          <td className="px-4 py-3 font-mono text-[11px] max-w-md truncate">{config.nombre_cola}</td>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-0.5 bg-red-500/10 text-red-500 rounded text-[11px] font-bold">
+                              {config.limite_mensajes.toLocaleString()} msg
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right space-x-1">
+                            <button
+                              onClick={() => {
+                                setGeneralEditingConfig(config);
+                                setShowGeneralAddEditModal(true);
+                              }}
+                              className="p-1 hover:bg-[#71BF44]/10 rounded text-[#71BF44]"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteLimit(config.id)}
+                              className="p-1 hover:bg-red-500/10 rounded text-red-500"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CONFIGURACIÓN GENERAL - AGREGAR/EDITAR (ANIDADO) */}
+      {showGeneralAddEditModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 flex justify-between items-center bg-neutral-50/50 dark:bg-[#0c0c0c]/50">
+              <h3 className="font-bold text-base text-neutral-900 dark:text-white">
+                {generalEditingConfig.id ? 'Editar Límite de Cola' : 'Nuevo Límite de Cola'}
+              </h3>
+              <button onClick={() => setShowGeneralAddEditModal(false)} className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-500">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-[10px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest mb-1.5">Ambiente</label>
+                <select 
+                  value={generalEditingConfig.ambiente || ''} 
+                  onChange={e => setGeneralEditingConfig({ ...generalEditingConfig, ambiente: e.target.value })}
+                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2.5 text-sm font-bold text-neutral-800 dark:text-neutral-200 outline-none focus:border-[#71BF44]"
+                >
+                  <option value="V5-EC">V5-EC</option>
+                  <option value="V5-Panama">V5-Panama</option>
+                  <option value="ColombiaAWS">ColombiaAWS</option>
+                  <option value="Testing">Testing</option>
+                  <option value="Bolivia">Bolivia</option>
+                  <option value="KFC">KFC</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest mb-1.5">Nombre de la Cola</label>
+                <input 
+                  type="text" 
+                  value={generalEditingConfig.nombre_cola || ''} 
+                  onChange={e => setGeneralEditingConfig({ ...generalEditingConfig, nombre_cola: e.target.value })}
+                  placeholder="Ej: ProdAWS_DtoComprobanteSender o * para un límite genérico"
+                  className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2.5 text-sm font-mono text-neutral-800 dark:text-neutral-200 outline-none focus:border-[#71BF44]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest mb-1.5">Límite Máximo de Mensajes</label>
+                  <input 
+                    type="number" 
+                    value={generalEditingConfig.limite_mensajes !== undefined ? generalEditingConfig.limite_mensajes : ''} 
+                    onChange={e => setGeneralEditingConfig({ ...generalEditingConfig, limite_mensajes: e.target.value === '' ? undefined : Number(e.target.value) })}
+                    placeholder="Ej: 500"
+                    className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2.5 text-sm font-bold text-neutral-800 dark:text-neutral-200 outline-none focus:border-[#71BF44]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest mb-1.5">Estado</label>
+                  <select 
+                    value={generalEditingConfig.esta_activo === false ? 'false' : 'true'} 
+                    onChange={e => setGeneralEditingConfig({ ...generalEditingConfig, esta_activo: e.target.value === 'true' })}
+                    className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2.5 text-sm font-bold text-neutral-800 dark:text-neutral-200 outline-none focus:border-[#71BF44]"
+                  >
+                    <option value="true">Activo</option>
+                    <option value="false">Inactivo</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-neutral-200 dark:border-neutral-800 flex justify-end gap-3 bg-neutral-50 dark:bg-[#0c0c0c]">
+              <button onClick={() => setShowGeneralAddEditModal(false)} className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+                Cancelar
+              </button>
+              <button 
+                onClick={async () => {
+                  const ok = await handleSaveLimit(generalEditingConfig);
+                  if (ok) setShowGeneralAddEditModal(false);
+                }} 
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-[#71BF44] hover:bg-[#5da036] text-white flex items-center gap-1.5 shadow-sm"
+              >
+                <Save className="w-3.5 h-3.5" /> Guardar Límite
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
