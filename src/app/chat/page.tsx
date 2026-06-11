@@ -130,6 +130,9 @@ export default function SaraChatPage() {
   const [input, setInput]                   = useState('');
   const [isLoading, setIsLoading]           = useState(false);
   const [isResponding, setIsResponding]     = useState(false);
+  // Sesión a la que pertenece la respuesta en curso. Permite que el indicador
+  // "escribiendo" y el streaming solo afecten al chat que originó la consulta.
+  const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
   const [selectedFile, setSelectedFile]     = useState<File | null>(null);
   const [previewUrl, setPreviewUrl]         = useState<string | null>(null);
   const [isDragging, setIsDragging]         = useState(false);
@@ -138,6 +141,8 @@ export default function SaraChatPage() {
   const fileRef     = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef    = useRef<AbortController | null>(null);
+  // Espejo de activeSessionId accesible dentro de callbacks async (evita closures viejos).
+  const activeIdRef = useRef('');
 
   // Cancela la petición en curso hacia SARA (corta el streaming en pantalla).
   function handleStop() {
@@ -304,6 +309,8 @@ export default function SaraChatPage() {
     });
   }
 
+  useEffect(() => { activeIdRef.current = activeSessionId; }, [activeSessionId]);
+
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, isLoading]);
 
   useEffect(() => {
@@ -378,6 +385,7 @@ export default function SaraChatPage() {
     clearFile();
     setIsLoading(true);
     setIsResponding(true);
+    setLoadingSessionId(sid);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -433,16 +441,17 @@ export default function SaraChatPage() {
           }
 
           if (!chunk) return;
+          const isActive = activeIdRef.current === sid;
           if (!streamMsgId) {
             streamMsgId = newId();
             accumulated = chunk;
             setIsLoading(false);
             const displayContent = stripMarkers(accumulated);
-            setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: displayContent, timestamp: Date.now() }]);
+            if (isActive) setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: displayContent, timestamp: Date.now() }]);
           } else {
             accumulated += chunk;
             const displayContent = stripMarkers(accumulated);
-            setMessages(prev => prev.map(m => m.id === streamMsgId ? { ...m, content: displayContent } : m));
+            if (isActive) setMessages(prev => prev.map(m => m.id === streamMsgId ? { ...m, content: displayContent } : m));
           }
         };
 
@@ -488,24 +497,18 @@ export default function SaraChatPage() {
           if (urls.length > 0) streamImages = urls.map(url => ({ url }));
         }
 
+        const stillActive = activeIdRef.current === sid;
         if (!streamMsgId) {
           streamMsgId = newId();
           setIsLoading(false);
-          setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: 'Sin respuesta.' }]);
-        }
-
-        // Aplicar imágenes al mensaje final si el agente las incluyó
-        if (streamImages.length > 0) {
-          setMessages(prev =>
-            prev.map(m => m.id === streamMsgId ? { ...m, images: streamImages } : m)
-          );
+          if (stillActive) setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: 'Sin respuesta.' }]);
         }
 
         const displayContent = stripMarkers(accumulated);
         const finalMsg: Message = { id: streamMsgId, role: 'assistant', content: displayContent || 'Sin respuesta.', images: streamImages, report: parseReport(accumulated), timestamp: Date.now() };
-        // Aplicar el mensaje final (incl. la tarjeta de reporte) al estado VISIBLE,
-        // no solo a persist(): sin esto la tarjeta solo aparecía tras recargar.
-        setMessages(prev => prev.map(m => m.id === streamMsgId ? finalMsg : m));
+        // Aplicar el mensaje final (incl. imágenes y tarjeta de reporte) al estado VISIBLE
+        // solo si seguimos en el chat que originó la consulta; persist() siempre escribe a `sid`.
+        if (stillActive) setMessages(prev => prev.map(m => m.id === streamMsgId ? finalMsg : m));
         persist([...withUser, finalMsg], sid);
 
       } else {
@@ -519,7 +522,7 @@ export default function SaraChatPage() {
           timestamp: Date.now(),
         };
         const final = [...withUser, saraMsg];
-        setMessages(final);
+        if (activeIdRef.current === sid) setMessages(final);
         persist(final, sid);
       }
 
@@ -528,13 +531,14 @@ export default function SaraChatPage() {
       if (!(err instanceof DOMException && err.name === 'AbortError')) {
         const errMsg: Message = { id: newId(), role: 'assistant', content: 'No pude obtener respuesta de SARA. La consulta puede haber tardado demasiado — intenta reformularla o reintenta en unos segundos.' };
         const final = [...withUser, errMsg];
-        setMessages(final);
+        if (activeIdRef.current === sid) setMessages(final);
         persist(final, sid);
       }
     } finally {
       abortRef.current = null;
       setIsLoading(false);
       setIsResponding(false);
+      setLoadingSessionId(null);
     }
   };
 
@@ -840,8 +844,8 @@ export default function SaraChatPage() {
             </div>
           )}
 
-          {/* Loading indicator */}
-          {isLoading && (
+          {/* Loading indicator — solo en el chat que originó la consulta */}
+          {isLoading && loadingSessionId === activeSessionId && (
             <div className="flex gap-4 justify-start max-w-4xl mx-auto mt-8 animate-in fade-in">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#71BF44] to-[#5a9c33] flex items-center justify-center text-white shrink-0 mt-1 shadow-md shadow-[#71BF44]/20 ring-2 ring-white dark:ring-[#131313] animate-pulse">
                 <span className="font-bold text-[11px]">S</span>
