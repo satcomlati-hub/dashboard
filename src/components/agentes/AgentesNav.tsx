@@ -7,6 +7,7 @@ const TABS = [
   { href: '/projects/agentes/skills', label: 'Skills', exact: false },
   { href: '/projects/agentes/mcp', label: 'MCP', exact: false },
   { href: '/projects/agentes/herramientas', label: 'Herramientas', exact: false },
+  { href: '/projects/agentes/grafo', label: 'Grafo', exact: false },
   { href: '/projects/agentes/canales', label: 'Canales', exact: false },
   { href: '/projects/agentes/comparar', label: 'Comparar', exact: false },
 ];

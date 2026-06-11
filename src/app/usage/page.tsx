@@ -37,6 +37,10 @@ interface LimitEvent {
   bucket: string; action: string; limitUsd: number; actualUsd: number;
   source: string | null; notifiedCliq: boolean; createdAt: string;
 }
+interface AlertRecipient {
+  id: string; type: 'user' | 'channel'; value: string; label: string;
+  enabled: boolean; createdAt: string;
+}
 interface LimitsData {
   globalLimits: WindowLimits; globalCost: WindowCost;
   agents: LimitAgent[]; events: LimitEvent[];
@@ -297,6 +301,48 @@ export default function UsagePage() {
   const setGlobalLimit = (bucket: 'hour' | 'day' | 'week', patch: Partial<LimitCfg>) =>
     setGlobalDraft(d => ({ ...d, [bucket]: { ...(d[bucket] ?? {}), ...patch } }));
 
+  // ── Destinatarios de alertas (tabla ag_alert_recipients) ──
+  const [recipients, setRecipients] = useState<AlertRecipient[]>([]);
+  const [newRcpType, setNewRcpType] = useState<'user' | 'channel'>('user');
+  const [newRcpValue, setNewRcpValue] = useState('');
+  const [newRcpLabel, setNewRcpLabel] = useState('');
+  const [savingRcp, setSavingRcp] = useState(false);
+  const [rcpError, setRcpError] = useState('');
+  const loadRecipients = useCallback(async () => {
+    try {
+      const res = await fetch('/api/agentes/alert-recipients', { cache: 'no-store' });
+      if (!res.ok) return;
+      setRecipients(await res.json());
+    } catch { /* degradado */ }
+  }, []);
+  const addRecipient = async () => {
+    if (!newRcpValue.trim()) { setRcpError('Escribe el email/zuid o el nombre del canal.'); return; }
+    setSavingRcp(true); setRcpError('');
+    try {
+      const res = await fetch('/api/agentes/alert-recipients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: newRcpType, value: newRcpValue.trim(), label: newRcpLabel.trim() }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'No se pudo añadir.');
+      setNewRcpValue(''); setNewRcpLabel('');
+      await loadRecipients();
+    } catch (e) { setRcpError(e instanceof Error ? e.message : String(e)); }
+    finally { setSavingRcp(false); }
+  };
+  const toggleRecipient = async (r: AlertRecipient) => {
+    await fetch(`/api/agentes/alert-recipients/${r.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: !r.enabled }),
+    });
+    await loadRecipients();
+  };
+  const deleteRecipient = async (id: string) => {
+    await fetch(`/api/agentes/alert-recipients/${id}`, { method: 'DELETE' });
+    await loadRecipients();
+  };
+
   const load = useCallback(async () => {
     try {
       const res = await fetch(`/api/usage?range=${range}`, { cache: 'no-store' });
@@ -320,7 +366,7 @@ export default function UsagePage() {
   }, [load]);
 
   useEffect(() => { loadLimits(); }, [loadLimits]);
-  useEffect(() => { if (tab === 'limites') loadLimits(); }, [tab, loadLimits]);
+  useEffect(() => { if (tab === 'limites') { loadLimits(); loadRecipients(); } }, [tab, loadLimits, loadRecipients]);
 
   // ── Derived values ──
   const ai = data?.ai;
@@ -830,8 +876,108 @@ export default function UsagePage() {
                 })}
               </div>
               <InfoBox variant="neutral">
-                Las alertas llegan al <strong>Panel</strong> (lista de abajo) y a <strong>Zoho Cliq</strong> vía el workflow n8n <code className="font-mono">TOOL_alerta_general</code> (bot «alerta», a canales y/o usuarios). En el backend define <code className="font-mono">ALERT_WEBHOOK_SECRET</code> y <code className="font-mono">ALERT_USERS</code>/<code className="font-mono">ALERT_CHANNELS</code>; sin secreto/destinos solo se registra en el panel.
+                Las alertas llegan al <strong>Panel</strong> (lista de abajo) y a <strong>Zoho Cliq</strong> vía el workflow n8n <code className="font-mono">TOOL_alerta_general</code> (bot «alerta»). Los destinatarios se gestionan aquí abajo en <strong>«Destinatarios de alertas»</strong>. En el backend solo hace falta <code className="font-mono">ALERT_WEBHOOK_SECRET</code>; si no hay destinatarios ni secreto, la alerta solo se registra en el panel.
               </InfoBox>
+            </Card>
+
+            {/* Destinatarios de alertas */}
+            <Card className="overflow-hidden">
+              <div className="px-6 py-4 border-b border-neutral-100 dark:border-neutral-800">
+                <h3 className="text-base font-semibold text-neutral-900 dark:text-white">Destinatarios de alertas</h3>
+                <p className="text-xs text-neutral-400 mt-0.5">
+                  Quién recibe los avisos de límite en Zoho Cliq. <strong>Usuario</strong> = mensaje directo (email o zuid); <strong>Canal</strong> = nombre del canal Cliq.
+                </p>
+              </div>
+              <div className="px-6 py-4 space-y-4">
+                {/* Alta */}
+                <div className="flex flex-wrap items-end gap-2">
+                  <div>
+                    <label className="block text-[11px] text-neutral-500 mb-1">Tipo</label>
+                    <select
+                      className="bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-1.5 text-sm text-neutral-900 dark:text-white"
+                      value={newRcpType}
+                      onChange={e => setNewRcpType(e.target.value as 'user' | 'channel')}
+                    >
+                      <option value="user">Usuario (DM)</option>
+                      <option value="channel">Canal</option>
+                    </select>
+                  </div>
+                  <div className="flex-1 min-w-[180px]">
+                    <label className="block text-[11px] text-neutral-500 mb-1">
+                      {newRcpType === 'user' ? 'Email o zuid' : 'Nombre del canal'}
+                    </label>
+                    <input
+                      className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-1.5 text-sm text-neutral-900 dark:text-white"
+                      value={newRcpValue}
+                      onChange={e => setNewRcpValue(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') addRecipient(); }}
+                      placeholder={newRcpType === 'user' ? 'jesus@satcomla.com' : 'alertas-satcom'}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-[140px]">
+                    <label className="block text-[11px] text-neutral-500 mb-1">Etiqueta (opcional)</label>
+                    <input
+                      className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-1.5 text-sm text-neutral-900 dark:text-white"
+                      value={newRcpLabel}
+                      onChange={e => setNewRcpLabel(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') addRecipient(); }}
+                      placeholder="Jesús / Soporte"
+                    />
+                  </div>
+                  <button
+                    onClick={addRecipient}
+                    disabled={savingRcp}
+                    className="bg-[#71BF44] hover:bg-[#5ea832] disabled:opacity-50 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
+                  >
+                    {savingRcp ? 'Añadiendo…' : '+ Añadir'}
+                  </button>
+                </div>
+                {rcpError && <p className="text-xs text-red-500">{rcpError}</p>}
+
+                {/* Lista */}
+                {recipients.length === 0 ? (
+                  <p className="text-sm text-neutral-400 py-2">
+                    Sin destinatarios. Mientras no haya ninguno, se usan las env vars del backend (si están definidas).
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {recipients.map(r => (
+                      <div
+                        key={r.id}
+                        className="flex items-center gap-3 rounded-lg border border-neutral-200 dark:border-neutral-800 px-3 py-2"
+                      >
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                          r.type === 'user'
+                            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                            : 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400'
+                        }`}>
+                          {r.type === 'user' ? 'USUARIO' : 'CANAL'}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-mono text-neutral-800 dark:text-neutral-200">{r.value}</span>
+                          {r.label && <span className="text-xs text-neutral-400 ml-2">{r.label}</span>}
+                        </div>
+                        <button
+                          onClick={() => toggleRecipient(r)}
+                          className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${
+                            r.enabled
+                              ? 'border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20'
+                              : 'border-neutral-200 dark:border-neutral-700 text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+                          }`}
+                        >
+                          {r.enabled ? '● Activo' : '○ Inactivo'}
+                        </button>
+                        <button
+                          onClick={() => deleteRecipient(r.id)}
+                          className="text-xs px-2.5 py-1 rounded-lg border border-red-200 dark:border-red-800 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </Card>
 
             {/* Topes por agente */}

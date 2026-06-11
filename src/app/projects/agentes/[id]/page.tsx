@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import AgentesNav from '@/components/agentes/AgentesNav';
+import CrearSubagenteWizard from '@/components/agentes/CrearSubagenteWizard';
 import { BUILTIN_TOOLS, delegateTargetId, isDelegateTool } from '@/lib/agentes';
 
 // Modelos siempre presentes en el dropdown aunque no estén en ai_pricing
@@ -58,6 +59,17 @@ export default function AgentEditorPage() {
   const [allHttpTools, setAllHttpTools] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [showSubagentWizard, setShowSubagentWizard] = useState(false);
+  const [tab, setTab] = useState<'general' | 'prompt' | 'capacidades' | 'conexiones' | 'subagentes'>('general');
+
+  // Recarga las listas relacionadas con delegaciones (tras crear un subagente).
+  const reloadDelegations = () => {
+    if (!isNew) {
+      fetch(`/api/agentes/v1/agents/${id}/http-tools`).then(r => r.json()).then(setHttpTools).catch(() => {});
+    }
+    fetch('/api/agentes/v1/http-tools').then(r => r.json()).then(setAllHttpTools).catch(() => {});
+    fetch('/api/agentes/v1/agents').then(r => r.json()).then(d => Array.isArray(d) && setAllAgents(d)).catch(() => {});
+  };
 
   useEffect(() => {
     if (!isNew) {
@@ -223,7 +235,32 @@ export default function AgentEditorPage() {
       <AgentesNav />
 
       <div className="space-y-6 max-w-3xl">
+        {/* Sub-navegación del editor */}
+        <nav className="flex flex-wrap gap-1 bg-neutral-100 dark:bg-neutral-900 rounded-lg p-1 w-fit">
+          {([
+            { key: 'general', label: 'General', show: true },
+            { key: 'prompt', label: 'Prompt', show: true },
+            { key: 'capacidades', label: 'Capacidades y límites', show: true },
+            { key: 'conexiones', label: 'Skills · MCP · Tools', show: !isNew },
+            { key: 'subagentes', label: 'Subagentes', show: !isNew },
+          ] as const).filter(t => t.show).map(t => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                tab === t.key
+                  ? 'bg-white dark:bg-[#1e1e1e] shadow-sm text-neutral-900 dark:text-white'
+                  : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
+
         {/* Básicos */}
+        {tab === 'general' && (
         <section className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 space-y-4">
           <h3 className="font-semibold text-neutral-800 dark:text-neutral-200">Información básica</h3>
           <div className="grid grid-cols-2 gap-4">
@@ -290,8 +327,10 @@ export default function AgentEditorPage() {
             <span className="text-sm text-neutral-700 dark:text-neutral-300">Agente activo</span>
           </label>
         </section>
+        )}
 
         {/* Capabilities */}
+        {tab === 'capacidades' && (
         <section className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 space-y-4">
           <div>
             <h3 className="font-semibold text-neutral-800 dark:text-neutral-200">Capacidades</h3>
@@ -336,8 +375,10 @@ export default function AgentEditorPage() {
             </div>
           </div>
         </section>
+        )}
 
         {/* Límites de uso */}
+        {tab === 'capacidades' && (
         <section className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 space-y-4">
           <div>
             <h3 className="font-semibold text-neutral-800 dark:text-neutral-200">Límites de uso</h3>
@@ -383,8 +424,10 @@ export default function AgentEditorPage() {
             })}
           </div>
         </section>
+        )}
 
         {/* System prompt */}
+        {tab === 'prompt' && (
         <section className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 space-y-4">
           <h3 className="font-semibold text-neutral-800 dark:text-neutral-200">System prompt</h3>
           <div>
@@ -429,9 +472,10 @@ export default function AgentEditorPage() {
             + Añadir sección
           </button>
         </section>
+        )}
 
         {/* Skills */}
-        {!isNew && (
+        {!isNew && tab === 'conexiones' && (
           <section className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 space-y-3">
             <h3 className="font-semibold text-neutral-800 dark:text-neutral-200">Skills</h3>
             {allSkills.length === 0 ? (
@@ -461,7 +505,7 @@ export default function AgentEditorPage() {
         )}
 
         {/* MCP Servers */}
-        {!isNew && (
+        {!isNew && tab === 'conexiones' && (
           <section className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 space-y-3">
             <h3 className="font-semibold text-neutral-800 dark:text-neutral-200">Servidores MCP</h3>
             {allMcp.length === 0 ? (
@@ -491,16 +535,25 @@ export default function AgentEditorPage() {
         )}
 
         {/* Subagentes (delegaciones) */}
-        {!isNew && (
+        {!isNew && tab === 'subagentes' && (
           <section className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 space-y-3">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-semibold text-neutral-800 dark:text-neutral-200">🤝 Subagentes</h3>
                 <p className="text-xs text-neutral-500 mt-0.5">Habilita qué subagentes puede invocar este agente (vía herramientas de delegación).</p>
               </div>
-              <Link href="/projects/agentes/herramientas" className="text-xs text-[#71BF44] hover:underline whitespace-nowrap">
-                + Crear delegación
-              </Link>
+              <div className="flex items-center gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowSubagentWizard(true)}
+                  className="text-xs bg-[#71BF44] hover:bg-[#5ea832] text-white font-medium px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
+                >
+                  + Crear subagente
+                </button>
+                <Link href="/projects/agentes/herramientas" className="text-xs text-[#71BF44] hover:underline whitespace-nowrap">
+                  Delegación avanzada
+                </Link>
+              </div>
             </div>
             {allHttpTools.filter((t: any) => isDelegateTool(t) && delegateTargetId(t.url) !== id).length === 0 ? (
               <p className="text-sm text-neutral-400">
@@ -542,7 +595,7 @@ export default function AgentEditorPage() {
         )}
 
         {/* Herramientas HTTP (excluye delegaciones, que tienen su propia sección) */}
-        {!isNew && (
+        {!isNew && tab === 'conexiones' && (
           <section className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-neutral-800 dark:text-neutral-200">Herramientas</h3>
@@ -618,6 +671,15 @@ export default function AgentEditorPage() {
           </Link>
         </div>
       </div>
+
+      {showSubagentWizard && !isNew && (
+        <CrearSubagenteWizard
+          parentAgentId={id}
+          parentAgentName={agent.name}
+          onClose={() => setShowSubagentWizard(false)}
+          onCreated={reloadDelegations}
+        />
+      )}
     </>
   );
 }
