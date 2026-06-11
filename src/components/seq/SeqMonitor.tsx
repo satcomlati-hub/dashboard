@@ -544,7 +544,7 @@ logs.forEach(log => {
   const eventId = log.Id || log['@Id'] || '';
   let seqPermalink = '';
   if (eventId) {
-    seqPermalink = \`https://dashboard-one-ivory-58.vercel.app/seq-monitor?Id=\${eventId}&Origen=\${origenConexion}\`;
+    seqPermalink = `https://dashboard-one-ivory-58.vercel.app/api/seq/public-event?id=\${eventId}&origen=\${origenConexion}`;
   }
 
   const payloadComun = {
@@ -2607,7 +2607,7 @@ return [
       const matchingConn = connections.find(c => c.name === origenConexion);
       const baseUrl = matchingConn ? matchingConn.url : 'http://logs-sender.mysatcomla.com:5341';
       const seqPermalink = eventId 
-        ? `https://dashboard-one-ivory-58.vercel.app/seq-monitor?Id=${eventId}&Origen=${encodeURIComponent(origenConexion)}`
+        ? `https://dashboard-one-ivory-58.vercel.app/api/seq/public-event?id=${eventId}&origen=${encodeURIComponent(origenConexion)}`
         : '';
 
       // Buscar StatusCode en Exception o Message
@@ -2893,7 +2893,7 @@ return [
             app: log.App || log._app,
             hostname: log.Hostname || log._hostname,
             isIgnored: ignored,
-            seqPermalink: log.Id ? `https://dashboard-one-ivory-58.vercel.app/seq-monitor?Id=${log.Id}&Origen=${encodeURIComponent(origenConexion)}` : ''
+            seqPermalink: log.Id ? `https://dashboard-one-ivory-58.vercel.app/api/seq/public-event?id=${log.Id}&origen=${encodeURIComponent(origenConexion)}` : ''
           });
         }
       }
