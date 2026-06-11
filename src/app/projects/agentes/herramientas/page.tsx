@@ -257,7 +257,7 @@ export default function HerramientasPage() {
               onClick={() => openNew('delegate')}
               className="flex items-center gap-2 border border-[#71BF44] text-[#71BF44] hover:bg-[#71BF44]/10 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
             >
-              🤝 Delegar a subagente
+              Delegar a subagente
             </button>
             <button
               onClick={() => openNew('http')}
@@ -316,7 +316,7 @@ export default function HerramientasPage() {
                         : 'border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:border-[#71BF44]/50'
                     }`}
                   >
-                    🤝 Subagente (delegar)
+                    Subagente (delegar)
                   </button>
                 </div>
                 {mode === 'delegate' && (
@@ -552,7 +552,7 @@ export default function HerramientasPage() {
                         <span className="text-sm font-semibold text-neutral-900 dark:text-white">{t.name}</span>
                         {isDelegateTool(t) && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#71BF44]/15 text-[#5ea832] dark:text-[#71BF44] font-medium">
-                            🤝 {agents.find(a => a.id === delegateTargetId(t.url))?.name ?? 'subagente'}
+                            {agents.find(a => a.id === delegateTargetId(t.url))?.name ?? 'subagente'}
                           </span>
                         )}
                         {!t.enabled && (

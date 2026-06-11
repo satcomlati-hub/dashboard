@@ -96,7 +96,6 @@ export default function GrafoPage() {
             : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-[#131313] text-neutral-800 dark:text-neutral-200 hover:border-[#71BF44]/50'
         }`}
       >
-        {role === 'child' && <span>🤝</span>}
         {name}
         {a && a.enabled === false && (
           <span className="text-[10px] px-1 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-500">inactivo</span>

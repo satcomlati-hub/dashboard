@@ -88,7 +88,7 @@ function ToolTrace({ trace, delegateMap = {} }: { trace: TraceItem[]; delegateMa
       <summary className="text-xs cursor-pointer select-none text-[#71BF44] hover:underline flex items-center gap-2">
         <span>Traza de tools · {calls} llamada{calls === 1 ? '' : 's'}</span>
         {delegations > 0 && (
-          <span className="text-[#5ea832] dark:text-[#71BF44] font-medium">🤝 {delegations} a subagente</span>
+          <span className="text-[#5ea832] dark:text-[#71BF44] font-medium">{delegations} a subagente</span>
         )}
         {errors > 0 && (
           <span className="text-red-500 font-medium">{errors} con error</span>
@@ -101,7 +101,7 @@ function ToolTrace({ trace, delegateMap = {} }: { trace: TraceItem[]; delegateMa
             return (
               <div key={i} className="text-xs">
                 <div className={`font-mono font-medium ${sub ? 'text-[#5ea832] dark:text-[#71BF44]' : 'text-neutral-700 dark:text-neutral-300'}`}>
-                  {sub ? '🤝' : '▶'} {t.name}
+                  {sub ? '↪' : '▶'} {t.name}
                   {sub && <span className="ml-1 font-sans font-normal text-neutral-400">↳ delega en {sub}</span>}
                 </div>
                 {t.args && (

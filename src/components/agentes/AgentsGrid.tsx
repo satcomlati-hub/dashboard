@@ -108,7 +108,7 @@ export default function AgentsGrid({
                 <div className="flex items-center gap-1.5">
                   {subset.has(agent.id) && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-[#71BF44]/15 text-[#5ea832] dark:text-[#71BF44]" title="Otro agente delega en este">
-                      🤝 Subagente
+                      Subagente
                     </span>
                   )}
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${

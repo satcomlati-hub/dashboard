@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import AgentesNav from '@/components/agentes/AgentesNav';
 import CrearSubagenteWizard from '@/components/agentes/CrearSubagenteWizard';
-import { BUILTIN_TOOLS, delegateTargetId, isDelegateTool } from '@/lib/agentes';
+import { BUILTIN_TOOLS, buildInvokeUrl, delegateInputSchema, delegateTargetId, isDelegateTool } from '@/lib/agentes';
 
 // Modelos siempre presentes en el dropdown aunque no estén en ai_pricing
 // (p. ej. el de imágenes, que no se tarifa por tokens de texto).
@@ -167,6 +167,66 @@ export default function AgentEditorPage() {
     }
   };
 
+  // ── Subagentes: habilita/deshabilita otro agente como subagente de este.
+  // Auto-crea la delegación (API key + http-tool /invoke) si no existe y la
+  // asigna/desasigna. El usuario no toca «Herramientas» para nada.
+  const [subBusy, setSubBusy] = useState<string | null>(null);
+  const [subError, setSubError] = useState('');
+
+  // Devuelve la delegate-tool que apunta a targetId, creándola si hace falta.
+  const ensureDelegation = async (target: any) => {
+    const existing = allHttpTools.find((t: any) => delegateTargetId(t.url) === target.id);
+    if (existing) return existing;
+    // 1. API key del subagente
+    const keyRes = await fetch('/api/agentes/v1/keys', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent_id: target.id, name: `delegate: ${target.slug || target.id}` }),
+    });
+    if (!keyRes.ok) throw new Error('No se pudo generar la API key del subagente.');
+    const key = await keyRes.json();
+    // 2. delegate-tool
+    const toolName = `consultar_${target.slug || 'subagente'}`;
+    const toolRes = await fetch('/api/agentes/v1/http-tools', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: toolName, slug: toolName,
+        description: `Delega en el subagente "${target.name}" para responder. Pasa la pregunta del usuario tal cual en prompt.`,
+        http_method: 'POST', url: buildInvokeUrl(target.id),
+        headers: { Authorization: `Bearer ${key.token}`, 'Content-Type': 'application/json' },
+        input_schema: delegateInputSchema(), enabled: true,
+      }),
+    });
+    if (!toolRes.ok) throw new Error('No se pudo crear la delegación.');
+    const tool = await toolRes.json();
+    setAllHttpTools((s: any[]) => [...s, tool]);
+    return tool;
+  };
+
+  const toggleSubagent = async (target: any, currentlyOn: boolean) => {
+    setSubBusy(target.id); setSubError('');
+    try {
+      if (currentlyOn) {
+        const tool = httpTools.find((t: any) => delegateTargetId(t.url) === target.id);
+        if (tool) {
+          await fetch(`/api/agentes/v1/agents/${id}/http-tools/${tool.id}`, { method: 'DELETE' });
+          setHttpTools(s => s.filter((x: any) => x.id !== tool.id));
+        }
+      } else {
+        const tool = await ensureDelegation(target);
+        if (!httpTools.some((x: any) => x.id === tool.id)) {
+          await fetch(`/api/agentes/v1/agents/${id}/http-tools/${tool.id}`, { method: 'POST' });
+          setHttpTools(s => [...s, tool]);
+        }
+      }
+    } catch (e: any) {
+      setSubError(e?.message || String(e));
+    } finally {
+      setSubBusy(null);
+    }
+  };
+
   const toggleHttpTool = async (toolId: string, assigned: boolean) => {
     if (assigned) {
       await fetch(`/api/agentes/v1/agents/${id}/http-tools/${toolId}`, { method: 'DELETE' });
@@ -203,7 +263,7 @@ export default function AgentEditorPage() {
             </h2>
             {!isNew && allHttpTools.some((t: any) => delegateTargetId(t.url) === id) && (
               <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#71BF44]/15 text-[#5ea832] dark:text-[#71BF44] font-medium" title="Otro agente delega en este vía una herramienta de subagente">
-                🤝 Subagente
+                Subagente
               </span>
             )}
           </div>
@@ -539,54 +599,55 @@ export default function AgentEditorPage() {
           <section className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-neutral-800 dark:text-neutral-200">🤝 Subagentes</h3>
-                <p className="text-xs text-neutral-500 mt-0.5">Habilita qué subagentes puede invocar este agente (vía herramientas de delegación).</p>
+                <h3 className="font-semibold text-neutral-800 dark:text-neutral-200">Subagentes</h3>
+                <p className="text-xs text-neutral-500 mt-0.5">Activa qué agentes puede invocar este agente. Al activarlo, la delegación se configura sola (API key + conexión).</p>
               </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setShowSubagentWizard(true)}
-                  className="text-xs bg-[#71BF44] hover:bg-[#5ea832] text-white font-medium px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
-                >
-                  + Crear subagente
-                </button>
-                <Link href="/projects/agentes/herramientas" className="text-xs text-[#71BF44] hover:underline whitespace-nowrap">
-                  Delegación avanzada
-                </Link>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowSubagentWizard(true)}
+                className="text-xs bg-[#71BF44] hover:bg-[#5ea832] text-white font-medium px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap shrink-0"
+              >
+                + Crear subagente
+              </button>
             </div>
-            {allHttpTools.filter((t: any) => isDelegateTool(t) && delegateTargetId(t.url) !== id).length === 0 ? (
+            {subError && (
+              <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">{subError}</p>
+            )}
+            {allAgents.filter((a: any) => a.id !== id).length === 0 ? (
               <p className="text-sm text-neutral-400">
-                No hay delegaciones creadas. <Link href="/projects/agentes/herramientas" className="text-[#71BF44] hover:underline">Crea una →</Link>
+                No hay otros agentes. <button type="button" onClick={() => setShowSubagentWizard(true)} className="text-[#71BF44] hover:underline">Crea un subagente →</button>
               </p>
             ) : (
-              <div className="space-y-2">
-                {allHttpTools.filter((t: any) => isDelegateTool(t) && delegateTargetId(t.url) !== id).map((t: any) => {
-                  const assigned = httpTools.some((x: any) => x.id === t.id);
-                  const tgt = delegateTargetId(t.url);
-                  const ag = allAgents.find((a: any) => a.id === tgt);
+              <div className="space-y-1">
+                {allAgents.filter((a: any) => a.id !== id).map((a: any) => {
+                  const on = httpTools.some((t: any) => delegateTargetId(t.url) === a.id);
+                  const busy = subBusy === a.id;
                   return (
-                    <label key={t.id} className="flex items-center gap-3 cursor-pointer rounded-lg border border-transparent hover:border-[#71BF44]/30 hover:bg-[#71BF44]/5 px-2 py-1 -mx-2 transition-colors">
-                      <input
-                        type="checkbox"
-                        className="w-4 h-4 accent-[#71BF44]"
-                        checked={assigned}
-                        onChange={() => toggleHttpTool(t.id, assigned)}
-                      />
-                      <span className="text-base">🤝</span>
+                    <div key={a.id} className="flex items-center gap-3 rounded-lg border border-neutral-200 dark:border-neutral-800 px-3 py-2">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">{ag?.name ?? (tgt ?? t.name)}</span>
-                          {!t.enabled && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-500">inactiva</span>
+                          <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200 truncate">{a.name}</span>
+                          {a.enabled === false && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-500">inactivo</span>
                           )}
                         </div>
-                        <span className="text-xs text-neutral-400 block truncate font-mono">{t.name}</span>
+                        {a.description && <span className="text-xs text-neutral-400 block truncate">{a.description}</span>}
                       </div>
-                      {ag && (
-                        <Link href={`/projects/agentes/${tgt}`} className="text-xs text-[#71BF44] hover:underline shrink-0">ver →</Link>
-                      )}
-                    </label>
+                      <Link href={`/projects/agentes/${a.id}`} className="text-xs text-[#71BF44] hover:underline shrink-0">ver →</Link>
+                      <button
+                        type="button"
+                        onClick={() => toggleSubagent(a, on)}
+                        disabled={busy}
+                        role="switch"
+                        aria-checked={on}
+                        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+                          on ? 'bg-[#71BF44]' : 'bg-neutral-300 dark:bg-neutral-700'
+                        }`}
+                        title={on ? 'Deshabilitar como subagente' : 'Habilitar como subagente'}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${on ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                      </button>
+                    </div>
                   );
                 })}
               </div>
