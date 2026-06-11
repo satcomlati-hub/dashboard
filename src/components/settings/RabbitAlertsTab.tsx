@@ -289,7 +289,7 @@ export default function RabbitAlertsTab() {
                 <div>
                   <label className="block text-[10px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest mb-1.5">Estado</label>
                   <select 
-                    value={editingConfig.esta_activa === false ? 'false' : 'true'} 
+                    value={editingConfig.esta_activo === false ? 'false' : 'true'} 
                     onChange={e => setEditingConfig({ ...editingConfig, esta_activo: e.target.value === 'true' })}
                     className="w-full bg-neutral-50 dark:bg-[#0c0c0c] border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2.5 text-sm font-bold text-neutral-800 dark:text-neutral-200 outline-none focus:border-[#71BF44] transition-all"
                   >
