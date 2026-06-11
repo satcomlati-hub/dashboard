@@ -28,6 +28,12 @@ export default async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Endpoints de la API de Agentes
+  // Se protegen mediante Bearer tokens dentro de sus respectivos controladores
+  if (pathname.startsWith("/api/agentes")) {
+    return NextResponse.next()
+  }
+
   // Dejamos que Next Auth maneje el resto de rutas (login, protecciones generales)
   return authMiddleware(request as any)
 }
