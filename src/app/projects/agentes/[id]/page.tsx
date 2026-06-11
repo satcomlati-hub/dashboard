@@ -6,8 +6,19 @@ import { useEffect, useState } from 'react';
 import AgentesNav from '@/components/agentes/AgentesNav';
 import { BUILTIN_TOOLS, delegateTargetId, isDelegateTool } from '@/lib/agentes';
 
-const MODELS = ['gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-3.1-flash-image-preview'];
+// Modelos siempre presentes en el dropdown aunque no estén en ai_pricing
+// (p. ej. el de imágenes, que no se tarifa por tokens de texto).
+const FALLBACK_MODELS = ['gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-3.1-flash-image-preview'];
 const THINKING_LEVELS = ['minimal', 'low', 'medium', 'high'];
+const BUCKETS = [
+  { key: 'hour', label: 'Por hora' },
+  { key: 'day', label: 'Por día' },
+  { key: 'week', label: 'Por semana' },
+] as const;
+
+type Pricing = { provider: string; model: string; inputPer1M: number; outputPer1M: number; cachedPer1M: number };
+type LimitCfg = { usd?: number; action?: 'notify' | 'stop' };
+type Limits = { hour?: LimitCfg; day?: LimitCfg; week?: LimitCfg; [k: string]: LimitCfg | undefined };
 
 type Capabilities = {
   max_steps?: number;
@@ -22,6 +33,7 @@ type Agent = {
   system_sections: { title: string; content: string }[];
   model: string; thinking_level: string | null; enabled: boolean;
   capabilities: Capabilities;
+  limits: Limits;
 };
 
 export default function AgentEditorPage() {
@@ -34,7 +46,9 @@ export default function AgentEditorPage() {
     system_sections: [{ title: 'user_system_instructions', content: '' }],
     model: 'gemini-3.5-flash', thinking_level: null, enabled: true,
     capabilities: { max_steps: 6, allow_tools: true, allow_skills: true, disabled_tools: [] },
+    limits: {},
   });
+  const [pricing, setPricing] = useState<Pricing[]>([]);
   const [allAgents, setAllAgents] = useState<any[]>([]);
   const [skills, setSkills] = useState<any[]>([]);
   const [allSkills, setAllSkills] = useState<any[]>([]);
@@ -56,6 +70,7 @@ export default function AgentEditorPage() {
     fetch('/api/agentes/v1/mcp-servers').then(r => r.json()).then(setAllMcp);
     fetch('/api/agentes/v1/http-tools').then(r => r.json()).then(setAllHttpTools);
     fetch('/api/agentes/v1/agents').then(r => r.json()).then(d => Array.isArray(d) && setAllAgents(d)).catch(() => {});
+    fetch('/api/pricing').then(r => r.json()).then(d => Array.isArray(d) && setPricing(d)).catch(() => {});
   }, [id, isNew]);
 
   const caps: Capabilities = agent.capabilities ?? {};
@@ -64,6 +79,36 @@ export default function AgentEditorPage() {
     setAgent(a => ({ ...a, capabilities: { ...(a.capabilities ?? {}), ...patch } }));
   const toggleBuiltin = (name: string, disabled: boolean) =>
     setCap({ disabled_tools: disabled ? disabledTools.filter(t => t !== name) : [...disabledTools, name] });
+
+  // ── Modelos + precios ──
+  const priceByModel = new Map(pricing.map(p => [p.model, p]));
+  const modelOptions = (() => {
+    const set = new Set<string>(pricing.map(p => p.model));
+    FALLBACK_MODELS.forEach(m => set.add(m));
+    if (agent.model) set.add(agent.model);
+    return [...set].sort();
+  })();
+  const fmtPrice = (m: string) => {
+    const p = priceByModel.get(m);
+    return p ? ` · in $${p.inputPer1M}/out $${p.outputPer1M} (1M)` : '';
+  };
+  const selectedPrice = priceByModel.get(agent.model ?? '');
+
+  // ── Límites de uso (costo USD por ventana) ──
+  const limits: Limits = (agent.limits ?? {}) as Limits;
+  const setLimit = (bucket: string, patch: Partial<LimitCfg>) =>
+    setAgent(a => {
+      const cur = (a.limits ?? {}) as Limits;
+      const prev = (cur[bucket] ?? {}) as LimitCfg;
+      return { ...a, limits: { ...cur, [bucket]: { ...prev, ...patch } } };
+    });
+  const fmtK = (n: number) => (n >= 1_000_000 ? `${(n / 1e6).toFixed(1)}M` : n >= 1_000 ? `${(n / 1e3).toFixed(0)}K` : `${Math.round(n)}`);
+  const tokenHint = (usd: number): string => {
+    if (!selectedPrice || !usd) return '';
+    const hi = (usd / selectedPrice.inputPer1M) * 1e6;   // todo input (cota alta)
+    const lo = (usd / selectedPrice.outputPer1M) * 1e6;  // todo output (cota baja)
+    return `≈ ${fmtK(lo)}–${fmtK(hi)} tokens`;
+  };
 
   const save = async () => {
     setSaving(true); setError('');
@@ -215,8 +260,13 @@ export default function AgentEditorPage() {
                 value={agent.model ?? 'gemini-3.5-flash'}
                 onChange={e => setAgent(a => ({ ...a, model: e.target.value }))}
               >
-                {MODELS.map(m => <option key={m} value={m}>{m}</option>)}
+                {modelOptions.map(m => <option key={m} value={m}>{m}{fmtPrice(m)}</option>)}
               </select>
+              {selectedPrice && (
+                <p className="text-[11px] text-neutral-400 mt-1">
+                  Precio: <span className="font-mono">${selectedPrice.inputPer1M}</span> input · <span className="font-mono">${selectedPrice.outputPer1M}</span> output · <span className="font-mono">${selectedPrice.cachedPer1M}</span> cacheado · por 1M tokens
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-xs text-neutral-500 mb-1">Thinking level</label>
@@ -284,6 +334,53 @@ export default function AgentEditorPage() {
                 );
               })}
             </div>
+          </div>
+        </section>
+
+        {/* Límites de uso */}
+        <section className="bg-white dark:bg-[#131313] border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 space-y-4">
+          <div>
+            <h3 className="font-semibold text-neutral-800 dark:text-neutral-200">Límites de uso</h3>
+            <p className="text-xs text-neutral-500 mt-0.5">
+              Tope de gasto (USD) de este agente por ventana móvil. Al alcanzarlo: <strong>Solo notificar</strong> avisa y deja seguir (para flujos críticos que NO deben detenerse); <strong>Detener y notificar</strong> corta la corrida (flujos donde detenerse no es problema). El costo se calcula con el precio del modelo. Vacío = sin límite.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <div className="grid grid-cols-[90px_1fr_1fr] gap-3 items-center text-[11px] text-neutral-400 uppercase tracking-wide px-1">
+              <span>Ventana</span><span>Tope (USD)</span><span>Acción</span>
+            </div>
+            {BUCKETS.map(({ key, label }) => {
+              const cfg: LimitCfg = (limits[key] ?? {}) as LimitCfg;
+              const usd = cfg.usd ?? 0;
+              return (
+                <div key={key} className="grid grid-cols-[90px_1fr_1fr] gap-3 items-center">
+                  <span className="text-sm text-neutral-600 dark:text-neutral-300">{label}</span>
+                  <div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm text-neutral-400">$</span>
+                      <input
+                        type="number" min={0} step={0.01} placeholder="sin límite"
+                        className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-white"
+                        value={usd || ''}
+                        onChange={e => setLimit(key, { usd: Number(e.target.value) || 0 })}
+                      />
+                    </div>
+                    {usd > 0 && tokenHint(usd) && (
+                      <p className="text-[10px] text-neutral-400 mt-0.5 ml-4">{tokenHint(usd)}</p>
+                    )}
+                  </div>
+                  <select
+                    disabled={!usd}
+                    className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-white disabled:opacity-40"
+                    value={cfg.action ?? 'notify'}
+                    onChange={e => setLimit(key, { action: e.target.value as 'notify' | 'stop' })}
+                  >
+                    <option value="notify">Solo notificar</option>
+                    <option value="stop">Detener y notificar</option>
+                  </select>
+                </div>
+              );
+            })}
           </div>
         </section>
 

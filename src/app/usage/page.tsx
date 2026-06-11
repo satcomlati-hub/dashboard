@@ -28,6 +28,19 @@ interface Budget {
   monthlyUsd: number; mtdCostUsd: number;
   mtdAgentCostUsd: number; mtdAiCostUsd: number; mtdAgentTokens: number;
 }
+interface LimitCfg { usd?: number; action?: 'notify' | 'stop' }
+type WindowLimits = { hour?: LimitCfg; day?: LimitCfg; week?: LimitCfg };
+interface WindowCost { hour: number; day: number; week: number }
+interface LimitAgent { id: string; name: string; slug: string; model: string; limits: WindowLimits; cost: WindowCost }
+interface LimitEvent {
+  id: string; scope: string; agentId: string | null; agentName: string | null;
+  bucket: string; action: string; limitUsd: number; actualUsd: number;
+  source: string | null; notifiedCliq: boolean; createdAt: string;
+}
+interface LimitsData {
+  globalLimits: WindowLimits; globalCost: WindowCost;
+  agents: LimitAgent[]; events: LimitEvent[];
+}
 interface UsageData {
   range: string;
   ai: {
@@ -252,8 +265,37 @@ export default function UsagePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState<'7d' | '30d' | '90d'>('30d');
-  const [tab, setTab] = useState<'ia' | 'agentes' | 'infra' | 'proyecciones' | 'origen'>('ia');
+  const [tab, setTab] = useState<'ia' | 'agentes' | 'limites' | 'infra' | 'proyecciones' | 'origen'>('ia');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  // ── Control de uso de tokens (pestaña Límites) ──
+  const [limitsData, setLimitsData] = useState<LimitsData | null>(null);
+  const [globalDraft, setGlobalDraft] = useState<WindowLimits>({});
+  const [savingGlobal, setSavingGlobal] = useState(false);
+  const loadLimits = useCallback(async () => {
+    try {
+      const res = await fetch('/api/limits', { cache: 'no-store' });
+      if (!res.ok) return;
+      const d: LimitsData = await res.json();
+      setLimitsData(d);
+      setGlobalDraft(d.globalLimits || {});
+    } catch { /* degradado */ }
+  }, []);
+  const saveGlobal = async () => {
+    setSavingGlobal(true);
+    try {
+      await fetch('/api/limits', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limits: globalDraft }),
+      });
+      await loadLimits();
+    } finally {
+      setSavingGlobal(false);
+    }
+  };
+  const setGlobalLimit = (bucket: 'hour' | 'day' | 'week', patch: Partial<LimitCfg>) =>
+    setGlobalDraft(d => ({ ...d, [bucket]: { ...(d[bucket] ?? {}), ...patch } }));
 
   const load = useCallback(async () => {
     try {
@@ -276,6 +318,9 @@ export default function UsagePage() {
     const id = setInterval(load, 60_000);
     return () => clearInterval(id);
   }, [load]);
+
+  useEffect(() => { loadLimits(); }, [loadLimits]);
+  useEffect(() => { if (tab === 'limites') loadLimits(); }, [tab, loadLimits]);
 
   // ── Derived values ──
   const ai = data?.ai;
@@ -396,6 +441,7 @@ export default function UsagePage() {
       <div className="flex gap-1 bg-neutral-100 dark:bg-neutral-900 p-1 rounded-lg w-fit mb-7 overflow-x-auto">
         <TabBtn label="IA en Tiempo Real" active={tab === 'ia'} onClick={() => setTab('ia')} />
         <TabBtn label="Por Agente" active={tab === 'agentes'} onClick={() => setTab('agentes')} />
+        <TabBtn label="Límites y Alertas" active={tab === 'limites'} onClick={() => setTab('limites')} />
         <TabBtn label="Infraestructura" active={tab === 'infra'} onClick={() => setTab('infra')} />
         <TabBtn label="Proyecciones" active={tab === 'proyecciones'} onClick={() => setTab('proyecciones')} />
         <TabBtn label="Por Origen" active={tab === 'origen'} onClick={() => setTab('origen')} />
@@ -716,6 +762,171 @@ export default function UsagePage() {
           )}
         </div>
       )}
+
+      {/* ══════════ LÍMITES Y ALERTAS ══════════ */}
+      {tab === 'limites' && (() => {
+        const ld = limitsData;
+        const BUCKETS = [
+          { key: 'hour' as const, label: 'Por hora' },
+          { key: 'day' as const, label: 'Por día' },
+          { key: 'week' as const, label: 'Por semana' },
+        ];
+        const agentsWithLimits = (ld?.agents ?? []).filter(a =>
+          a.limits && ['hour', 'day', 'week'].some(b => Number((a.limits as any)[b]?.usd) > 0));
+        const actionLabel = (a: string) => a === 'stop' ? 'Detener' : 'Notificar';
+        return (
+          <div className="space-y-6">
+            {/* Tope global */}
+            <Card className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-base font-semibold text-neutral-900 dark:text-white">Tope global del sistema</h3>
+                  <p className="text-xs text-neutral-400 mt-0.5">Suma de TODOS los agentes por ventana móvil. Vacío = sin límite.</p>
+                </div>
+                <button
+                  onClick={saveGlobal}
+                  disabled={savingGlobal}
+                  className="bg-[#71BF44] hover:bg-[#5ea832] disabled:opacity-50 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
+                >
+                  {savingGlobal ? 'Guardando…' : 'Guardar tope global'}
+                </button>
+              </div>
+              <div className="space-y-3">
+                {BUCKETS.map(({ key, label }) => {
+                  const cfg = globalDraft[key] ?? {};
+                  const usd = Number(cfg.usd) || 0;
+                  const spent = ld?.globalCost?.[key] ?? 0;
+                  const p = usd > 0 ? pct(spent, usd) : 0;
+                  return (
+                    <div key={key} className="grid grid-cols-[100px_140px_150px_1fr] gap-3 items-center">
+                      <span className="text-sm text-neutral-600 dark:text-neutral-300">{label}</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-sm text-neutral-400">$</span>
+                        <input
+                          type="number" min={0} step={0.01} placeholder="sin límite"
+                          className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-1.5 text-sm text-neutral-900 dark:text-white"
+                          value={usd || ''}
+                          onChange={e => setGlobalLimit(key, { usd: Number(e.target.value) || 0 })}
+                        />
+                      </div>
+                      <select
+                        disabled={!usd}
+                        className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-1.5 text-sm text-neutral-900 dark:text-white disabled:opacity-40"
+                        value={cfg.action ?? 'notify'}
+                        onChange={e => setGlobalLimit(key, { action: e.target.value as 'notify' | 'stop' })}
+                      >
+                        <option value="notify">Solo notificar</option>
+                        <option value="stop">Detener y notificar</option>
+                      </select>
+                      <div>
+                        <div className="flex justify-between text-[11px] text-neutral-400 mb-0.5">
+                          <span>{fmt$(spent)} gastado{usd > 0 ? ` / ${fmt$(usd)}` : ''}</span>
+                          {usd > 0 && <span style={{ color: pctColor(p) }}>{p.toFixed(0)}%</span>}
+                        </div>
+                        {usd > 0 && <ProgressBar value={spent} max={usd} small />}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <InfoBox variant="neutral">
+                Las alertas llegan al <strong>Panel</strong> (lista de abajo) y a <strong>Zoho Cliq</strong> vía el workflow n8n <code className="font-mono">TOOL_alerta_general</code> (bot «alerta», a canales y/o usuarios). En el backend define <code className="font-mono">ALERT_WEBHOOK_SECRET</code> y <code className="font-mono">ALERT_USERS</code>/<code className="font-mono">ALERT_CHANNELS</code>; sin secreto/destinos solo se registra en el panel.
+              </InfoBox>
+            </Card>
+
+            {/* Topes por agente */}
+            <Card className="overflow-hidden">
+              <div className="px-6 py-4 border-b border-neutral-100 dark:border-neutral-800">
+                <h3 className="text-base font-semibold text-neutral-900 dark:text-white">Topes por agente</h3>
+                <p className="text-xs text-neutral-400 mt-0.5">Se configuran en cada agente (Agentes → editar → «Límites de uso»). Aquí ves su consumo actual.</p>
+              </div>
+              {agentsWithLimits.length === 0 ? (
+                <div className="px-6 py-10 text-center text-sm text-neutral-400">
+                  Ningún agente tiene topes configurados todavía.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="text-[11px] text-neutral-500 uppercase bg-neutral-50 dark:bg-neutral-900/50">
+                      <tr>
+                        <th className="px-5 py-3 text-left font-medium">Agente</th>
+                        {BUCKETS.map(b => <th key={b.key} className="px-5 py-3 text-right font-medium">{b.label}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {agentsWithLimits.map(a => (
+                        <tr key={a.id} className="border-t border-neutral-100 dark:border-neutral-800/60">
+                          <td className="px-5 py-3">
+                            <p className="font-medium text-neutral-900 dark:text-white text-[13px]">{a.name}</p>
+                            <p className="text-[11px] text-neutral-400">{modelLabel(a.model)}</p>
+                          </td>
+                          {BUCKETS.map(({ key }) => {
+                            const cfg = (a.limits as any)[key] as LimitCfg | undefined;
+                            const usd = Number(cfg?.usd) || 0;
+                            const spent = a.cost?.[key] ?? 0;
+                            if (!usd) return <td key={key} className="px-5 py-3 text-right text-neutral-300 dark:text-neutral-600">—</td>;
+                            const p = pct(spent, usd);
+                            return (
+                              <td key={key} className="px-5 py-3 text-right">
+                                <div className="font-mono text-xs" style={{ color: pctColor(p) }}>{fmt$(spent)} / {fmt$(usd)}</div>
+                                <div className="text-[10px] text-neutral-400">{p.toFixed(0)}% · {actionLabel(cfg?.action ?? 'notify')}</div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+
+            {/* Eventos / alertas recientes */}
+            <Card className="overflow-hidden">
+              <div className="px-6 py-4 border-b border-neutral-100 dark:border-neutral-800">
+                <h3 className="text-base font-semibold text-neutral-900 dark:text-white">Alertas recientes</h3>
+                <p className="text-xs text-neutral-400 mt-0.5">Tabla <code className="font-mono">ag_limit_events</code> · últimas 50</p>
+              </div>
+              {(ld?.events?.length ?? 0) === 0 ? (
+                <div className="px-6 py-10 text-center text-sm text-neutral-400">Sin alertas registradas.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="text-[11px] text-neutral-500 uppercase bg-neutral-50 dark:bg-neutral-900/50">
+                      <tr>
+                        <th className="px-5 py-3 text-left font-medium">Cuándo</th>
+                        <th className="px-5 py-3 text-left font-medium">Alcance</th>
+                        <th className="px-5 py-3 text-left font-medium">Ventana</th>
+                        <th className="px-5 py-3 text-left font-medium">Acción</th>
+                        <th className="px-5 py-3 text-right font-medium">Gastado / tope</th>
+                        <th className="px-5 py-3 text-center font-medium">Cliq</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ld!.events.map(e => (
+                        <tr key={e.id} className="border-t border-neutral-100 dark:border-neutral-800/60">
+                          <td className="px-5 py-3 text-xs text-neutral-400">{fmtRelTime(e.createdAt)}</td>
+                          <td className="px-5 py-3 text-[13px] text-neutral-800 dark:text-neutral-200">
+                            {e.scope === 'global' ? <span className="font-medium">Global</span> : (e.agentName ?? '—')}
+                          </td>
+                          <td className="px-5 py-3 text-xs text-neutral-500">{e.bucket === 'hour' ? 'hora' : e.bucket === 'day' ? 'día' : 'semana'}</td>
+                          <td className="px-5 py-3">
+                            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${e.action === 'stop' ? 'bg-red-500/10 text-red-600 dark:text-red-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'}`}>
+                              {e.action === 'stop' ? 'Detenido' : 'Aviso'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 text-right font-mono text-xs text-neutral-700 dark:text-neutral-300">{fmt$(e.actualUsd)} / {fmt$(e.limitUsd)}</td>
+                          <td className="px-5 py-3 text-center text-xs">{e.notifiedCliq ? <span className="text-[#71BF44]">✓</span> : <span className="text-neutral-400">—</span>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+          </div>
+        );
+      })()}
 
       {/* ══════════ INFRAESTRUCTURA ══════════ */}
       {tab === 'infra' && (
