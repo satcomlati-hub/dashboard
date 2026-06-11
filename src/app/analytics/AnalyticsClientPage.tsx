@@ -53,24 +53,6 @@ export default function AnalyticsClientPage({ isAdmin }: AnalyticsClientPageProp
       }
     },
     {
-      id: 'rabbit',
-      name: 'Monitoreo Rabbit',
-      description: 'Estado en tiempo real de colas RabbitMQ por ambiente con alertas por severidad.',
-      href: '/analytics/rabbit',
-      icon: (
-        <svg className="w-6 h-6 text-[#71BF44]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
-        </svg>
-      ),
-      connection: {
-        type: 'n8n',
-        source: 'https://sara.mysatcomla.com/webhook/MonitorRabbit',
-        flowName: 'API Monitoreo Rabbit',
-        flowId: '3vtUKb3F5pqASbya',
-        method: 'Endpoint: API MonitorRabbit'
-      }
-    },
-    {
       id: 'unauthorized',
       name: 'Comprobantes No Autorizados',
       description: 'Monitoreo de documentos que fallaron la autorización por ambiente y motivo.',
