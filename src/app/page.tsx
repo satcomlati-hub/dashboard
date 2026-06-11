@@ -65,25 +65,25 @@ export default async function Home() {
 
           {/* Zoho user badge */}
           {user && (
-            <div className="flex items-center gap-2 bg-[#1f1f1f] rounded-md px-3 py-1.5">
+            <div className="flex items-center gap-2 bg-neutral-100 dark:bg-[#1f1f1f] border border-neutral-200 dark:border-transparent rounded-md px-3 py-1.5">
               {user.image ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={user.image} alt={user.name ?? ''} className="w-5 h-5 rounded-sm object-cover" />
               ) : (
-                <div className="w-5 h-5 rounded-sm bg-[#353535] flex items-center justify-center text-[0.6rem] font-bold text-[#ffb59d]">
+                <div className="w-5 h-5 rounded-sm bg-neutral-200 dark:bg-[#353535] flex items-center justify-center text-[0.6rem] font-bold text-[#b5552f] dark:text-[#ffb59d]">
                   {firstName[0]}
                 </div>
               )}
               <div className="flex items-center gap-1.5">
                 <ZohoIcon />
-                <span className="text-[0.75rem] text-[#e2e2e2] font-medium">{user.name}</span>
+                <span className="text-[0.75rem] text-neutral-700 dark:text-[#e2e2e2] font-medium">{user.name}</span>
               </div>
 
               <form action={async () => {
                 "use server"
                 await signOut({ redirectTo: "/login" })
               }}>
-                <button type="submit" className="text-[0.6875rem] text-[#594139] hover:text-[#a88a81] transition-colors ml-1">
+                <button type="submit" className="text-[0.6875rem] text-neutral-500 hover:text-[#71BF44] dark:text-[#594139] dark:hover:text-[#a88a81] transition-colors ml-1">
                   Salir
                 </button>
               </form>
@@ -93,13 +93,13 @@ export default async function Home() {
       </header>
 
       {/* Zoho connection status strip */}
-      <div className="flex items-center gap-2 mb-6 px-3 py-2 bg-[#1f1f1f] rounded-md w-fit">
-        <span className="w-1.5 h-1.5 rounded-full bg-[#58d6f6]" />
+      <div className="flex items-center gap-2 mb-6 px-3 py-2 bg-neutral-100 dark:bg-[#1f1f1f] border border-neutral-200 dark:border-transparent rounded-md w-fit">
+        <span className="w-1.5 h-1.5 rounded-full bg-[#0078D7] dark:bg-[#58d6f6]" />
         <ZohoIcon />
-        <span className="text-[0.75rem] text-[#58d6f6] font-medium">Zoho SSO</span>
-        <span className="text-[0.75rem] text-[#a88a81]">·</span>
-        <span className="text-[0.75rem] text-[#a88a81]">{user?.email}</span>
-        <span className="text-[0.6875rem] bg-[#003743] text-[#58d6f6] px-1.5 py-0.5 rounded-sm ml-1">Activo</span>
+        <span className="text-[0.75rem] text-[#0078D7] dark:text-[#58d6f6] font-medium">Zoho SSO</span>
+        <span className="text-[0.75rem] text-neutral-400 dark:text-[#a88a81]">·</span>
+        <span className="text-[0.75rem] text-neutral-500 dark:text-[#a88a81]">{user?.email}</span>
+        <span className="text-[0.6875rem] bg-[#0078D7]/10 text-[#0078D7] dark:bg-[#003743] dark:text-[#58d6f6] px-1.5 py-0.5 rounded-sm ml-1">Activo</span>
       </div>
 
       <DashboardGrid initialLayout={layout} permissions={user?.permissions} />

@@ -37,6 +37,30 @@ body {
   border-color: #262626;
 }
 
+/* U7 · Anillo de foco visible para navegación por teclado (accesibilidad).
+   Muchos componentes usan `focus:outline-none`; este override por :focus-visible
+   restaura un indicador claro SOLO cuando el foco llega por teclado (no por click). */
+a:focus-visible,
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
+  outline: 2px solid var(--satcom-green) !important;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* U11 · Piso de tamaño tipográfico (legibilidad). Sube las clases arbitrarias
+   verdaderamente diminutas (≤10px) a 11px sin tocar cada componente. */
+[class*="text-[0.6rem]"],
+[class*="text-[0.625rem]"],
+[class*="text-[10px]"] {
+  font-size: 0.6875rem !important; /* 11px mínimo legible */
+  line-height: 1rem;
+}
+
 /* Markdown Content Styles */
 .markdown-content {
   word-break: break-word;

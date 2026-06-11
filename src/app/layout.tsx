@@ -8,8 +8,8 @@ import { NotificationProvider } from '@/components/NotificationProvider';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Satcom n8n Dashboard',
-  description: 'Management dashboard for n8n instances',
+  title: 'Panel Satcom · Centro de Control',
+  description: 'Panel de control y monitoreo de automatizaciones, agentes IA y operaciones de Satcom LA',
 };
 
 export default function RootLayout({
