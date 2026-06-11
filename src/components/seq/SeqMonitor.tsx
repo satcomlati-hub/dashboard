@@ -544,7 +544,7 @@ logs.forEach(log => {
   const eventId = log.Id || log['@Id'] || '';
   let seqPermalink = '';
   if (eventId) {
-    seqPermalink = `https://dashboard-one-ivory-58.vercel.app/api/seq/public-event?id=\${eventId}&origen=\${origenConexion}`;
+    seqPermalink = \`https://dashboard-one-ivory-58.vercel.app/api/seq/public-event?id=\${eventId}&origen=\${origenConexion}\`;
   }
 
   const payloadComun = {
