@@ -381,6 +381,9 @@ export default function SaraChatPage() {
     const withUser = [...messages, userMsg];
     setMessages(withUser);
     const q = input, f = selectedFile, sid = activeSessionId;
+    // Persistir el mensaje del usuario de inmediato: si cambia de chat y vuelve
+    // antes de que el agente responda, su mensaje sigue ahí (no se espera al final).
+    persist(withUser, sid);
     setInput('');
     clearFile();
     setIsLoading(true);
@@ -424,6 +427,18 @@ export default function SaraChatPage() {
         let streamImages: ImageAttachment[] = [];
         let imgAccumulating = false;
         let imgBuffer = '';
+        const streamTs = Date.now();
+
+        // Escribe el mensaje del asistente reconstruyendo el arreglo completo:
+        // siempre actualiza el store de `sid` (para que al volver desde otro chat
+        // se vea el progreso) y la vista solo si ese chat sigue activo.
+        const applyAssistant = (assistant: Partial<Message>) => {
+          if (!streamMsgId) return;
+          const msg: Message = { id: streamMsgId, role: 'assistant', content: '', timestamp: streamTs, ...assistant };
+          const full = [...withUser, msg];
+          setSessions(prev => prev.map(s => s.id === sid ? { ...s, messages: full } : s));
+          if (activeIdRef.current === sid) setMessages(full);
+        };
 
         const processChunk = (rawContent: string) => {
           // Una vez que empieza [[IMGS]]: acumular URLs sin mostrar en pantalla
@@ -441,18 +456,14 @@ export default function SaraChatPage() {
           }
 
           if (!chunk) return;
-          const isActive = activeIdRef.current === sid;
           if (!streamMsgId) {
             streamMsgId = newId();
             accumulated = chunk;
             setIsLoading(false);
-            const displayContent = stripMarkers(accumulated);
-            if (isActive) setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: displayContent, timestamp: Date.now() }]);
           } else {
             accumulated += chunk;
-            const displayContent = stripMarkers(accumulated);
-            if (isActive) setMessages(prev => prev.map(m => m.id === streamMsgId ? { ...m, content: displayContent } : m));
           }
+          applyAssistant({ content: stripMarkers(accumulated) });
         };
 
         const processLine = (trimmed: string) => {
@@ -497,19 +508,18 @@ export default function SaraChatPage() {
           if (urls.length > 0) streamImages = urls.map(url => ({ url }));
         }
 
-        const stillActive = activeIdRef.current === sid;
         if (!streamMsgId) {
           streamMsgId = newId();
           setIsLoading(false);
-          if (stillActive) setMessages([...withUser, { id: streamMsgId, role: 'assistant', content: 'Sin respuesta.' }]);
         }
 
         const displayContent = stripMarkers(accumulated);
-        const finalMsg: Message = { id: streamMsgId, role: 'assistant', content: displayContent || 'Sin respuesta.', images: streamImages, report: parseReport(accumulated), timestamp: Date.now() };
-        // Aplicar el mensaje final (incl. imágenes y tarjeta de reporte) al estado VISIBLE
-        // solo si seguimos en el chat que originó la consulta; persist() siempre escribe a `sid`.
-        if (stillActive) setMessages(prev => prev.map(m => m.id === streamMsgId ? finalMsg : m));
-        persist([...withUser, finalMsg], sid);
+        const finalMsg: Message = { id: streamMsgId, role: 'assistant', content: displayContent || 'Sin respuesta.', images: streamImages, report: parseReport(accumulated), timestamp: streamTs };
+        // Mensaje final (incl. imágenes y tarjeta de reporte): a la vista solo si seguimos
+        // en el chat que originó la consulta; persist() siempre escribe a `sid`.
+        const finalFull = [...withUser, finalMsg];
+        if (activeIdRef.current === sid) setMessages(finalFull);
+        persist(finalFull, sid);
 
       } else {
         // ── JSON (fallback sin body streameable) ────────────────────────────
