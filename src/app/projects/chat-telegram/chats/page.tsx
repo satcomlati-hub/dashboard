@@ -15,7 +15,14 @@ interface Chat {
   empresa?: string;
   last_activity?: string;
   paused?: boolean;
+  canal?: string; // 'telegram' | 'whatsapp' (source del último mensaje del cliente)
   [key: string]: any;
+}
+
+interface ChannelLite {
+  id: string;
+  type: string;
+  agent_id: string;
 }
 
 interface Message {
@@ -44,7 +51,7 @@ function ChatsContent() {
   const [history, setHistory] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [channelId, setChannelId] = useState<string | null>(null);
+  const [channels, setChannels] = useState<ChannelLite[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const searchParams = useSearchParams();
@@ -59,20 +66,26 @@ function ChatsContent() {
     resolveChannel();
   }, []);
 
-  // Resuelve el canal de Telegram de SARA Público (para enviar/reanudar como bot).
+  // Carga los canales de mensajería (para enviar/reanudar como bot por el canal correcto).
   const resolveChannel = async () => {
     try {
       const res = await fetch('/api/agentes/v1/channels');
       const data = await res.json();
-      if (Array.isArray(data)) {
-        const ch = data.find(
-          (c: any) => c.type === 'telegram' && c.agent_id === SARA_PUBLICO_AGENT_ID,
-        ) || data.find((c: any) => c.type === 'telegram');
-        if (ch) setChannelId(ch.id);
-      }
+      if (Array.isArray(data)) setChannels(data);
     } catch (error) {
-      console.error('Error resolving channel:', error);
+      console.error('Error resolving channels:', error);
     }
+  };
+
+  // Canal por el que se habla con este chat: según el source del último mensaje
+  // del cliente (canal), priorizando los canales del agente SARA Público.
+  const channelIdFor = (chat: Chat | null): string | null => {
+    if (!chat) return null;
+    const type = chat.canal === 'whatsapp' ? 'whatsapp' : 'telegram';
+    const ch =
+      channels.find(c => c.type === type && c.agent_id === SARA_PUBLICO_AGENT_ID) ||
+      channels.find(c => c.type === type);
+    return ch?.id ?? null;
   };
 
   // Auto-select chat from URL parameter
@@ -182,8 +195,9 @@ function ChatsContent() {
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedChat || !newMessage.trim() || sending) return;
+    const channelId = channelIdFor(selectedChat);
     if (!channelId) {
-      alert('No se encontró el canal de Telegram de SARA Público.');
+      alert(`No se encontró el canal de ${selectedChat.canal === 'whatsapp' ? 'WhatsApp' : 'Telegram'} de SARA Público.`);
       return;
     }
 
@@ -214,7 +228,9 @@ function ChatsContent() {
   };
 
   const handleResume = async () => {
-    if (!selectedChat || !channelId || resuming) return;
+    if (!selectedChat || resuming) return;
+    const channelId = channelIdFor(selectedChat);
+    if (!channelId) return;
     setResuming(true);
     try {
       const res = await fetch(`/api/agentes/v1/channels/${channelId}/resume`, {
@@ -272,6 +288,9 @@ function ChatsContent() {
                   <div className="flex justify-between items-start mb-1">
                     <span className="font-bold text-neutral-900 dark:text-white uppercase truncate flex items-center gap-1.5">
                       {chat.paused && <span title="Intervención humana activa" className="inline-block w-2 h-2 rounded-full bg-red-500 shrink-0"></span>}
+                      <span className="shrink-0 text-xs" title={chat.canal === 'whatsapp' ? 'WhatsApp' : 'Telegram'}>
+                        {chat.canal === 'whatsapp' ? '🟢' : '✈️'}
+                      </span>
                       {chat.nombre}
                     </span>
                     <span className="text-[10px] text-neutral-400 whitespace-nowrap ml-2">
@@ -299,7 +318,9 @@ function ChatsContent() {
                   <h3 className="font-bold text-neutral-900 dark:text-white uppercase truncate">
                     {selectedChat.nombre}
                   </h3>
-                  <p className="text-xs text-neutral-500 truncate">ID: {selectedChat.chat_id} • {selectedChat.correo}</p>
+                  <p className="text-xs text-neutral-500 truncate">
+                    {selectedChat.canal === 'whatsapp' ? '🟢 WhatsApp' : '✈️ Telegram'} • ID: {selectedChat.chat_id} • {selectedChat.correo}
+                  </p>
                 </div>
                 {isPaused ? (
                   <button

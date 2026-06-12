@@ -6,7 +6,7 @@ import AgentesNav from '@/components/agentes/AgentesNav';
 
 type Channel = {
   id: string;
-  type: 'telegram' | 'zoho_cliq';
+  type: 'telegram' | 'zoho_cliq' | 'whatsapp';
   name: string;
   agent_id: string;
   enabled: boolean;
@@ -23,28 +23,39 @@ type Agent = { id: string; name: string; enabled?: boolean };
 
 type ChannelDraft = {
   id?: string;
-  type: 'telegram' | 'zoho_cliq';
+  type: 'telegram' | 'zoho_cliq' | 'whatsapp';
   name: string;
   agent_id: string;
   enabled: boolean;
-  bot_token: string;       // vacío en edición = sin cambios
+  bot_token: string;       // vacío en edición = sin cambios (whatsapp: API Key de YCloud)
   bot_token_set?: boolean;
+  from_number: string;      // solo whatsapp: número del negocio (E.164)
+  signing_secret: string;   // solo whatsapp: Endpoint Secret de YCloud
+  config?: Record<string, unknown>; // config existente (para preservar claves al editar)
 };
 
 type WebhookInfo = {
-  connected: boolean;
+  // telegram
+  connected?: boolean;
   expected_url: string;
   me?: { username?: string; first_name?: string };
   webhook?: { url?: string; pending_update_count?: number; ip_address?: string };
+  // whatsapp (YCloud)
+  from_number?: string;
+  from_number_found?: boolean;
+  signing_secret_set?: boolean;
+  numbers?: { phoneNumber?: string; displayName?: string; status?: string; qualityRating?: string }[];
 };
 
 const TYPES: { value: Channel['type']; label: string; icon: string; ready: boolean }[] = [
   { value: 'telegram', label: 'Telegram', icon: '✈️', ready: true },
+  { value: 'whatsapp', label: 'WhatsApp', icon: '🟢', ready: true },
   { value: 'zoho_cliq', label: 'Zoho Cliq', icon: '💬', ready: false },
 ];
 
 const emptyDraft = (): ChannelDraft => ({
   type: 'telegram', name: '', agent_id: '', enabled: true, bot_token: '',
+  from_number: '', signing_secret: '',
 });
 
 export default function CanalesPage() {
@@ -71,6 +82,9 @@ export default function CanalesPage() {
       setEditing({
         id: c.id, type: c.type, name: c.name, agent_id: c.agent_id,
         enabled: c.enabled, bot_token: '', bot_token_set: c.bot_token_set,
+        from_number: String(c.config?.from_number ?? ''),
+        signing_secret: '', // nunca se trae del backend; vacío = sin cambios
+        config: c.config,
       });
     } else {
       setEditing(emptyDraft());
@@ -91,6 +105,18 @@ export default function CanalesPage() {
       if (editing.bot_token.trim()) payload.bot_token = editing.bot_token.trim();
       if (isNew && !editing.bot_token.trim() && editing.type === 'telegram') {
         setError('El bot_token de Telegram es obligatorio.'); setSaving(false); return;
+      }
+      if (editing.type === 'whatsapp') {
+        if (isNew && !editing.bot_token.trim()) {
+          setError('La API Key de YCloud es obligatoria.'); setSaving(false); return;
+        }
+        if (!editing.from_number.trim()) {
+          setError('El número de WhatsApp (from) es obligatorio.'); setSaving(false); return;
+        }
+        const config: Record<string, unknown> = { ...(editing.config ?? {}) };
+        config.from_number = editing.from_number.trim();
+        if (editing.signing_secret.trim()) config.webhook_signing_secret = editing.signing_secret.trim();
+        payload.config = config;
       }
       const url = isNew ? '/api/agentes/v1/channels' : `/api/agentes/v1/channels/${editing.id}`;
       const res = await fetch(url, {
@@ -137,10 +163,17 @@ export default function CanalesPage() {
   const refreshInfo = async (c: Channel) => {
     setBusy(c.id);
     try {
-      const res = await fetch(`/api/agentes/v1/channels/${c.id}/telegram/info`);
+      const kind = c.type === 'whatsapp' ? 'whatsapp' : 'telegram';
+      const res = await fetch(`/api/agentes/v1/channels/${c.id}/${kind}/info`);
       const data = await res.json().catch(() => null);
       if (res.ok && data) setInfo(prev => ({ ...prev, [c.id]: data }));
+      else if (data?.detail) setError(String(data.detail));
     } finally { setBusy(null); }
+  };
+
+  const copyWebhook = async (c: Channel) => {
+    if (!c.webhook_url) return;
+    try { await navigator.clipboard.writeText(c.webhook_url); } catch { /* sin clipboard */ }
   };
 
   return (
@@ -158,7 +191,7 @@ export default function CanalesPage() {
           <div>
             <h2 className="text-2xl font-bold text-neutral-900 dark:text-[#e5e5e5] tracking-tight">Agentes IA</h2>
             <p className="text-sm text-neutral-500 dark:text-[#ababab] mt-1">
-              Conecta bots de mensajería (Telegram, Zoho Cliq) directamente a un agente, sin n8n.
+              Conecta bots de mensajería (Telegram, WhatsApp vía YCloud, Zoho Cliq) directamente a un agente, sin n8n.
             </p>
           </div>
           <button
@@ -248,21 +281,53 @@ export default function CanalesPage() {
                 </select>
               </div>
 
-              {/* Bot token */}
+              {/* Bot token / API Key */}
               <div>
                 <label className="block text-xs text-neutral-500 mb-1">
-                  {editing.type === 'telegram' ? 'Bot token de Telegram' : 'Token / credencial'}
-                  {!editing.id && editing.type === 'telegram' && ' *'}
+                  {editing.type === 'telegram' ? 'Bot token de Telegram'
+                    : editing.type === 'whatsapp' ? 'API Key de YCloud'
+                    : 'Token / credencial'}
+                  {!editing.id && (editing.type === 'telegram' || editing.type === 'whatsapp') && ' *'}
                 </label>
                 <input
                   type="password"
                   className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-white font-mono"
                   value={editing.bot_token}
                   onChange={e => setEditing(ed => ed && ({ ...ed, bot_token: e.target.value }))}
-                  placeholder={editing.bot_token_set ? '•••••• (dejar vacío = sin cambios)' : '123456789:AA...'}
+                  placeholder={editing.bot_token_set ? '•••••• (dejar vacío = sin cambios)'
+                    : editing.type === 'whatsapp' ? 'API Key del dashboard de YCloud' : '123456789:AA...'}
                 />
                 <p className="text-xs text-neutral-400 mt-1">Se almacena como secreto y nunca se muestra completo.</p>
               </div>
+
+              {/* Campos específicos de WhatsApp (YCloud) */}
+              {editing.type === 'whatsapp' && (
+                <>
+                  <div>
+                    <label className="block text-xs text-neutral-500 mb-1">Número de WhatsApp (from) *</label>
+                    <input
+                      className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-white font-mono"
+                      value={editing.from_number}
+                      onChange={e => setEditing(ed => ed && ({ ...ed, from_number: e.target.value }))}
+                      placeholder="+5939XXXXXXXX"
+                    />
+                    <p className="text-xs text-neutral-400 mt-1">El número del negocio aprobado en YCloud, en formato E.164.</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-neutral-500 mb-1">Endpoint Secret de YCloud (firma del webhook)</label>
+                    <input
+                      type="password"
+                      className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-white font-mono"
+                      value={editing.signing_secret}
+                      onChange={e => setEditing(ed => ed && ({ ...ed, signing_secret: e.target.value }))}
+                      placeholder={editing.config?.webhook_signing_secret ? '•••••• (dejar vacío = sin cambios)' : 'whsec_… (Developer → Webhooks)'}
+                    />
+                    <p className="text-xs text-neutral-400 mt-1">
+                      Se usa para verificar la firma <span className="font-mono">YCloud-Signature</span>. Recomendado; si se omite, solo protege la URL secreta.
+                    </p>
+                  </div>
+                </>
+              )}
 
               {/* Habilitado */}
               <label className="flex items-center gap-2 cursor-pointer">
@@ -328,13 +393,22 @@ export default function CanalesPage() {
                         }`}>
                           {t?.label ?? c.type}
                         </span>
-                        {wi && (
+                        {wi && c.type === 'telegram' && (
                           <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
                             wi.connected
                               ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
                               : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
                           }`}>
                             {wi.connected ? '● webhook conectado' : '○ sin conectar'}
+                          </span>
+                        )}
+                        {wi && c.type === 'whatsapp' && (
+                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                            wi.from_number_found
+                              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                              : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                          }`}>
+                            {wi.from_number_found ? '● número verificado' : '○ número no encontrado'}
                           </span>
                         )}
                       </div>
@@ -346,6 +420,24 @@ export default function CanalesPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
+                    {c.type === 'whatsapp' && (
+                      <>
+                        <button
+                          onClick={() => refreshInfo(c)}
+                          disabled={busy === c.id}
+                          className="text-xs px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors disabled:opacity-50"
+                        >
+                          {busy === c.id ? '…' : 'Estado'}
+                        </button>
+                        <button
+                          onClick={() => copyWebhook(c)}
+                          className="text-xs px-3 py-1.5 rounded-lg border border-[#71BF44] text-[#71BF44] hover:bg-[#71BF44]/10 transition-colors"
+                          title="Copiar la URL para registrarla en YCloud → Developer → Webhooks"
+                        >
+                          Copiar webhook
+                        </button>
+                      </>
+                    )}
                     {c.type === 'telegram' && (
                       <>
                         <button
@@ -388,13 +480,34 @@ export default function CanalesPage() {
                 </div>
 
                 {/* Detalle del webhook */}
-                {wi && (
+                {wi && c.type === 'telegram' && (
                   <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800 text-xs text-neutral-400 space-y-1">
                     <p>URL esperada: <span className="font-mono text-neutral-500 dark:text-neutral-300 break-all">{wi.expected_url}</span></p>
                     <p>URL en Telegram: <span className="font-mono text-neutral-500 dark:text-neutral-300 break-all">{wi.webhook?.url || '(ninguna)'}</span></p>
                     {typeof wi.webhook?.pending_update_count === 'number' && (
                       <p>Updates pendientes: {wi.webhook.pending_update_count}</p>
                     )}
+                  </div>
+                )}
+                {wi && c.type === 'whatsapp' && (
+                  <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800 text-xs text-neutral-400 space-y-1">
+                    <p>
+                      Webhook (regístralo en YCloud → Developer → Webhooks, evento{' '}
+                      <span className="font-mono">whatsapp.inbound_message.received</span>):{' '}
+                      <span className="font-mono text-neutral-500 dark:text-neutral-300 break-all">{wi.expected_url}</span>
+                    </p>
+                    <p>
+                      Firma del webhook: {wi.signing_secret_set
+                        ? <span className="text-green-600 dark:text-green-400">configurada ✓</span>
+                        : <span className="text-amber-600 dark:text-amber-400">sin configurar (recomendado agregar el Endpoint Secret)</span>}
+                    </p>
+                    {(wi.numbers ?? []).map((n, i) => (
+                      <p key={i}>
+                        Número en YCloud: <span className="font-mono text-neutral-500 dark:text-neutral-300">{n.phoneNumber}</span>
+                        {n.displayName && <span className="ml-2">{n.displayName}</span>}
+                        {n.status && <span className="ml-2">({n.status}{n.qualityRating ? `, calidad ${n.qualityRating}` : ''})</span>}
+                      </p>
+                    ))}
                   </div>
                 )}
               </div>
