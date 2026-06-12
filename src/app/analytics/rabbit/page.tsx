@@ -13,6 +13,8 @@ interface Cola {
   Mensajes: number;
   Rate: number;
   Consumidores: number;
+  Limite?: number;
+  Superado?: boolean;
 }
 
 interface AmbienteRabbit {
@@ -534,16 +536,18 @@ export default function MonitoreoRabbitPage() {
                       const matchedLimit = limits.find(
                         l => l.ambiente === selectedData.Ambiente && l.nombre_cola === cola.NombreCola
                       );
+                      const limitVal = cola.Limite !== undefined ? cola.Limite : (matchedLimit ? matchedLimit.limite_mensajes : null);
+                      const isSuperado = cola.Superado !== undefined ? cola.Superado : (limitVal !== null ? cola.Mensajes > limitVal : false);
                       return (
-                        <tr key={cola.NombreCola} className={`border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-[#1a1a1a] transition-colors ${i === selectedData.Colas.length - 1 ? 'border-b-0' : ''}`}>
+                        <tr key={cola.NombreCola} className={`border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-[#1a1a1a] transition-colors ${i === selectedData.Colas.length - 1 ? 'border-b-0' : ''} ${isSuperado ? 'bg-red-500/5 dark:bg-red-500/5' : ''}`}>
                           <td className="px-6 py-4 font-semibold text-neutral-900 dark:text-white">
                             <div className="flex items-center gap-2">
-                              <Inbox className="w-4 h-4 text-neutral-400 flex-shrink-0" />
-                              <span className="truncate">{cola.NombreCola}</span>
+                              <Inbox className={`w-4 h-4 flex-shrink-0 ${isSuperado ? 'text-red-500' : 'text-neutral-400'}`} />
+                              <span className={`truncate ${isSuperado ? 'text-red-500' : ''}`}>{cola.NombreCola}</span>
                             </div>
                           </td>
                           <td className="px-6 py-4 text-right">
-                            <span className={`font-bold ${cola.Mensajes > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
+                            <span className={`font-bold ${isSuperado ? 'text-red-500' : (cola.Mensajes > 0 ? 'text-amber-500' : 'text-emerald-500')}`}>
                               {cola.Mensajes.toLocaleString()}
                             </span>
                           </td>
@@ -556,8 +560,8 @@ export default function MonitoreoRabbitPage() {
                           </td>
                           <td className="px-6 py-4 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <span className={`font-mono text-xs font-bold px-2 py-0.5 rounded ${matchedLimit ? (matchedLimit.esta_activo ? 'bg-red-500/10 text-red-500' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400') : 'text-neutral-400 dark:text-neutral-600'}`}>
-                                {matchedLimit ? `${matchedLimit.limite_mensajes.toLocaleString()} msg` : '---'}
+                              <span className={`font-mono text-xs font-bold px-2 py-0.5 rounded ${isSuperado ? 'bg-red-500/10 text-red-500' : (limitVal !== null ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400' : 'text-neutral-400 dark:text-neutral-600')}`}>
+                                {limitVal !== null ? `${limitVal.toLocaleString()} msg` : '---'}
                               </span>
                               <button
                                 onClick={() => {
