@@ -414,7 +414,39 @@ export default function MonitoreoRabbitPage() {
       {!loading && !error && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
           {data.map((env) => {
-            const cfg = getTipoConfig(env.Tipo);
+            // Recalcular el Tipo dinámicamente en base a los límites configurados en el cliente
+            let finalTipo = "ℹ️ Informativo";
+            let tieneAlerta = false;
+            let tieneError = false;
+
+            if (env.Colas && env.Colas.length > 0) {
+              env.Colas.forEach(cola => {
+                let matchedLimit = limits.find(
+                  l => String(l.ambiente).trim().toUpperCase() === String(env.Ambiente).trim().toUpperCase() &&
+                       String(l.nombre_cola).trim().toLowerCase() === String(cola.NombreCola).trim().toLowerCase()
+                );
+                if (!matchedLimit) {
+                  matchedLimit = limits.find(
+                    l => String(l.ambiente).trim().toUpperCase() === String(env.Ambiente).trim().toUpperCase() &&
+                         l.nombre_cola === '*'
+                  );
+                }
+                const limitVal = matchedLimit ? matchedLimit.limite_mensajes : (cola.Limite !== undefined ? cola.Limite : null);
+                
+                if (limitVal !== null && cola.Mensajes > limitVal) {
+                  if (cola.Mensajes > limitVal * 1.5 || cola.Mensajes > 5000) {
+                    tieneError = true;
+                  } else {
+                    tieneAlerta = true;
+                  }
+                }
+              });
+            }
+
+            if (tieneError) finalTipo = "🚨 Error";
+            else if (tieneAlerta) finalTipo = "⚠️ Alerta";
+
+            const cfg = getTipoConfig(finalTipo);
             const isSelected = selectedEnv === env.Ambiente;
             return (
               <button
