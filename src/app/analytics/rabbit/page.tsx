@@ -533,11 +533,21 @@ export default function MonitoreoRabbitPage() {
                   </thead>
                   <tbody>
                     {selectedData.Colas.map((cola, i) => {
-                      const matchedLimit = limits.find(
-                        l => l.ambiente === selectedData.Ambiente && l.nombre_cola === cola.NombreCola
+                      // Búsqueda robusta e insensible a mayúsculas/minúsculas y espacios
+                      let matchedLimit = limits.find(
+                        l => String(l.ambiente).trim().toUpperCase() === String(selectedData.Ambiente).trim().toUpperCase() &&
+                             String(l.nombre_cola).trim().toLowerCase() === String(cola.NombreCola).trim().toLowerCase()
                       );
-                      const limitVal = cola.Limite !== undefined ? cola.Limite : (matchedLimit ? matchedLimit.limite_mensajes : null);
-                      const isSuperado = cola.Superado !== undefined ? cola.Superado : (limitVal !== null ? cola.Mensajes > limitVal : false);
+                      // Fallback al comodín (*) si no hay límite específico
+                      if (!matchedLimit) {
+                        matchedLimit = limits.find(
+                          l => String(l.ambiente).trim().toUpperCase() === String(selectedData.Ambiente).trim().toUpperCase() &&
+                               l.nombre_cola === '*'
+                        );
+                      }
+                      // Priorizar el límite de la base de datos (matchedLimit) y usar el del webhook (cola.Limite) como fallback
+                      const limitVal = matchedLimit ? matchedLimit.limite_mensajes : (cola.Limite !== undefined ? cola.Limite : null);
+                      const isSuperado = limitVal !== null ? cola.Mensajes > limitVal : (cola.Superado !== undefined ? cola.Superado : false);
                       return (
                         <tr key={cola.NombreCola} className={`border-b border-neutral-100 dark:border-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-[#1a1a1a] transition-colors ${i === selectedData.Colas.length - 1 ? 'border-b-0' : ''} ${isSuperado ? 'bg-red-500/5 dark:bg-red-500/5' : ''}`}>
                           <td className="px-6 py-4 font-semibold text-neutral-900 dark:text-white">
